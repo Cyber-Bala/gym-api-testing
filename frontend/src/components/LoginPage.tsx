@@ -1,13 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Loader2 } from 'lucide-react';
+import { ShieldAlert, Loader2, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Card, Alert } from '../ui/primitives';
+import { Card } from '../ui/primitives';
 import { ThemeToggle } from './ThemeToggle';
 
 export const LoginPage: React.FC = () => {
   const { loginWithGoogle } = useAuth();
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-dismiss snackbar after 7 seconds
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => {
+      setError(null);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [error]);
 
   useEffect(() => {
     const scriptId = 'google-gsi-script-login-page';
@@ -77,7 +86,7 @@ export const LoginPage: React.FC = () => {
   }, [loginWithGoogle]);
 
   return (
-    <div className="min-h-screen bg-background text-text flex flex-col justify-between p-4 sm:p-6">
+    <div className="min-h-screen bg-background text-text flex flex-col justify-between p-4 sm:p-6 relative">
       {/* Top Bar with Theme Toggle */}
       <div className="max-w-md mx-auto w-full flex justify-end py-2">
         <ThemeToggle compact />
@@ -97,15 +106,6 @@ export const LoginPage: React.FC = () => {
             <p className="text-xs text-muted">Rajalakshmi Engineering College</p>
           </div>
 
-          {error && (
-            <Alert tone="danger" onDismiss={() => setError(null)} className="w-full text-left">
-              <div className="flex items-start gap-2.5">
-                <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
-                <p className="text-xs">{error}</p>
-              </div>
-            </Alert>
-          )}
-
           {/* Google Sign In Button */}
           <div className="w-full pt-2 flex flex-col items-center space-y-3">
             <div id="google-signin-btn-main" className="flex justify-center min-h-[44px]"></div>
@@ -119,6 +119,34 @@ export const LoginPage: React.FC = () => {
           </div>
         </Card>
       </main>
+
+      {/* Floating Error Snackbar */}
+      {error && (
+        <div
+          role="alert"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[min(92vw,28rem)] animate-in fade-in slide-in-from-bottom-5 duration-200"
+        >
+          <div className="flex items-start gap-3 p-4 rounded-2xl bg-[#18181b] text-white shadow-2xl border border-red-500/20">
+            <div className="w-8 h-8 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center shrink-0 mt-0.5">
+              <ShieldAlert className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-xs text-red-200">Sign-in Failed</p>
+              <p className="text-[11px] text-zinc-300 mt-0.5 leading-relaxed break-words">
+                {error}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+              aria-label="Dismiss notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

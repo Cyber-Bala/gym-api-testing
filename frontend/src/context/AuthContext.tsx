@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
 export type UserRole = 'student' | 'trainer' | 'staff' | 'authorized_person' | 'admin' | 'super_admin';
 
@@ -89,9 +89,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         credentials: 'include',
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        throw new Error(data.error?.message || 'Authentication failed');
+        const errorMsg = data.error?.message || data.message || `Authentication failed (HTTP ${res.status})`;
+        throw new Error(errorMsg);
       }
 
       setUser(data.data.user);
@@ -115,9 +116,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         credentials: 'include',
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        throw new Error(data.error?.message || 'Dev login failed');
+        const errorMsg = data.error?.message || data.message || `Dev login failed (HTTP ${res.status})`;
+        throw new Error(errorMsg);
       }
 
       setUser(data.data.user);
