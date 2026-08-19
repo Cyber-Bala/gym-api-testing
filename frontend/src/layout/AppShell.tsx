@@ -118,10 +118,10 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             aria-label="Close menu"
             onClick={() => setDrawerOpen(false)}
           />
-          <aside className="relative flex h-full w-[min(20rem,86vw)] flex-col border-r border-border bg-surface pt-[var(--safe-top)] shadow-2xl animate-in slide-in-from-left duration-200">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <aside className="relative flex h-full w-[min(20rem,86vw)] flex-col border-r border-white/5 bg-surface pt-[var(--safe-top)] shadow-2xl animate-in slide-in-from-left duration-200">
+            <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-accent border border-accent/30">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white shadow-sm">
                   <Dumbbell className="h-4 w-4" />
                 </div>
                 <div>
@@ -156,7 +156,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
               })}
             </nav>
 
-            <div className="border-t border-border p-4">
+            <div className="border-t border-white/5 p-4">
               <ThemeToggle className="w-full justify-center" />
             </div>
           </aside>
@@ -166,9 +166,9 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
       {/* Main Desktop Grid */}
       <div className="flex-1 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
         {/* Desktop Sidebar Navigation */}
-        <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-surface pt-[var(--safe-top)] lg:flex">
-          <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-accent border border-accent/30 shrink-0">
+        <aside className="sticky top-0 hidden h-screen flex-col border-r border-white/5 bg-surface pt-[var(--safe-top)] lg:flex">
+          <div className="flex items-center gap-3 border-b border-white/5 px-5 py-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shadow-sm shrink-0">
               <Dumbbell className="h-5 w-5" />
             </div>
             <div className="min-w-0">
@@ -194,7 +194,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             })}
           </nav>
 
-          <div className="border-t border-border p-4">
+          <div className="border-t border-white/5 p-4">
             <ThemeToggle className="w-full justify-center" />
           </div>
         </aside>

@@ -78,14 +78,14 @@ interface AlertProps {
 }
 
 const alertTone = {
-  success: 'border-success/30 bg-success-muted text-success',
-  warning: 'border-warning/30 bg-warning-muted text-warning',
-  danger: 'border-danger/30 bg-danger-muted text-danger',
-  info: 'border-primary/20 bg-primary-muted text-text',
+  success: 'bg-success-muted text-success',
+  warning: 'bg-warning-muted text-warning',
+  danger: 'bg-danger-muted text-danger',
+  info: 'bg-primary-muted text-text',
 };
 
 export const Alert: React.FC<AlertProps> = ({ tone = 'info', children, onDismiss, className }) => (
-  <div className={cn('flex items-start gap-3 rounded-xl border p-4 text-xs', alertTone[tone], className)} role="status">
+  <div className={cn('flex items-start gap-3 rounded-xl p-4 text-xs shadow-sm', alertTone[tone], className)} role="status">
     <div className="min-w-0 flex-1">{children}</div>
     {onDismiss && (
       <button type="button" onClick={onDismiss} className="shrink-0 opacity-70 hover:opacity-100" aria-label="Dismiss">
@@ -104,7 +104,7 @@ interface EmptyStateProps {
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, description, action, className }) => (
-  <div className={cn('flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-border-subtle/30 px-4 py-12 text-center', className)}>
+  <div className={cn('flex flex-col items-center justify-center gap-2 rounded-2xl bg-surface-elevated/40 px-4 py-12 text-center shadow-sm', className)}>
     {icon && <div className="mb-1 text-muted">{icon}</div>}
     <p className="text-sm font-bold text-text">{title}</p>
     {description && <p className="max-w-sm text-xs text-muted leading-relaxed">{description}</p>}

@@ -10,7 +10,6 @@ import {
   LogOut,
   LogIn,
   ShieldAlert,
-  Bot,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -142,20 +141,12 @@ export const LiveOccupancyMonitor: React.FC = () => {
     <div className="space-y-6">
       {/* Top Header & Occupancy Summary */}
       <Card className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-primary" />
-              <h3 className="font-bold text-base sm:text-lg text-text">
-                Live Gym Occupancy & Attendance
-              </h3>
-            </div>
-            <p className="text-xs text-secondary mt-0.5 flex items-center gap-2 flex-wrap">
-              <span>Real-time Turnstile Biometric Stream (ZKBio CV) • Capacity Threshold: 100</span>
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success bg-success-muted px-2 py-0.5 rounded-md border border-success/30">
-                <Bot className="w-3 h-3" /> Auto-Audit Active (Every 5m)
-              </span>
-            </p>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Activity className="w-5 h-5 text-primary" />
+            <h3 className="font-bold text-base sm:text-lg text-text">
+              Live Gym Occupancy
+            </h3>
           </div>
 
           <IconButton
@@ -170,7 +161,7 @@ export const LiveOccupancyMonitor: React.FC = () => {
 
         {/* Occupancy Progress Gauge */}
         {stats && (
-          <div className="p-5 rounded-2xl border border-border bg-border-subtle/40 space-y-3">
+          <div className="p-5 rounded-2xl bg-surface-elevated space-y-3 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-primary" />
@@ -188,14 +179,14 @@ export const LiveOccupancyMonitor: React.FC = () => {
 
             <ProgressBar value={stats.occupancyPercentage} />
 
-            <div className="flex items-center justify-between text-xs text-muted pt-1">
-              <span>Real-time face verification stream</span>
-              <span className="font-medium text-text">{stats.maxCapacity - stats.currentCount} spots remaining</span>
+            <div className="flex items-center justify-between text-xs text-muted">
+              <span />
+              <span>{Math.max(0, stats.maxCapacity - stats.currentCount)} spots remaining</span>
             </div>
           </div>
         )}
 
-        {/* Active Occupants Grid */}
+        {/* Current Occupants Detailed Cards */}
         {stats && (
           <div className="space-y-3">
             <h4 className="font-bold text-xs text-muted uppercase tracking-wider">
@@ -205,12 +196,8 @@ export const LiveOccupancyMonitor: React.FC = () => {
             {stats.occupants.length === 0 ? (
               <EmptyState
                 icon={<Users className="w-6 h-6" />}
-                title="Gym floor is clear"
-                description={
-                  isSuperAdmin
-                    ? 'No members currently checked in. Use the Super Admin Turnstile Simulator below to test entry events.'
-                    : 'No members are currently checked into the gym floor.'
-                }
+                title="Gym Floor is Currently Clear"
+                description="No active check-in sessions recorded at the turnstiles right now."
               />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -277,21 +264,12 @@ export const LiveOccupancyMonitor: React.FC = () => {
       {/* Hardware Biometric Turnstile Simulator — SUPER ADMIN ONLY */}
       {isSuperAdmin && (
         <Card className="space-y-6">
-          <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-4">
-            <div className="flex items-center gap-2">
-              <Scan className="w-5 h-5 text-primary" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-base text-text">
-                    ZKBio CV Turnstile Hardware Simulator
-                  </h3>
-                  <Badge tone="danger">Super Admin Only</Badge>
-                </div>
-                <p className="text-xs text-secondary mt-0.5">
-                  Test biometric turnstile ingress/egress, grace windows, and antipassback enforcement.
-                </p>
-              </div>
-            </div>
+          <div className="flex items-center gap-2">
+            <Scan className="w-5 h-5 text-primary" />
+            <h3 className="font-bold text-base text-text">
+              ZKBio CV Turnstile Hardware Simulator
+            </h3>
+            <Badge tone="danger">Super Admin</Badge>
           </div>
 
           {/* Quick Simulator Preset Buttons */}

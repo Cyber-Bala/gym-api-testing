@@ -205,17 +205,12 @@ export const MembershipStore: React.FC = () => {
   return (
     <div className="space-y-6">
       <Card className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-primary" />
-              <h3 className="font-bold text-base sm:text-lg text-text">
-                Day Scholar Gym Passes
-              </h3>
-            </div>
-            <p className="text-xs text-secondary mt-0.5">
-              Official Institutional Membership Passes for Day Scholars
-            </p>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-primary" />
+            <h3 className="font-bold text-base sm:text-lg text-text">
+              Gym Passes
+            </h3>
           </div>
 
           <IconButton

@@ -78,12 +78,12 @@ export const UserProfileBadge: React.FC<UserProfileBadgeProps> = ({ compact = fa
         type="button"
         onClick={() => setDropdownOpen(!dropdownOpen)}
         className={cn(
-          'flex items-center gap-2 rounded-xl border border-border bg-surface hover:bg-border-subtle transition-colors text-left focus:outline-none focus:ring-2 focus:ring-primary/20',
+          'flex items-center gap-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 transition-all text-left shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20',
           compact ? 'p-1' : 'p-1.5 pr-3',
           className
         )}
       >
-        <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary text-accent font-bold text-xs flex items-center justify-center border border-accent/30 shrink-0">
+        <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary text-white font-bold text-xs flex items-center justify-center shadow-sm shrink-0">
           {user.name.charAt(0).toUpperCase()}
         </div>
         {!compact && (
@@ -101,11 +101,11 @@ export const UserProfileBadge: React.FC<UserProfileBadgeProps> = ({ compact = fa
 
       {/* Dropdown Menu */}
       {dropdownOpen && (
-        <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-border bg-surface shadow-2xl p-4 space-y-3.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-surface-elevated shadow-2xl p-4 space-y-3.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
           {/* User Details */}
-          <div className="space-y-1.5 pb-3 border-b border-border">
+          <div className="space-y-1.5 pb-3 border-b border-white/5">
             <div className="flex items-center justify-between">
-              <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full border ${badge.color}`}>
+              <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${badge.color}`}>
                 {badge.label}
               </span>
               {user.isProtectedSuperAdmin && (

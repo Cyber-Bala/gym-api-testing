@@ -185,16 +185,11 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
     <Card className="space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-primary" />
-            <h3 className="font-bold text-base sm:text-lg text-text">
-              Gym Slot Booking & Availability
-            </h3>
-          </div>
-          <p className="text-xs text-secondary mt-0.5">
-            3-Day Rolling Window (IST) • 100 Cap/Slot • Max 3 Slots in 3-Day Window (Max 3/Day)
-          </p>
+        <div className="flex items-center gap-2">
+          <Calendar className="w-5 h-5 text-primary" />
+          <h3 className="font-bold text-base sm:text-lg text-text">
+            Gym Slot Booking
+          </h3>
         </div>
 
         <div className="flex items-center gap-2">
@@ -241,14 +236,14 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                 type="button"
                 onClick={() => setSelectedDateIdx(idx)}
                 className={cn(
-                  'p-4 rounded-2xl border text-left transition-colors relative',
+                  'p-4 rounded-2xl text-left transition-all relative shadow-sm',
                   isSelected
-                    ? 'border-primary bg-primary-muted shadow-sm'
-                    : 'border-border bg-surface hover:bg-border-subtle'
+                    ? 'bg-primary text-white shadow-md'
+                    : 'bg-surface-elevated hover:bg-surface-elevated/80'
                 )}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-primary">
+                  <span className={cn('text-[10px] uppercase font-bold tracking-wider', isSelected ? 'text-accent' : 'text-primary')}>
                     {day.dayLabel}
                   </span>
                   {day.userBookedCountOnDate && day.userBookedCountOnDate > 0 ? (
@@ -257,16 +252,16 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                     </Badge>
                   ) : null}
                 </div>
-                <h4 className="font-bold text-base text-text mt-1">
+                <h4 className={cn('font-bold text-base mt-1', isSelected ? 'text-white' : 'text-text')}>
                   {day.dayOfWeek}
                 </h4>
-                <p className="text-xs text-muted font-mono mt-0.5">
+                <p className={cn('text-xs font-mono mt-0.5', isSelected ? 'text-white/80' : 'text-muted')}>
                   {day.date}
                 </p>
 
-                <div className="mt-3 pt-2 border-t border-border flex items-center justify-between text-xs text-secondary">
+                <div className={cn('mt-3 pt-2 flex items-center justify-between text-xs', isSelected ? 'text-white/80 border-t border-white/20' : 'text-secondary border-t border-white/5')}>
                   <span>Occupancy</span>
-                  <span className="font-semibold text-text">
+                  <span className={cn('font-semibold', isSelected ? 'text-white' : 'text-text')}>
                     {day.totalBooked} / {day.totalCapacity}
                   </span>
                 </div>
@@ -383,12 +378,12 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                 <div
                   key={slot.id}
                   className={cn(
-                    'p-5 rounded-2xl border bg-surface flex flex-col justify-between space-y-4 transition-colors',
+                    'p-5 rounded-2xl bg-surface-elevated flex flex-col justify-between space-y-4 shadow-sm transition-all hover:shadow-md',
                     slot.isBookedByCurrentUser
-                      ? 'border-success/50 bg-success-muted/20'
+                      ? 'bg-success-muted/25'
                       : !slot.isActive || slot.isPast
-                      ? 'border-border opacity-60 bg-border-subtle/30'
-                      : 'border-border hover:border-primary/40'
+                      ? 'opacity-60 bg-surface-elevated/40'
+                      : ''
                   )}
                 >
                   {/* Slot Header */}
