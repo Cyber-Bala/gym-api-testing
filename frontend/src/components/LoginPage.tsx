@@ -119,11 +119,6 @@ export const LoginPage: React.FC = () => {
           </div>
         </Card>
       </main>
-
-      {/* Footer */}
-      <footer className="max-w-md mx-auto w-full text-center text-[11px] text-muted py-4">
-        <p>© 2026 Rajalakshmi Engineering College</p>
-      </footer>
     </div>
   );
 };
