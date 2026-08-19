@@ -1,8 +1,8 @@
-﻿import { eq, and, inArray, asc } from 'drizzle-orm';
+import { eq, and, or, inArray, asc } from 'drizzle-orm';
 import { db } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { ValidationError, NotFoundError } from '../../shared/errors/index.js';
-import { slots, bookings, auditLogs } from '../../db/schema/index.js';
+import { slots, bookings, students, auditLogs } from '../../db/schema/index.js';
 import {
   DEFAULT_SLOT_CAPACITY,
   DEFAULT_DAILY_SLOTS,
@@ -126,12 +126,21 @@ export class BookingService {
     let userBookedSlotId: string | undefined;
     if (studentId && dbSlots.length > 0) {
       const slotIds = dbSlots.map((s) => s.id);
+      
+      const [studentRec] = await db
+        .select({ id: students.id })
+        .from(students)
+        .where(or(eq(students.personId, studentId), eq(students.id, studentId)))
+        .limit(1);
+
+      const resolvedStudentId = studentRec?.id || studentId;
+
       const userBookings = await db
         .select({ slotId: bookings.slotId })
         .from(bookings)
         .where(
           and(
-            eq(bookings.studentId, studentId),
+            eq(bookings.studentId, resolvedStudentId),
             inArray(bookings.slotId, slotIds),
             eq(bookings.bookingStatus, 'booked')
           )

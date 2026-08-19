@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, or, desc, sql } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { redis } from '../../shared/redis/index.js';
 import { logger } from '../../shared/logging/index.js';
@@ -62,7 +62,7 @@ export class ReservationService {
   public getHoursUntilSlotStart(slotDateStr: string, startTimeStr: string): number {
     const now = new Date();
     // Parse slot start in IST (+05:30)
-    const slotDateTimeStr = `${slotDateStr}T${startTimeStr}+05:30`;
+    const slotDateTimeStr = `${slotDateStr}T${startTimeStr.slice(0, 5)}:00+05:30`;
     const slotStartTime = new Date(slotDateTimeStr);
 
     const diffMs = slotStartTime.getTime() - now.getTime();
@@ -76,8 +76,6 @@ export class ReservationService {
     if (user.personType !== 'student' && user.role !== 'student') {
       throw new ForbiddenError('Only registered students can reserve gym workout slots');
     }
-
-    const studentPersonId = user.personId;
 
     // 1. Pre-validation: Ban check (ADR-010)
     if (user.studentDetails?.isBanned) {
@@ -94,7 +92,7 @@ export class ReservationService {
         .from(memberships)
         .where(
           and(
-            eq(memberships.studentId, studentPersonId),
+            eq(memberships.studentId, user.personId),
             eq(memberships.status, 'active'),
             sql`${memberships.endDate} >= ${todayStr}`
           )
@@ -116,6 +114,21 @@ export class ReservationService {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+
+        // Resolve student table primary key
+        const studentRes = await client.query(
+          `SELECT id, residency, is_banned, violation_count 
+           FROM people.students 
+           WHERE person_id = $1`,
+          [user.personId]
+        );
+
+        if (studentRes.rows.length === 0) {
+          throw new NotFoundError('Student profile not found for this user account');
+        }
+
+        const studentRecord = studentRes.rows[0];
+        const studentTableId = studentRecord.id;
 
         // Row lock on slots
         const slotRes = await client.query(
@@ -162,7 +175,7 @@ export class ReservationService {
            WHERE b.student_id = $1 
              AND s.slot_date = $2 
              AND b.booking_status = 'booked'`,
-          [studentPersonId, slotDateStr]
+          [studentTableId, slotDateStr]
         );
 
         if (duplicateCheck.rows.length > 0) {
@@ -183,7 +196,7 @@ export class ReservationService {
           `INSERT INTO booking.bookings (student_id, slot_id, booking_status, access_status, created_at, updated_at)
            VALUES ($1, $2, 'booked', 'not_entered', NOW(), NOW())
            RETURNING id, student_id, slot_id, booking_status, access_status, created_at`,
-          [studentPersonId, slotId]
+          [studentTableId, slotId]
         );
 
         const newBooking = bookingInsertRes.rows[0];
@@ -199,7 +212,7 @@ export class ReservationService {
         await client.query('COMMIT');
 
         logger.info(
-          { bookingId: newBooking.id, studentId: studentPersonId, slotId, date: slotDateStr },
+          { bookingId: newBooking.id, studentId: studentTableId, slotId, date: slotDateStr },
           'Slot booking created successfully'
         );
 
@@ -221,7 +234,7 @@ export class ReservationService {
         client.release();
       }
     } finally {
-      // Release Redis lock
+      // Always release Tier 1 Redis Lock
       if (lockValue) {
         await this.releaseSlotLock(slotId, lockValue);
       }
@@ -229,89 +242,143 @@ export class ReservationService {
   }
 
   /**
-   * Cancel an active booking with 2-hour notice cutoff (ADR-009, FR-BK-005)
+   * Cancel an existing slot booking (FR-BK-006, ADR-009)
    */
-  public async cancelBooking(bookingId: string, user: SessionUser, reason = 'Student requested cancellation') {
-    const studentPersonId = user.personId;
+  public async cancelBooking(bookingId: string, user: SessionUser, cancellationReason?: string) {
+    const lockKey = `lock:booking:cancel:${bookingId}`;
+    const acquired = await redis.set(lockKey, '1', 'PX', 5000, 'NX');
+    if (!acquired) {
+      throw new ConflictError('A cancellation operation is already in progress for this booking.');
+    }
 
-    const client = await pool.connect();
     try {
-      await client.query('BEGIN');
+      // 2. Query booking with slot details
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
 
-      const bookingRes = await client.query(
-        `SELECT b.id, b.student_id, b.slot_id, b.booking_status, s.slot_date, s.start_time
-         FROM booking.bookings b
-         JOIN booking.slots s ON b.slot_id = s.id
-         WHERE b.id = $1 FOR UPDATE`,
-        [bookingId]
-      );
-
-      if (bookingRes.rows.length === 0) {
-        throw new NotFoundError(`Booking '${bookingId}' not found`);
-      }
-
-      const booking = bookingRes.rows[0];
-
-      // Permission check: student must own the booking or be admin
-      if (booking.student_id !== studentPersonId && !['admin', 'super_admin'].includes(user.role)) {
-        throw new ForbiddenError('You can only cancel your own gym bookings');
-      }
-
-      if (booking.booking_status !== 'booked') {
-        throw new ValidationError(
-          `Cannot cancel a booking that is already in '${booking.booking_status}' status.`
+        const bookingRes = await client.query(
+          `SELECT b.id, b.student_id, b.slot_id, b.booking_status, s.slot_date, s.start_time, st.person_id
+           FROM booking.bookings b
+           JOIN booking.slots s ON b.slot_id = s.id
+           JOIN people.students st ON b.student_id = st.id
+           WHERE b.id = $1 FOR UPDATE`,
+          [bookingId]
         );
+
+        if (bookingRes.rows.length === 0) {
+          throw new NotFoundError(`Booking '${bookingId}' not found`);
+        }
+
+        const booking = bookingRes.rows[0];
+
+        // Ensure user owns booking (or is admin)
+        if (booking.person_id !== user.personId && !['admin', 'super_admin'].includes(user.role)) {
+          throw new ForbiddenError('You can only cancel your own gym bookings');
+        }
+
+        if (booking.booking_status !== 'booked') {
+          throw new ValidationError(
+            `Cannot cancel a booking that is already in '${booking.booking_status}' status.`
+          );
+        }
+
+        const slotDateStr: string = typeof booking.slot_date === 'string'
+          ? booking.slot_date.slice(0, 10)
+          : booking.slot_date instanceof Date
+            ? bookingService.formatISTDate(booking.slot_date)
+            : String(booking.slot_date).slice(0, 10);
+
+        const hoursUntilStart = this.getHoursUntilSlotStart(slotDateStr, booking.start_time);
+        const isLateCancellation = hoursUntilStart < 2.0;
+
+        // Update booking status
+        await client.query(
+          `UPDATE booking.bookings 
+           SET booking_status = 'cancelled_by_student',
+               cancelled_at = NOW(),
+               cancellation_reason = $1,
+               updated_at = NOW()
+           WHERE id = $2`,
+          [cancellationReason || (isLateCancellation ? 'Late cancellation' : 'Standard cancellation'), bookingId]
+        );
+
+        // If late cancellation, record violation strike
+        if (isLateCancellation) {
+          await client.query(
+            `INSERT INTO booking.violations (student_id, booking_id, violation_type, description, created_at)
+             VALUES ($1, $2, 'late_cancellation', $3, NOW())`,
+            [
+              booking.student_id,
+              bookingId,
+              `Cancelled with ${hoursUntilStart.toFixed(1)}h remaining before slot start (< 2.0h notice threshold)`,
+            ]
+          );
+
+          // Increment violation count on student record
+          await client.query(
+            `UPDATE people.students 
+             SET violation_count = violation_count + 1,
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [booking.student_id]
+          );
+
+          // Check if violations reached 3 strikes -> apply 3-day suspension
+          const strikeRes = await client.query(
+            `SELECT violation_count FROM people.students WHERE id = $1`,
+            [booking.student_id]
+          );
+
+          if (strikeRes.rows[0]?.violation_count >= 3) {
+            await client.query(
+              `UPDATE people.students 
+               SET is_banned = true,
+                   ban_expires_at = NOW() + INTERVAL '3 days',
+                   updated_at = NOW()
+               WHERE id = $1`,
+              [booking.student_id]
+            );
+
+            logger.warn(
+              { studentId: booking.student_id, bookingId },
+              'Student received 3-day booking ban due to 3 violation strikes'
+            );
+          }
+        }
+
+        // Decrement slot booked count
+        await client.query(
+          `UPDATE booking.slots 
+           SET booked_count = GREATEST(0, booked_count - 1) 
+           WHERE id = $1`,
+          [booking.slot_id]
+        );
+
+        await client.query('COMMIT');
+
+        logger.info(
+          { bookingId, isLateCancellation, hoursUntilStart },
+          'Booking cancelled successfully'
+        );
+
+        return {
+          bookingId,
+          status: 'cancelled_by_student',
+          isLateCancellation,
+          hoursUntilStart: Number(hoursUntilStart.toFixed(2)),
+          message: isLateCancellation
+            ? 'Booking cancelled. Note: Cancellation within 2 hours of slot start was flagged as a late cancellation.'
+            : 'Booking cancelled successfully with full 2-hour notice.',
+        };
+      } catch (txErr) {
+        await client.query('ROLLBACK');
+        throw txErr;
+      } finally {
+        client.release();
       }
-
-      const slotDateStr: string = typeof booking.slot_date === 'string'
-        ? booking.slot_date.slice(0, 10)
-        : booking.slot_date instanceof Date
-          ? bookingService.formatISTDate(booking.slot_date)
-          : String(booking.slot_date).slice(0, 10);
-
-      const hoursUntilStart = this.getHoursUntilSlotStart(slotDateStr, booking.start_time);
-      const isLateCancellation = hoursUntilStart < 2.0;
-
-      // Update booking status
-      await client.query(
-        `UPDATE booking.bookings 
-         SET booking_status = 'cancelled_by_student',
-             cancelled_at = NOW(),
-             cancellation_reason = $1,
-             updated_at = NOW()
-         WHERE id = $2`,
-        [reason, bookingId]
-      );
-
-      // Decrement slot booked count
-      await client.query(
-        `UPDATE booking.slots 
-         SET booked_count = GREATEST(0, booked_count - 1) 
-         WHERE id = $1`,
-        [booking.slot_id]
-      );
-
-      await client.query('COMMIT');
-
-      logger.info(
-        { bookingId, isLateCancellation, hoursUntilStart },
-        'Booking cancelled successfully'
-      );
-
-      return {
-        bookingId,
-        status: 'cancelled_by_student',
-        isLateCancellation,
-        hoursUntilStart: Number(hoursUntilStart.toFixed(2)),
-        message: isLateCancellation
-          ? 'Booking cancelled. Note: Cancellation within 2 hours of slot start was flagged as a late cancellation.'
-          : 'Booking cancelled successfully with full 2-hour notice.',
-      };
-    } catch (txErr) {
-      await client.query('ROLLBACK');
-      throw txErr;
     } finally {
-      client.release();
+      await redis.del(lockKey);
     }
   }
 
@@ -319,6 +386,14 @@ export class ReservationService {
    * Retrieve active and upcoming bookings for the authenticated student
    */
   public async getMyBookings(studentId: string): Promise<UserBookingDto[]> {
+    const [studentRecord] = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(or(eq(students.id, studentId), eq(students.personId, studentId)))
+      .limit(1);
+
+    const targetStudentId = studentRecord?.id || studentId;
+
     const userBookings = await db
       .select({
         id: bookings.id,
@@ -332,18 +407,19 @@ export class ReservationService {
       })
       .from(bookings)
       .innerJoin(slots, eq(bookings.slotId, slots.id))
-      .where(eq(bookings.studentId, studentId))
+      .where(eq(bookings.studentId, targetStudentId))
       .orderBy(desc(slots.slotDate), desc(slots.startTime));
 
     return userBookings.map((b) => {
-      const hoursUntil = this.getHoursUntilSlotStart(b.slotDate, b.startTime);
+      const slotDateStr = typeof b.slotDate === 'string' ? b.slotDate.slice(0, 10) : bookingService.formatISTDate(b.slotDate);
+      const hoursUntil = this.getHoursUntilSlotStart(slotDateStr, b.startTime);
       const isLate = hoursUntil < 2.0;
       const canCancel = b.bookingStatus === 'booked' && hoursUntil > 0;
 
       return {
         id: b.id,
         slotId: b.slotId,
-        slotDate: b.slotDate,
+        slotDate: slotDateStr,
         startTime: b.startTime,
         endTime: b.endTime,
         bookingStatus: b.bookingStatus,
