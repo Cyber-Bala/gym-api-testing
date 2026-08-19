@@ -4,6 +4,9 @@ import { config } from '../../config/index.js';
 import { logger } from '../logging/index.js';
 import * as schema from '../../db/schema/index.js';
 
+// Force node-postgres to parse DATE (OID 1082) as exact YYYY-MM-DD strings without local timezone shifting
+pg.types.setTypeParser(1082, (val: string) => val);
+
 const { Pool } = pg;
 
 export const pool = new Pool({

@@ -1,4 +1,4 @@
-﻿import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { redis } from '../../shared/redis/index.js';
@@ -130,9 +130,11 @@ export class ReservationService {
         }
 
         const slot = slotRes.rows[0];
-        const slotDateStr: string = slot.slot_date instanceof Date
-          ? slot.slot_date.toISOString().slice(0, 10)
-          : String(slot.slot_date);
+        const slotDateStr: string = typeof slot.slot_date === 'string'
+          ? slot.slot_date.slice(0, 10)
+          : slot.slot_date instanceof Date
+            ? bookingService.formatISTDate(slot.slot_date)
+            : String(slot.slot_date).slice(0, 10);
 
         // Verify slot status
         if (slot.status !== 'open') {
@@ -261,9 +263,11 @@ export class ReservationService {
         );
       }
 
-      const slotDateStr: string = booking.slot_date instanceof Date
-        ? booking.slot_date.toISOString().slice(0, 10)
-        : String(booking.slot_date);
+      const slotDateStr: string = typeof booking.slot_date === 'string'
+        ? booking.slot_date.slice(0, 10)
+        : booking.slot_date instanceof Date
+          ? bookingService.formatISTDate(booking.slot_date)
+          : String(booking.slot_date).slice(0, 10);
 
       const hoursUntilStart = this.getHoursUntilSlotStart(slotDateStr, booking.start_time);
       const isLateCancellation = hoursUntilStart < 2.0;
