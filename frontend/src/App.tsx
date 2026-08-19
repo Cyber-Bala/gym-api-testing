@@ -7,6 +7,7 @@ import { HomeDashboard } from './components/HomeDashboard';
 import { SlotBookingView } from './components/SlotBookingView';
 import { MyBookingsCard } from './components/MyBookingsCard';
 import { MembershipStore } from './components/MembershipStore';
+import { MyAccessHistory } from './components/MyAccessHistory';
 import { LiveOccupancyMonitor } from './components/LiveOccupancyMonitor';
 import { TrainerFloorManager } from './components/TrainerFloorManager';
 import { StudentDirectory } from './components/StudentDirectory';
@@ -60,6 +61,8 @@ export const App: React.FC = () => {
           return <HomeDashboard onNavigate={setActiveView} />;
         }
         return <MembershipStore />;
+      case 'my_access':
+        return <MyAccessHistory />;
       case 'students':
         return <StudentDirectory />;
       case 'authorized_persons':

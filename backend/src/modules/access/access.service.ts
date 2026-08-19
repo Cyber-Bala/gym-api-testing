@@ -466,6 +466,63 @@ export class AccessService {
     };
   }
 
+/**
+   * Get a person's own entry/exit access history (self-service)
+   */
+  public async getMyAccessHistory(personId: string, limit = 30) {
+    const sessions = await db
+      .select({
+        id: accessSessions.id,
+        entryTimestamp: accessSessions.entryTimestamp,
+        exitTimestamp: accessSessions.exitTimestamp,
+        status: accessSessions.status,
+        entryDeviceId: accessSessions.entryDeviceId,
+        exitDeviceId: accessSessions.exitDeviceId,
+      })
+      .from(accessSessions)
+      .where(eq(accessSessions.personId, personId))
+      .orderBy(desc(accessSessions.entryTimestamp))
+      .limit(limit);
+
+    const now = Date.now();
+    const sessionDtos = sessions.map((s) => {
+      const entry = new Date(s.entryTimestamp).getTime();
+      const exit = s.exitTimestamp ? new Date(s.exitTimestamp).getTime() : null;
+      const durationMinutes =
+        exit !== null
+          ? Math.max(0, Math.round((exit - entry) / (1000 * 60)))
+          : s.status === 'inside'
+            ? Math.max(0, Math.round((now - entry) / (1000 * 60)))
+            : null;
+
+      return {
+        id: s.id,
+        entryTimestamp: s.entryTimestamp.toISOString(),
+        exitTimestamp: s.exitTimestamp ? s.exitTimestamp.toISOString() : null,
+        status: s.status,
+        entryDeviceId: s.entryDeviceId || undefined,
+        exitDeviceId: s.exitDeviceId || undefined,
+        durationMinutes,
+      };
+    });
+
+    const logs = await db
+      .select({
+        id: entryExitLogs.id,
+        eventType: entryExitLogs.eventType,
+        deviceId: entryExitLogs.deviceId,
+        result: entryExitLogs.result,
+        denialReason: entryExitLogs.denialReason,
+        createdAt: entryExitLogs.createdAt,
+      })
+      .from(entryExitLogs)
+      .where(eq(entryExitLogs.personId, personId))
+      .orderBy(desc(entryExitLogs.createdAt))
+      .limit(limit);
+
+    return { sessions: sessionDtos, logs };
+  }
+
   /**
    * Get recent access turnstile event logs
    */

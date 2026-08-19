@@ -202,13 +202,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
     return membership?.activeMembership?.isActive ? membership.activeMembership.planName : 'No active pass';
   }, [user, membership]);
 
-  const passHint = useMemo(() => {
-    if (!user) return undefined;
-    if (user.studentDetails?.residency === 'hosteller') return 'Hosteller inclusive access';
-    const mem = membership?.activeMembership;
-    return mem?.isActive ? `${mem.daysRemaining} days remaining` : 'Day scholar pass required to book';
-  }, [user, membership]);
-
   const maxPeak = useMemo(
     () => Math.max(...(analytics?.peakHours.map((p) => p.count) ?? [0]), 1),
     [analytics]
@@ -266,9 +259,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
               {user?.role.replace('_', ' ') ?? 'signed out'}
             </Badge>
           </div>
-          <p className="text-xs text-secondary">
-            Live facility analytics • Today's batch occupancy • Your status
-          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -290,20 +280,17 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           <Stat
             label="Live Occupancy"
             value={live ? `${live.currentCount} / ${live.maxCapacity}` : '—'}
-            hint={live ? `${live.occupancyPercentage}% full right now` : undefined}
             icon={<Activity className="w-4 h-4" />}
           />
           <Stat
             label="Upcoming Booking"
             value={upcomingBooking ? formatTime12h(upcomingBooking.startTime) : 'None'}
-            hint={upcomingBooking ? upcomingBooking.slotDate : '3-day window open'}
             icon={<Clock className="w-4 h-4" />}
           />
-          <Stat label="Membership" value={passStatus} hint={passHint} icon={<CreditCard className="w-4 h-4" />} />
+          <Stat label="Membership" value={passStatus} icon={<CreditCard className="w-4 h-4" />} />
           <Stat
             label="Disciplinary"
             value={user?.studentDetails?.isBanned ? 'Banned' : `${user?.studentDetails?.violationCount ?? 0} strikes`}
-            hint={user?.studentDetails?.isBanned ? '3-strike suspension active' : '3-strike policy'}
             icon={<ShieldAlert className="w-4 h-4" />}
           />
         </div>
@@ -315,13 +302,11 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           <Stat
             label="On the Floor"
             value={floor ? String(floor.totalInsideCount) : live ? String(live.currentCount) : '—'}
-            hint={floor ? floor.currentSlotName || undefined : undefined}
             icon={<Users className="w-4 h-4" />}
           />
           <Stat
             label="Overstayers"
             value={floor ? String(floor.overstayerCount) : '—'}
-            hint={floor && floor.overstayerCount > 0 ? 'Exceeded 75 min limit' : 'Within limits'}
             icon={<Timer className="w-4 h-4" />}
           />
           <Stat
@@ -332,7 +317,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           <Stat
             label="Live Occupancy"
             value={live ? `${live.currentCount} / ${live.maxCapacity}` : '—'}
-            hint={live ? `${live.occupancyPercentage}% full` : undefined}
             icon={<Activity className="w-4 h-4" />}
           />
         </div>
@@ -345,11 +329,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
             <Stat
               label="Registered Students"
               value={analytics ? analytics.totalRegisteredStudents.toLocaleString() : '—'}
-              hint={
-                analytics
-                  ? `${analytics.totalHostellers.toLocaleString()} hostellers • ${analytics.totalDayScholars.toLocaleString()} day scholars`
-                  : undefined
-              }
               icon={<GraduationCap className="w-4 h-4" />}
             />
             <Stat
@@ -365,7 +344,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
             <Stat
               label="Live Occupancy"
               value={live ? `${live.currentCount} / ${live.maxCapacity}` : '—'}
-              hint={live ? `${live.occupancyPercentage}% full` : undefined}
               icon={<Activity className="w-4 h-4" />}
             />
           </div>
@@ -383,13 +361,11 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
             <Stat
               label="Overstayers Now"
               value={floor ? String(floor.overstayerCount) : '—'}
-              hint={floor && floor.overstayerCount > 0 ? 'Needs checkout' : 'All clear'}
               icon={<Timer className="w-4 h-4" />}
             />
             <Stat
               label="Booked Today"
               value={today ? `${today.totalBooked} / ${today.totalCapacity}` : '—'}
-              hint={today ? `${today.dayOfWeek} schedule` : undefined}
               icon={<Calendar className="w-4 h-4" />}
             />
           </div>
@@ -407,7 +383,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           <Stat
             label="Live Occupancy"
             value={live ? `${live.currentCount} / ${live.maxCapacity}` : '—'}
-            hint={live ? `${live.occupancyPercentage}% full` : undefined}
             icon={<Activity className="w-4 h-4" />}
           />
           <Stat
@@ -429,8 +404,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
               <p className="text-xs font-bold text-text">
                 Workout confirmed for {upcomingBooking.slotDate}
               </p>
-              <p className="text-[11px] text-secondary">
-                {formatTime12h(upcomingBooking.startTime)} – {formatTime12h(upcomingBooking.endTime)} • Show your ID at the turnstile
+              <p className="text-[11px] font-semibold text-success">
+                {formatTime12h(upcomingBooking.startTime)} – {formatTime12h(upcomingBooking.endTime)}
               </p>
             </div>
           </div>
@@ -443,9 +418,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           <div className="flex-1">
             <p className="text-xs font-bold text-text">
               {floor.overstayerCount} overstayer{floor.overstayerCount > 1 ? 's' : ''} on the floor
-            </p>
-            <p className="text-[11px] text-secondary">
-              Sessions past the 75-minute workout limit need manual checkout.
             </p>
           </div>
           <Button variant="outline" size="xs" onClick={() => onNavigate('floor_management')}>
@@ -475,7 +447,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           <EmptyState
             icon={<Calendar className="w-6 h-6" />}
             title="No batches for today"
-            description="The slot schedule is generated for the 3-day rolling window."
           />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">

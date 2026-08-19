@@ -15,6 +15,7 @@ import {
   HeartPulse,
   Sparkles,
   LayoutGrid,
+  DoorOpen,
 } from 'lucide-react';
 import type { SessionUser, UserRole } from '../context/AuthContext';
 
@@ -22,6 +23,7 @@ export type AppView =
   | 'home'
   | 'book'
   | 'memberships'
+  | 'my_access'
   | 'students'
   | 'authorized_persons'
   | 'live_attendance'
@@ -59,6 +61,13 @@ export const NAV_ITEMS: NavItem[] = [
     shortLabel: 'Passes',
     icon: CreditCard,
     roles: ['student', 'admin', 'super_admin'],
+  },
+  {
+    id: 'my_access',
+    label: 'My Entry & Exit',
+    shortLabel: 'Access',
+    icon: DoorOpen,
+    roles: ['student'],
   },
   {
     id: 'floor_management',
@@ -196,9 +205,9 @@ export function getMobilePrimary(user?: SessionUser | null): AppView[] {
   if (!user) return ['home'];
   if (user.role === 'student') {
     if (user.studentDetails?.residency === 'hosteller') {
-      return ['home', 'book'];
+      return ['home', 'book', 'my_access'];
     }
-    return ['home', 'book', 'memberships'];
+    return ['home', 'book', 'memberships', 'my_access'];
   }
   return MOBILE_PRIMARY[user.role] ?? ['home'];
 }

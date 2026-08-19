@@ -259,7 +259,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                   {day.date}
                 </p>
 
-                <div className={cn('mt-3 pt-2 flex items-center justify-between text-xs', isSelected ? 'text-white/80 border-t border-white/20' : 'text-secondary border-t border-white/5')}>
+                <div className={cn('mt-3 pt-2 flex items-center justify-between text-xs', isSelected ? 'text-white/80 border-t border-white/20' : 'text-secondary border-t border-border')}>
                   <span>Occupancy</span>
                   <span className={cn('font-semibold', isSelected ? 'text-white' : 'text-text')}>
                     {day.totalBooked} / {day.totalCapacity}

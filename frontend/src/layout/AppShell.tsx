@@ -32,7 +32,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
   }, [active]);
 
   const groups = [
-    { title: 'Core Facility', ids: ['home', 'book', 'memberships'] as AppView[] },
+    { title: 'Core Facility', ids: ['home', 'book', 'memberships', 'my_access'] as AppView[] },
     {
       title: 'Operations',
       ids: ['live_attendance', 'floor_management', 'trainer_shifts', 'biometrics'] as AppView[],

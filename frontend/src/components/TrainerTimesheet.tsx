@@ -162,9 +162,9 @@ export const TrainerTimesheet: React.FC = () => {
                       <th className="p-3">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5 text-text">
+                  <tbody className="divide-y divide-border text-text">
                     {profile.shifts.map((s) => (
-                      <tr key={s.id} className="hover:bg-white/5 transition-colors">
+                      <tr key={s.id} className="hover:bg-border-subtle transition-colors">
                         <td className="p-3 font-mono">{new Date(s.clockIn).toLocaleDateString()}</td>
                         <td className="p-3 font-mono">{new Date(s.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                         <td className="p-3 font-mono text-muted">{s.clockOut ? new Date(s.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</td>

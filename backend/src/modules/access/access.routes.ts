@@ -3,6 +3,7 @@ import {
   handleZkBioWebhook,
   simulateTurnstileScan,
   getLiveOccupancy,
+  getMyAccessHistory,
   getAccessLogs,
   triggerNoShowEvaluation,
 } from './access.controller.js';
@@ -18,6 +19,7 @@ accessRouter.post('/simulate', simulateTurnstileScan);
 
 // Live attendance and audit feeds
 accessRouter.get('/live-occupancy', optionalAuth, getLiveOccupancy);
+accessRouter.get('/my-logs', requireAuth, getMyAccessHistory);
 accessRouter.get('/logs', requireAuth, requireRole(['admin', 'super_admin', 'trainer']), getAccessLogs);
 
 // Admin trigger for No-Show processing

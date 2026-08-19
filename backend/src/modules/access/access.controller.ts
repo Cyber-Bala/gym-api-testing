@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { accessService } from './access.service.js';
 import { noShowService } from './no-show.service.js';
 import { zkbioWebhookSchema } from './access.types.js';
-import { ValidationError } from '../../shared/errors/index.js';
+import { ValidationError, UnauthorizedError } from '../../shared/errors/index.js';
 
 export const handleZkBioWebhook = async (
   req: Request,
@@ -64,6 +64,27 @@ export const getLiveOccupancy = async (
     res.status(200).json({
       success: true,
       data: stats,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getMyAccessHistory = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new UnauthorizedError('Authentication required to view your access history');
+    }
+
+    const history = await accessService.getMyAccessHistory(req.user.personId);
+
+    res.status(200).json({
+      success: true,
+      data: history,
     });
   } catch (err) {
     next(err);
