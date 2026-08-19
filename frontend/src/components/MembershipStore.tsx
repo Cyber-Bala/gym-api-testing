@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   CreditCard,
   CheckCircle2,
-  Sparkles,
   ShieldCheck,
   RefreshCw,
   Zap,
@@ -57,7 +56,6 @@ export const MembershipStore: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [purchasingPlanId, setPurchasingPlanId] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [razorpayReady, setRazorpayReady] = useState<boolean>(false);
 
   const isDayScholar = user?.studentDetails?.residency === 'day_scholar';
 
@@ -69,11 +67,7 @@ export const MembershipStore: React.FC = () => {
       script.id = scriptId;
       script.src = 'https://checkout.razorpay.com/v1/checkout.js';
       script.async = true;
-      script.onload = () => setRazorpayReady(true);
-      script.onerror = () => setRazorpayReady(false);
       document.body.appendChild(script);
-    } else {
-      setRazorpayReady(true);
     }
   }, []);
 
@@ -216,16 +210,11 @@ export const MembershipStore: React.FC = () => {
             <div className="flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-primary" />
               <h3 className="font-bold text-base sm:text-lg text-text">
-                Day Scholar Gym Membership Store
+                Day Scholar Gym Passes
               </h3>
             </div>
-            <p className="text-xs text-secondary mt-0.5 flex items-center gap-2">
-              <span>Razorpay Official Gateway • Multi-Tier Passes (1M / 3M / 1Y)</span>
-              {razorpayReady && (
-                <span className="text-[10px] bg-success-muted text-success px-1.5 py-0.5 rounded font-semibold border border-success/30">
-                  Razorpay Checkout Ready
-                </span>
-              )}
+            <p className="text-xs text-secondary mt-0.5">
+              Official Institutional Membership Passes for Day Scholars
             </p>
           </div>
 
@@ -250,24 +239,24 @@ export const MembershipStore: React.FC = () => {
 
         {/* Active Membership Status Card */}
         {myMembership ? (
-          <div className="p-5 rounded-2xl border border-success/30 bg-success-muted/30 space-y-2">
+          <div className="p-5 rounded-2xl border border-success/30 bg-success-muted/20 space-y-2 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-success" />
                 <span className="text-xs uppercase font-bold text-success">
-                  Active Membership Pass
+                  Active Pass
                 </span>
               </div>
               <Badge tone="success">
-                {myMembership.daysRemaining} Days Remaining
+                {myMembership.daysRemaining} Days Left
               </Badge>
             </div>
 
             <h4 className="font-bold text-lg text-text mt-1">
-              {myMembership.planName} (₹{myMembership.price})
+              {myMembership.planName} — ₹{myMembership.price}
             </h4>
             <p className="text-xs text-secondary">
-              Valid until {new Date(myMembership.endDate).toLocaleDateString()} • Full access to all 10 daily workout slots & biometric turnstile check-in.
+              Valid until {new Date(myMembership.endDate).toLocaleDateString()}
             </p>
           </div>
         ) : isDayScholar ? (
@@ -275,26 +264,14 @@ export const MembershipStore: React.FC = () => {
             <div className="flex items-start gap-2.5">
               <Zap className="w-4 h-4 text-warning shrink-0 mt-0.5" />
               <div>
-                <p className="font-bold">No Active Membership Pass Found</p>
+                <p className="font-bold">No Active Membership Pass</p>
                 <p className="mt-0.5 text-xs text-secondary">
-                  As a Day Scholar, please activate a 1-Month, 3-Month, or 1-Year pass below to enable slot reservations and turnstile access.
+                  Please select and activate a pass below to enable gym workout slot reservations.
                 </p>
               </div>
             </div>
           </Alert>
-        ) : (
-          <Alert tone="info">
-            <div className="flex items-start gap-2.5">
-              <Sparkles className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">Hosteller Student Privilege</p>
-                <p className="mt-0.5 text-xs text-secondary">
-                  Hosteller residency includes complimentary gym access. You can book any open slot immediately without purchasing a pass!
-                </p>
-              </div>
-            </div>
-          </Alert>
-        )}
+        ) : null}
 
         {/* Plans Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -304,43 +281,26 @@ export const MembershipStore: React.FC = () => {
               <div
                 key={p.id}
                 className={cn(
-                  'p-6 rounded-2xl border bg-surface flex flex-col justify-between space-y-6 transition-colors',
+                  'p-5 rounded-2xl border bg-surface flex flex-col justify-between space-y-4 shadow-sm transition-all hover:shadow-md',
                   isFeatured
-                    ? 'border-primary bg-primary-muted/20 relative'
-                    : 'border-border hover:border-primary/40'
+                    ? 'border-primary/50 bg-primary-muted/10 relative'
+                    : 'border-border/40 hover:border-primary/40'
                 )}
               >
-                {isFeatured && (
-                  <div className="absolute -top-2.5 right-4">
-                    <Badge tone="primary">Most Popular</Badge>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <div>
-                    <h4 className="font-bold text-base text-text">{p.name}</h4>
-                    <p className="text-xs text-muted font-mono mt-0.5">{p.durationDays} Days Duration</p>
-                  </div>
-
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-black text-text">₹{p.price}</span>
-                    <span className="text-xs text-muted font-medium">/ package</span>
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="font-bold text-base text-text">{p.name}</h4>
+                      <p className="text-xs text-muted font-mono mt-0.5">{p.durationDays} Days Duration</p>
+                    </div>
+                    {isFeatured && (
+                      <Badge tone="primary">Popular</Badge>
+                    )}
                   </div>
 
-                  <ul className="space-y-2 pt-2 text-xs text-secondary">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
-                      <span>10 Daily Workout Slots Access</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
-                      <span>ZKBio Face Turnstile Check-In</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
-                      <span>Free Locker Room & Showers</span>
-                    </li>
-                  </ul>
+                  <div className="pt-2">
+                    <span className="text-2xl font-black text-text">₹{p.price}</span>
+                  </div>
                 </div>
 
                 <Button
@@ -351,10 +311,10 @@ export const MembershipStore: React.FC = () => {
                   onClick={() => handlePurchase(p)}
                 >
                   {purchasingPlanId === p.id
-                    ? 'Opening Razorpay Checkout...'
+                    ? 'Processing...'
                     : myMembership?.isActive
                     ? 'Extend Pass'
-                    : 'Activate Pass via Razorpay'}
+                    : 'Activate Pass'}
                 </Button>
               </div>
             );

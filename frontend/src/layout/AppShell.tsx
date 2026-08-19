@@ -249,11 +249,11 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
 
       {/* Mobile Bottom Navigation Bar */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface pb-[var(--safe-bottom)] lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/40 bg-surface shadow-lg pb-[var(--safe-bottom)] lg:hidden"
         aria-label="Primary Mobile Navigation"
       >
-        <div className="grid h-14 grid-cols-5">
-          {primary.slice(0, 4).map((item) => {
+        <div className="flex h-14 items-center justify-around px-2 max-w-md mx-auto">
+          {primary.map((item) => {
             const Icon = item.icon;
             const selected = active === item.id;
             return (
@@ -262,26 +262,28 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
                 type="button"
                 onClick={() => onNavigate(item.id)}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-1 text-[10px] font-semibold transition-colors',
+                  'flex-1 flex flex-col items-center justify-center gap-1 text-[10px] font-semibold transition-colors py-1',
                   selected ? 'text-primary' : 'text-muted hover:text-text'
                 )}
               >
                 <Icon className={cn('h-4 w-4', selected ? 'text-primary' : 'text-muted')} />
-                <span className="truncate max-w-[54px]">{item.shortLabel}</span>
+                <span className="truncate max-w-[64px]">{item.shortLabel}</span>
               </button>
             );
           })}
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            className={cn(
-              'flex flex-col items-center justify-center gap-1 text-[10px] font-semibold transition-colors',
-              overflow.some((i) => i.id === active) ? 'text-primary' : 'text-muted hover:text-text'
-            )}
-          >
-            <MoreHorizontal className="h-4 w-4" />
-            <span>More</span>
-          </button>
+          {overflow.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              className={cn(
+                'flex-1 flex flex-col items-center justify-center gap-1 text-[10px] font-semibold transition-colors py-1',
+                overflow.some((i) => i.id === active) ? 'text-primary' : 'text-muted hover:text-text'
+              )}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+              <span>More</span>
+            </button>
+          )}
         </div>
       </nav>
 

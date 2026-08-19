@@ -169,7 +169,17 @@ export function canSee(item: NavItem, user?: SessionUser | null): boolean {
 }
 
 export function visibleNav(user?: SessionUser | null): NavItem[] {
-  return NAV_ITEMS.filter((item) => canSee(item, user));
+  const isStudent = user?.role === 'student';
+  return NAV_ITEMS.filter((item) => canSee(item, user)).map((item) => {
+    if (item.id === 'book') {
+      return {
+        ...item,
+        label: isStudent ? 'Book a slot' : 'Slot Bookings',
+        shortLabel: isStudent ? 'Book' : 'Bookings',
+      };
+    }
+    return item;
+  });
 }
 
 export const MOBILE_PRIMARY: Record<string, AppView[]> = {

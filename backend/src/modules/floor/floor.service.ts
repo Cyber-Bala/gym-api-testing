@@ -33,6 +33,7 @@ export class FloorService {
     const now = new Date();
     const occupants: LiveFloorOccupantDto[] = [];
     const overstayers: LiveFloorOccupantDto[] = [];
+    const todayStr = bookingService.formatISTDate();
 
     for (const item of activeSessions) {
       const entryTime = new Date(item.session.entryTimestamp);
@@ -41,9 +42,65 @@ export class FloorService {
       // Check student details
       const [stu] = await db.select().from(students).where(eq(students.personId, item.person.id)).limit(1);
 
-      // Overstay criteria: workout > 75 minutes (60 min slot + 15 min buffer elapsed)
-      const isOverstayer = minutesElapsed > 75;
-      const overdueMinutes = isOverstayer ? minutesElapsed - 75 : 0;
+      let isOverstayer = false;
+      let overdueMinutes = 0;
+
+      if (stu) {
+        // Find all active bookings for this student for today
+        const studentBookings = await db
+          .select({
+            slotDate: slots.slotDate,
+            startTime: slots.startTime,
+            endTime: slots.endTime,
+          })
+          .from(bookings)
+          .innerJoin(slots, eq(bookings.slotId, slots.id))
+          .where(
+            and(
+              eq(bookings.studentId, stu.id),
+              eq(slots.slotDate, todayStr),
+              eq(bookings.bookingStatus, 'booked')
+            )
+          )
+          .orderBy(slots.startTime);
+
+        if (studentBookings.length > 0) {
+          // Merge consecutive contiguous slots
+          const slotRanges = studentBookings.map((b) => {
+            const dateStr = typeof b.slotDate === 'string' ? b.slotDate.slice(0, 10) : todayStr;
+            const start = new Date(`${dateStr}T${b.startTime.slice(0, 5)}:00+05:30`);
+            const end = new Date(`${dateStr}T${b.endTime.slice(0, 5)}:00+05:30`);
+            return { start, end };
+          });
+
+          let latestConsecutiveEnd = slotRanges[0].end;
+          for (let i = 0; i < slotRanges.length; i++) {
+            if (i > 0) {
+              const gapMinutes = (slotRanges[i].start.getTime() - slotRanges[i - 1].end.getTime()) / 60000;
+              if (gapMinutes <= 15) {
+                latestConsecutiveEnd = slotRanges[i].end;
+              }
+            } else {
+              latestConsecutiveEnd = slotRanges[i].end;
+            }
+          }
+
+          // Allowed cutoff = latest consecutive slot end + 15 min buffer
+          const allowedCutoffTime = new Date(latestConsecutiveEnd.getTime() + 15 * 60 * 1000);
+          if (now > allowedCutoffTime) {
+            isOverstayer = true;
+            overdueMinutes = Math.max(1, Math.round((now.getTime() - allowedCutoffTime.getTime()) / 60000));
+          }
+        } else {
+          // No active booking for today -> 75 min default from entry
+          isOverstayer = minutesElapsed > 75;
+          overdueMinutes = isOverstayer ? minutesElapsed - 75 : 0;
+        }
+      } else {
+        // Staff / Trainer
+        isOverstayer = false;
+        overdueMinutes = 0;
+      }
 
       const occupantDto: LiveFloorOccupantDto = {
         sessionId: item.session.id,

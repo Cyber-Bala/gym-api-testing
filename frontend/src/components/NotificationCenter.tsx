@@ -22,7 +22,14 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [readIds, setReadIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('gym_read_notifications');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = async () => {
@@ -49,6 +56,11 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
   }, [user]);
 
   useEffect(() => {
+    const unread = notifications.filter((n) => !readIds.has(n.id)).length;
+    setUnreadCount(unread);
+  }, [readIds, notifications]);
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
@@ -58,18 +70,29 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const handleMarkAsRead = (id: string) => {
+    setReadIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      try {
+        localStorage.setItem('gym_read_notifications', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
   const handleMarkAllRead = () => {
     const allIds = new Set(notifications.map((n) => n.id));
     setReadIds(allIds);
+    try {
+      localStorage.setItem('gym_read_notifications', JSON.stringify(Array.from(allIds)));
+    } catch {}
     setUnreadCount(0);
     toast.success('All notifications marked as read');
   };
 
   const handleToggle = () => {
     setIsOpen(!isOpen);
-    if (!isOpen && unreadCount > 0) {
-      setUnreadCount(0);
-    }
   };
 
   const getEventIcon = (type: string) => {
@@ -109,7 +132,7 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
         type="button"
         onClick={handleToggle}
         className={cn(
-          'relative inline-flex items-center justify-center rounded-xl border border-border bg-surface text-secondary hover:bg-border-subtle hover:text-text transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20',
+          'relative inline-flex items-center justify-center rounded-xl border border-border/40 bg-surface text-secondary hover:bg-border-subtle hover:text-text transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20',
           compact ? 'h-9 w-9' : 'h-10 w-10'
         )}
         aria-label="Notifications"
@@ -117,7 +140,7 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
       >
         <Bell className={cn('h-4 w-4', unreadCount > 0 ? 'text-primary' : 'text-muted')} />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-primary text-[10px] font-black text-white shadow-sm ring-2 ring-surface animate-pulse">
+          <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-600 text-[10px] font-black text-white shadow-sm ring-2 ring-surface animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -125,13 +148,18 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
 
       {/* Popover Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl border border-border bg-surface shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="flex items-center justify-between pb-2.5 border-b border-border">
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl border border-border/40 bg-surface shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center justify-between pb-2.5 border-b border-border/40">
             <div className="flex items-center gap-2">
               <Bell className="w-4 h-4 text-primary" />
               <h4 className="font-bold text-sm text-text">Notifications</h4>
+              {unreadCount > 0 && (
+                <span className="text-[11px] font-bold text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full">
+                  {unreadCount} unread
+                </span>
+              )}
             </div>
-            {notifications.length > 0 && (
+            {notifications.length > 0 && unreadCount > 0 && (
               <button
                 type="button"
                 onClick={handleMarkAllRead}
@@ -149,23 +177,44 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
             ) : notifications.length === 0 ? (
               <div className="py-8 text-center space-y-1">
                 <Info className="w-6 h-6 text-muted mx-auto opacity-50" />
-                <p className="text-xs font-semibold text-text">No new notifications</p>
+                <p className="text-xs font-semibold text-text">No notifications</p>
                 <p className="text-[11px] text-muted">You are completely up to date!</p>
               </div>
             ) : (
-              notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className="p-3 rounded-xl border border-border bg-surface-elevated/40 hover:bg-border-subtle/60 transition-colors flex items-start gap-3 text-left"
-                >
-                  <div className="mt-0.5">{getEventIcon(n.eventType)}</div>
-                  <div className="flex-1 min-w-0 space-y-0.5">
-                    <p className="font-bold text-xs text-text leading-tight">{n.title}</p>
-                    <p className="text-[11px] text-secondary leading-snug break-words">{n.body}</p>
-                    <p className="text-[10px] text-muted font-mono pt-1">{formatTimeAgo(n.createdAt)}</p>
+              notifications.map((n) => {
+                const isUnread = !readIds.has(n.id);
+                return (
+                  <div
+                    key={n.id}
+                    onClick={() => handleMarkAsRead(n.id)}
+                    className={cn(
+                      'p-3 rounded-xl border transition-all flex items-start gap-3 text-left cursor-pointer',
+                      isUnread
+                        ? 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10'
+                        : 'border-border/30 bg-surface-elevated/40 opacity-75 hover:opacity-100 hover:bg-border-subtle/60'
+                    )}
+                  >
+                    <div className="mt-0.5 relative">
+                      {getEventIcon(n.eventType)}
+                      {isUnread && (
+                        <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-surface" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className={cn('text-xs leading-tight', isUnread ? 'font-bold text-text' : 'font-medium text-secondary')}>
+                          {n.title}
+                        </p>
+                        {isUnread && (
+                          <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title="Unread" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-secondary leading-snug break-words">{n.body}</p>
+                      <p className="text-[10px] text-muted font-mono pt-1">{formatTimeAgo(n.createdAt)}</p>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

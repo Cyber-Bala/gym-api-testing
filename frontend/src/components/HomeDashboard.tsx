@@ -190,16 +190,11 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
       {/* Trainer View */}
       {isTrainer && (
         <div className="space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Stat
               label="Floor Occupants"
               value={liveOccupancy !== null ? `${liveOccupancy} / 100` : '—'}
               icon={<Users className="w-4 h-4" />}
-            />
-            <Stat
-              label="Stipend Rate"
-              value={`₹${user?.trainerDetails?.hourlyRate || '200'}/hr`}
-              icon={<Award className="w-4 h-4" />}
             />
             <Stat
               label="Floor Supervision"
@@ -216,7 +211,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
                 </div>
                 <div>
                   <h4 className="font-bold text-xs text-text">Gym Floor</h4>
-                  <p className="text-[11px] text-muted">Overstayers & Checkout</p>
+                  <p className="text-[11px] text-muted">Active Occupants</p>
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-muted" />
@@ -229,7 +224,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
                 </div>
                 <div>
                   <h4 className="font-bold text-xs text-text">Shifts & Timesheet</h4>
-                  <p className="text-[11px] text-muted">Clock In / Out</p>
+                  <p className="text-[11px] text-muted">Turnstile Scan Logs</p>
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-muted" />
@@ -254,8 +249,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
                   <Calendar className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-xs text-text">Book Workout</h4>
-                  <p className="text-[11px] text-muted">Student Slot</p>
+                  <h4 className="font-bold text-xs text-text">Slot Bookings</h4>
+                  <p className="text-[11px] text-muted">Daily Schedule</p>
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-muted" />
@@ -420,8 +415,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
                   <Calendar className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-xs text-text">Book Workout</h4>
-                  <p className="text-[11px] text-muted">Staff / Faculty Hours</p>
+                  <h4 className="font-bold text-xs text-text">Slot Bookings</h4>
+                  <p className="text-[11px] text-muted">View Daily Batches</p>
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-muted" />

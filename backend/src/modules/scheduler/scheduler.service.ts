@@ -1,6 +1,10 @@
+import { eq, and, sql } from 'drizzle-orm';
+import { db, pool } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { noShowService } from '../access/no-show.service.js';
 import { violationsService } from '../violations/violations.service.js';
+import { floorService } from '../floor/floor.service.js';
+import { violations, students, auditLogs } from '../../db/schema/index.js';
 
 export interface ScheduledTaskStatus {
   name: string;
@@ -17,6 +21,14 @@ export class SchedulerService {
   private tasks: Record<string, ScheduledTaskStatus> = {
     noShowProcessor: {
       name: 'No-Show Slot Penalty Sweeper',
+      intervalMinutes: 5,
+      lastRunAt: null,
+      lastResult: null,
+      status: 'active',
+      totalRuns: 0,
+    },
+    overstayerPenaltyProcessor: {
+      name: 'Overstaying Violation Penalty Sweeper',
       intervalMinutes: 5,
       lastRunAt: null,
       lastResult: null,
@@ -64,6 +76,106 @@ export class SchedulerService {
   }
 
   /**
+   * Process overstaying penalties for occupants exceeding allowed continuous slot windows
+   */
+  public async processOverstayers(): Promise<{
+    overstayersFound: number;
+    violationsIssued: number;
+    studentsSuspended: number;
+  }> {
+    const floor = await floorService.getCurrentFloorStatus();
+    let violationsIssued = 0;
+    let studentsSuspended = 0;
+
+    for (const o of floor.overstayers) {
+      if (!o.rollNumber) continue; // Only apply student strike policies
+
+      // Check if student record exists
+      const [stu] = await db
+        .select()
+        .from(students)
+        .where(eq(students.personId, o.personId))
+        .limit(1);
+
+      if (!stu) continue;
+
+      // Check if overstay violation already issued for this session today
+      const existingViolations = await db
+        .select()
+        .from(violations)
+        .where(
+          and(
+            eq(violations.studentId, stu.id),
+            eq(violations.violationType, 'overstay')
+          )
+        );
+
+      const isRecent = existingViolations.some(
+        (v) => Math.abs(Date.now() - new Date(v.createdAt).getTime()) < 4 * 60 * 60 * 1000
+      );
+
+      if (isRecent) continue;
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Record overstay violation
+        await client.query(
+          `INSERT INTO booking.violations (student_id, violation_type, description, created_at)
+           VALUES ($1, 'overstay', $2, NOW())`,
+          [stu.id, `Overstayed continuous workout slot window by ${o.overdueMinutes} minutes`]
+        );
+        violationsIssued++;
+
+        // Increment student strikes
+        const stuRes = await client.query(
+          `UPDATE people.students
+           SET violation_count = violation_count + 1, updated_at = NOW()
+           WHERE id = $1
+           RETURNING id, is_banned, violation_count`,
+          [stu.id]
+        );
+
+        const updatedStudent = stuRes.rows[0];
+
+        // 3-Strike Rule: Auto suspend for 3 days
+        if (updatedStudent.violation_count >= 3 && !updatedStudent.is_banned) {
+          const banExpires = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+
+          await client.query(
+            `UPDATE people.students
+             SET is_banned = true, ban_expires_at = $1, updated_at = NOW()
+             WHERE id = $2`,
+            [banExpires, stu.id]
+          );
+
+          await client.query(
+            `INSERT INTO audit.audit_logs (action, entity, entity_id, reason, created_at)
+             VALUES ('auto_ban_overstay_3_strikes', 'student', $1, 'Automated 3-day suspension applied after 3rd violation (overstaying)', NOW())`,
+            [stu.id]
+          );
+
+          studentsSuspended++;
+        }
+
+        await client.query('COMMIT');
+      } catch (txErr) {
+        await client.query('ROLLBACK');
+        logger.error({ txErr, studentId: stu.id }, 'Failed to record overstay penalty');
+      } finally {
+        client.release();
+      }
+    }
+
+    return {
+      overstayersFound: floor.overstayers.length,
+      violationsIssued,
+      studentsSuspended,
+    };
+  }
+
+  /**
    * Run automated background jobs
    */
   public async runSweeps(): Promise<Record<string, unknown>> {
@@ -85,7 +197,20 @@ export class SchedulerService {
         this.tasks.noShowProcessor.lastResult = { error: String(err) };
       }
 
-      // 2. Auto-Unban Sweeper
+      // 2. Overstay Penalty Sweeper
+      try {
+        const overstayRes = await this.processOverstayers();
+        this.tasks.overstayerPenaltyProcessor.lastRunAt = new Date().toISOString();
+        this.tasks.overstayerPenaltyProcessor.lastResult = overstayRes;
+        this.tasks.overstayerPenaltyProcessor.totalRuns += 1;
+        this.tasks.overstayerPenaltyProcessor.status = 'active';
+        results.overstayers = overstayRes;
+      } catch (err) {
+        this.tasks.overstayerPenaltyProcessor.status = 'error';
+        this.tasks.overstayerPenaltyProcessor.lastResult = { error: String(err) };
+      }
+
+      // 3. Auto-Unban Sweeper
       try {
         const unbanRes = await violationsService.runAutoUnbanCheck();
         this.tasks.autoUnbanProcessor.lastRunAt = new Date().toISOString();

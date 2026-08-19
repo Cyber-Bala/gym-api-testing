@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {
   DollarSign,
-  Play,
-  Square,
   RefreshCw,
   Award,
   CheckCircle2,
   Download,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Card, Alert, Stat } from '../ui/primitives';
+import { Card, Stat, Badge } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
@@ -20,8 +19,6 @@ interface WorkShift {
   clockIn: string;
   clockOut?: string;
   durationMinutes: number;
-  calculatedStipend: number;
-  hourlyRate: string;
   isOngoing: boolean;
 }
 
@@ -29,9 +26,7 @@ interface TrainerProfile {
   id: string;
   name: string;
   email: string;
-  hourlyRate: string;
   activeShift: WorkShift | null;
-  totalEarningsThisMonth: number;
   totalHoursThisMonth: number;
   shifts: WorkShift[];
 }
@@ -52,8 +47,6 @@ export const TrainerTimesheet: React.FC = () => {
   const [profile, setProfile] = useState<TrainerProfile | null>(null);
   const [payroll, setPayroll] = useState<MonthlyPayrollItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [clocking, setClocking] = useState<boolean>(false);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const isAdmin = user && ['admin', 'super_admin'].includes(user.role);
   const isTrainer = user && user.role === 'trainer';
@@ -83,46 +76,9 @@ export const TrainerTimesheet: React.FC = () => {
     fetchData();
   }, [user]);
 
-  const handleClockIn = async () => {
-    setClocking(true);
-    setSuccessMsg(null);
-    try {
-      await api.post('/api/v1/trainer/clock-in', {});
-      const msg = 'Successfully clocked in! Shift timer is running.';
-      setSuccessMsg(msg);
-      toast.success(msg, 'Trainer Shift Active');
-      fetchData();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'Clock In Failed');
-    } finally {
-      setClocking(false);
-    }
-  };
-
-  const handleClockOut = async () => {
-    setClocking(true);
-    setSuccessMsg(null);
-    try {
-      const data = await api.post<{ durationMinutes: number; calculatedStipend: number }>(
-        '/api/v1/trainer/clock-out',
-        {}
-      );
-      const msg = `Clocked out! Workout shift: ${data.durationMinutes} min • Earned: ₹${data.calculatedStipend}`;
-      setSuccessMsg(msg);
-      toast.success(msg, 'Shift Completed');
-      fetchData();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'Clock Out Failed');
-    } finally {
-      setClocking(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
-      {/* Trainer Clock-In Widget */}
+      {/* Trainer Timesheet Widget */}
       {isTrainer && (
         <Card className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -130,11 +86,11 @@ export const TrainerTimesheet: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Award className="w-5 h-5 text-primary" />
                 <h3 className="font-bold text-base sm:text-lg text-text">
-                  Student-Trainer Work Shifts & Payroll
+                  Trainer Floor Hours & Timesheet
                 </h3>
               </div>
               <p className="text-xs text-secondary mt-0.5">
-                Stipend Rate: ₹{profile?.hourlyRate || '200.00'}/hour • Track work shifts & earn monthly stipend
+                Automated biometric turnstile check-in / check-out time tracking
               </p>
             </div>
 
@@ -148,79 +104,43 @@ export const TrainerTimesheet: React.FC = () => {
             </IconButton>
           </div>
 
-          {successMsg && (
-            <Alert tone="success" onDismiss={() => setSuccessMsg(null)}>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-                <span>{successMsg}</span>
-              </div>
-            </Alert>
-          )}
-
           {/* Stats Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Stat
-              label="Hourly Stipend Rate"
-              value={`₹${profile?.hourlyRate || '200.00'}`}
-              hint="/ hour rate"
-              icon={<DollarSign className="w-4 h-4 text-primary" />}
-            />
-            <Stat
-              label="Hours Worked This Month"
+              label="Hours on Floor (This Month)"
               value={`${profile?.totalHoursThisMonth || 0} hrs`}
-              hint="Approved gym shifts"
-              icon={<Award className="w-4 h-4 text-accent" />}
+              hint="Turnstile biometric logs"
+              icon={<Award className="w-4 h-4 text-primary" />}
             />
             <Stat
-              label="Total Stipend Earned"
-              value={`₹${profile?.totalEarningsThisMonth || 0}`}
-              hint="Current monthly cycle"
-              className="border-success/30 bg-success-muted/20"
-              icon={<DollarSign className="w-4 h-4 text-success" />}
+              label="Completed Sessions"
+              value={profile?.shifts.filter((s) => !s.isOngoing).length || 0}
+              hint="Logged gym shifts"
+              icon={<CheckCircle2 className="w-4 h-4 text-success" />}
+            />
+            <Stat
+              label="Current Turnstile Status"
+              value={profile?.activeShift ? 'Inside (On Floor)' : 'Outside'}
+              hint="Live turnstile session"
+              icon={<Activity className={cn('w-4 h-4', profile?.activeShift ? 'text-success' : 'text-muted')} />}
             />
           </div>
 
-          {/* Live Shift Control Card */}
-          <div className="p-5 rounded-2xl border border-primary/30 bg-primary-muted/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className={cn(
-                'w-3.5 h-3.5 rounded-full',
-                profile?.activeShift ? 'bg-success animate-ping' : 'bg-muted'
-              )} />
-              <div>
-                <h4 className="font-bold text-sm text-text">
-                  {profile?.activeShift ? 'Work Shift In Progress' : 'Currently Clocked Out'}
-                </h4>
-                <p className="text-xs text-secondary">
-                  {profile?.activeShift
-                    ? `Clocked in at ${new Date(profile.activeShift.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                    : 'Clock in before supervising students on gym floor'}
-                </p>
-              </div>
-            </div>
-
+          {/* Live Turnstile Status Notice */}
+          <div className="p-4 rounded-2xl border border-border/40 bg-surface-elevated/40 flex items-center gap-3">
+            <div className={cn(
+              'w-3 h-3 rounded-full shrink-0',
+              profile?.activeShift ? 'bg-success animate-ping' : 'bg-muted'
+            )} />
             <div>
-              {profile?.activeShift ? (
-                <Button
-                  variant="danger"
-                  size="md"
-                  loading={clocking}
-                  onClick={handleClockOut}
-                >
-                  <Square className="w-4 h-4 fill-current" />
-                  <span>Clock Out Shift</span>
-                </Button>
-              ) : (
-                <Button
-                  variant="success"
-                  size="md"
-                  loading={clocking}
-                  onClick={handleClockIn}
-                >
-                  <Play className="w-4 h-4 fill-current" />
-                  <span>Clock In Now</span>
-                </Button>
-              )}
+              <h4 className="font-bold text-xs text-text">
+                {profile?.activeShift ? 'Active Floor Session in Progress' : 'No Active Session'}
+              </h4>
+              <p className="text-[11px] text-secondary">
+                {profile?.activeShift
+                  ? `Turnstile entry scanned at ${new Date(profile.activeShift.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Scan your face or card at the exit turnstile when departing.`
+                  : 'Time is automatically calculated upon scanning through the biometric turnstile.'}
+              </p>
             </div>
           </div>
 
@@ -228,29 +148,31 @@ export const TrainerTimesheet: React.FC = () => {
           {profile && profile.shifts.length > 0 && (
             <div className="space-y-3 pt-2">
               <h4 className="font-bold text-xs text-muted uppercase tracking-wider">
-                Recent Shift History
+                Turnstile Shift Logs
               </h4>
 
-              <div className="overflow-x-auto rounded-xl border border-border">
+              <div className="overflow-x-auto rounded-xl border border-border/40">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-border-subtle/50 text-muted font-semibold">
                     <tr>
                       <th className="p-3">Date</th>
-                      <th className="p-3">Clock In</th>
-                      <th className="p-3">Clock Out</th>
+                      <th className="p-3">Entry Time</th>
+                      <th className="p-3">Exit Time</th>
                       <th className="p-3">Duration</th>
-                      <th className="p-3">Earned Stipend</th>
+                      <th className="p-3">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border text-text">
+                  <tbody className="divide-y divide-border/30 text-text">
                     {profile.shifts.map((s) => (
                       <tr key={s.id} className="hover:bg-border-subtle/30 transition-colors">
                         <td className="p-3 font-mono">{new Date(s.clockIn).toLocaleDateString()}</td>
                         <td className="p-3 font-mono">{new Date(s.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                        <td className="p-3 font-mono text-muted">{s.clockOut ? new Date(s.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'In Progress'}</td>
-                        <td className="p-3">{s.durationMinutes} min</td>
-                        <td className="p-3 font-bold text-success">
-                          ₹{s.calculatedStipend}
+                        <td className="p-3 font-mono text-muted">{s.clockOut ? new Date(s.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                        <td className="p-3 font-semibold">{s.durationMinutes} min</td>
+                        <td className="p-3">
+                          <Badge tone={s.isOngoing ? 'warning' : 'success'}>
+                            {s.isOngoing ? 'Active on Floor' : 'Completed'}
+                          </Badge>
                         </td>
                       </tr>
                     ))}

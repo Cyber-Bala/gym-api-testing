@@ -21,9 +21,9 @@ export const Card: React.FC<CardProps> = ({
   <section
     onClick={onClick}
     className={cn(
-      'rounded-2xl border border-border bg-surface text-text shadow-sm',
+      'rounded-2xl bg-surface text-text shadow-sm border border-border/40 hover:shadow-md transition-all duration-200',
       padded && 'p-5 sm:p-6',
-      interactive && 'cursor-pointer transition-colors hover:border-primary/40 hover:bg-surface-elevated',
+      interactive && 'cursor-pointer hover:border-primary/40 hover:bg-surface-elevated',
       className
     )}
   >

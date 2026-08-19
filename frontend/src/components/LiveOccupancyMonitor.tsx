@@ -5,7 +5,6 @@ import {
   Scan,
   RefreshCw,
   Clock,
-  Zap,
   CheckCircle2,
   Play,
   LogOut,
@@ -16,7 +15,7 @@ import {
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Card, Badge, ProgressBar, Alert, EmptyState } from '../ui/primitives';
+import { Card, Badge, ProgressBar, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input, Select } from '../ui/Input';
 import { cn } from '../lib/cn';
@@ -64,10 +63,6 @@ export const LiveOccupancyMonitor: React.FC = () => {
   const [customIdentifier, setCustomIdentifier] = useState<string>('2024CS001');
   const [identifierType, setIdentifierType] = useState<'roll_number' | 'staff_id' | 'email'>('roll_number');
   const [eventType, setEventType] = useState<'entry' | 'exit'>('entry');
-
-  // No-Show trigger
-  const [runningNoShow, setRunningNoShow] = useState<boolean>(false);
-  const [noShowMessage, setNoShowMessage] = useState<string | null>(null);
 
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -143,27 +138,6 @@ export const LiveOccupancyMonitor: React.FC = () => {
     }
   };
 
-  const handleTriggerNoShows = async () => {
-    setRunningNoShow(true);
-    setNoShowMessage(null);
-    try {
-      const data = await api.post<{
-        violationsIssued: number;
-        studentsSuspended: number;
-        completedSlotsEvaluated: number;
-      }>('/api/v1/access/admin/process-no-shows', {});
-
-      const msg = `Evaluation finished: ${data.violationsIssued} strike(s) issued, ${data.studentsSuspended} student(s) suspended.`;
-      setNoShowMessage(msg);
-      toast.info(msg, 'No-Show Audit Completed');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'No-Show Audit Failed');
-    } finally {
-      setRunningNoShow(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Top Header & Occupancy Summary */}
@@ -184,38 +158,15 @@ export const LiveOccupancyMonitor: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleTriggerNoShows}
-              loading={runningNoShow}
-              className="border-warning/30 text-warning hover:bg-warning-muted"
-            >
-              <Zap className="w-3.5 h-3.5" />
-              <span>Run No-Show Audit</span>
-            </Button>
-
-            <IconButton
-              label="Refresh occupancy"
-              size="sm"
-              onClick={fetchLiveOccupancy}
-              disabled={loading}
-            >
-              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-            </IconButton>
-          </div>
+          <IconButton
+            label="Refresh occupancy"
+            size="sm"
+            onClick={fetchLiveOccupancy}
+            disabled={loading}
+          >
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          </IconButton>
         </div>
-
-        {/* No-Show Alert */}
-        {noShowMessage && (
-          <Alert tone="warning" onDismiss={() => setNoShowMessage(null)}>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-warning shrink-0" />
-              <span className="font-medium">{noShowMessage}</span>
-            </div>
-          </Alert>
-        )}
 
         {/* Occupancy Progress Gauge */}
         {stats && (

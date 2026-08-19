@@ -2,18 +2,13 @@ import React, { useState, useEffect } from 'react';
 import {
   Users,
   AlertTriangle,
-  LogOut,
   RefreshCw,
   Clock,
-  CheckCircle2,
-  HeartPulse,
   Zap,
 } from 'lucide-react';
-import { Card, Badge, Modal, Alert, Stat, EmptyState } from '../ui/primitives';
-import { Button, IconButton } from '../ui/Button';
-import { Textarea } from '../ui/Input';
+import { Card, Badge, Stat, EmptyState } from '../ui/primitives';
+import { IconButton } from '../ui/Button';
 import { api } from '../lib/api';
-import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface LiveFloorOccupant {
@@ -38,38 +33,15 @@ interface FloorStatus {
   overstayers: LiveFloorOccupant[];
 }
 
-interface StaffWellnessItem {
-  staffId: string;
-  staffEmpId: string;
-  name: string;
-  department: string;
-  designation: string;
-  totalWorkoutsThisMonth: number;
-  totalHoursThisMonth: number;
-}
-
 export const TrainerFloorManager: React.FC = () => {
-  const toast = useToast();
   const [status, setStatus] = useState<FloorStatus | null>(null);
-  const [staffWellness, setStaffWellness] = useState<StaffWellnessItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [notification, setNotification] = useState<string | null>(null);
-
-  // Manual Checkout Modal
-  const [checkoutOccupant, setCheckoutOccupant] = useState<LiveFloorOccupant | null>(null);
-  const [checkoutReason, setCheckoutReason] = useState<string>('Workout slot expired');
-  const [submitting, setSubmitting] = useState<boolean>(false);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [floorData, staffData] = await Promise.all([
-        api.get<FloorStatus>('/api/v1/floor/status'),
-        api.get<StaffWellnessItem[]>('/api/v1/floor/staff-wellness'),
-      ]);
-
+      const floorData = await api.get<FloorStatus>('/api/v1/floor/status');
       if (floorData) setStatus(floorData);
-      if (Array.isArray(staffData)) setStaffWellness(staffData);
     } catch {
       // background error
     } finally {
@@ -83,30 +55,6 @@ export const TrainerFloorManager: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const handleManualCheckout = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!checkoutOccupant) return;
-    setSubmitting(true);
-    try {
-      const data = await api.post<{ durationMinutes?: number }>('/api/v1/floor/checkout', {
-        sessionId: checkoutOccupant.sessionId,
-        reason: checkoutReason,
-      });
-
-      const msg = `Checked out ${checkoutOccupant.name}. Recorded duration: ${data.durationMinutes || 0} min.`;
-      setNotification(msg);
-      toast.success(msg);
-      setCheckoutOccupant(null);
-      setCheckoutReason('Workout slot expired');
-      fetchData();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'Manual Checkout Failed');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Floor Overview Header */}
@@ -116,11 +64,11 @@ export const TrainerFloorManager: React.FC = () => {
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-primary" />
               <h3 className="font-bold text-base sm:text-lg text-text">
-                Live Gym Floor & Overstayer Management
+                Gym Floor Supervision
               </h3>
             </div>
             <p className="text-xs text-secondary mt-0.5">
-              Floor Supervision • Automated Overstayer Detection (&gt;15m post-slot) • Manual Floor Checkout
+              Live floor occupancy • Turnstile check-in synchronization • Overstayer identification
             </p>
           </div>
 
@@ -134,37 +82,25 @@ export const TrainerFloorManager: React.FC = () => {
           </IconButton>
         </div>
 
-        {notification && (
-          <Alert tone="success" onDismiss={() => setNotification(null)}>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-              <span>{notification}</span>
-            </div>
-          </Alert>
-        )}
-
-        {/* Quick KPI Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Status Metric Strip */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Stat
-            label="Current Occupancy"
+            label="Occupants on Floor"
             value={`${status?.totalInsideCount || 0} / 100`}
-            hint="Turnstile active check-ins"
-            icon={<Users className="w-4 h-4" />}
+            hint="Turnstile biometric session"
+            icon={<Users className="w-4 h-4 text-primary" />}
           />
           <Stat
-            label="Overstaying Occupants"
+            label="Overstayers Detected"
             value={status?.overstayerCount || 0}
             hint={
               (status?.overstayerCount || 0) > 0 ? (
-                <span className="text-danger font-semibold flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" /> Manual checkout needed
-                </span>
+                <span className="text-danger font-semibold">Exceeded slot cutoff</span>
               ) : (
-                'All sessions within slot window'
+                'All within booked slots'
               )
             }
-            icon={<AlertTriangle className="w-4 h-4" />}
-            className={(status?.overstayerCount || 0) > 0 ? 'border-danger/30 bg-danger-muted/10' : ''}
+            icon={<AlertTriangle className={cn('w-4 h-4', (status?.overstayerCount || 0) > 0 ? 'text-danger' : 'text-muted')} />}
           />
           <Stat
             label="Floor Status"
@@ -176,7 +112,7 @@ export const TrainerFloorManager: React.FC = () => {
 
         {/* Overstayers Alert Section */}
         {status && status.overstayers.length > 0 && (
-          <div className="p-5 rounded-2xl border border-danger/30 bg-danger-muted/20 space-y-3">
+          <div className="p-5 rounded-2xl border border-danger/30 bg-danger-muted/10 space-y-3 shadow-sm">
             <div className="flex items-center gap-2 text-danger">
               <AlertTriangle className="w-5 h-5 shrink-0" />
               <h4 className="font-bold text-sm">
@@ -193,22 +129,14 @@ export const TrainerFloorManager: React.FC = () => {
                   <div className="space-y-0.5 min-w-0">
                     <h5 className="font-bold text-sm text-text truncate">{o.name}</h5>
                     <p className="text-xs text-muted font-mono truncate">
-                      Roll: {o.rollNumber} • {o.department}
+                      {o.rollNumber ? `Roll: ${o.rollNumber} • ` : ''}{o.department || o.role}
                     </p>
                     <p className="text-[11px] text-danger font-semibold">
                       Inside for {o.minutesElapsed} mins ({o.overdueMinutes} mins overdue)
                     </p>
                   </div>
 
-                  <Button
-                    variant="danger"
-                    size="xs"
-                    onClick={() => setCheckoutOccupant(o)}
-                    className="shrink-0 ml-2"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Checkout</span>
-                  </Button>
+                  <Badge tone="danger">Overdue</Badge>
                 </div>
               ))}
             </div>
@@ -227,8 +155,8 @@ export const TrainerFloorManager: React.FC = () => {
                 <div
                   key={occ.sessionId}
                   className={cn(
-                    'p-4 rounded-2xl border bg-surface space-y-2 transition-colors',
-                    occ.isOverstayer ? 'border-danger/40 bg-danger-muted/10' : 'border-border'
+                    'p-4 rounded-2xl border bg-surface space-y-2 transition-all shadow-sm',
+                    occ.isOverstayer ? 'border-danger/40 bg-danger-muted/10' : 'border-border/40 hover:border-primary/40'
                   )}
                 >
                   <div className="flex items-start justify-between">
@@ -260,89 +188,6 @@ export const TrainerFloorManager: React.FC = () => {
           )}
         </div>
       </Card>
-
-      {/* Faculty / Staff Wellness Summary */}
-      <Card className="space-y-4">
-        <div className="flex items-center gap-2">
-          <HeartPulse className="w-5 h-5 text-primary" />
-          <div>
-            <h3 className="font-bold text-base text-text">
-              Institutional Faculty & Staff Wellness Hours
-            </h3>
-            <p className="text-xs text-secondary">
-              Monthly gym workout hours logged by college professors, administrators, and staff.
-            </p>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-border-subtle/50 text-muted font-semibold">
-              <tr>
-                <th className="p-3.5">Staff Member</th>
-                <th className="p-3.5">Employee ID</th>
-                <th className="p-3.5">Department</th>
-                <th className="p-3.5">Designation</th>
-                <th className="p-3.5">Workouts (Month)</th>
-                <th className="p-3.5">Total Hours</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {staffWellness.map((s) => (
-                <tr key={s.staffId} className="hover:bg-border-subtle/30 transition-colors">
-                  <td className="p-3.5 font-bold text-text">{s.name}</td>
-                  <td className="p-3.5 font-mono text-muted">{s.staffEmpId}</td>
-                  <td className="p-3.5 text-secondary">{s.department}</td>
-                  <td className="p-3.5 text-muted">{s.designation}</td>
-                  <td className="p-3.5 font-semibold text-success">
-                    {s.totalWorkoutsThisMonth} sessions
-                  </td>
-                  <td className="p-3.5 font-bold text-text">{s.totalHoursThisMonth} hrs</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {/* Manual Checkout Modal */}
-      <Modal
-        open={Boolean(checkoutOccupant)}
-        title={`Floor Checkout: ${checkoutOccupant?.name || ''}`}
-        onClose={() => setCheckoutOccupant(null)}
-        footer={
-          <>
-            <Button variant="secondary" size="sm" onClick={() => setCheckoutOccupant(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              loading={submitting}
-              onClick={handleManualCheckout}
-            >
-              Confirm Checkout
-            </Button>
-          </>
-        }
-      >
-        {checkoutOccupant && (
-          <form onSubmit={handleManualCheckout} className="space-y-4 text-xs">
-            <p className="text-secondary">
-              Manually checkout this student from the gym floor and close their active session in the turnstile log.
-            </p>
-
-            <Textarea
-              label="Reason for Manual Checkout"
-              required
-              rows={2}
-              value={checkoutReason}
-              onChange={(e) => setCheckoutReason(e.target.value)}
-              placeholder="e.g. Workout slot expired, student departed"
-            />
-          </form>
-        )}
-      </Modal>
     </div>
   );
 };
