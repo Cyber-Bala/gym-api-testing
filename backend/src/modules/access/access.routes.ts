@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import {
   handleZkBioWebhook,
   simulateTurnstileScan,
@@ -6,7 +6,7 @@ import {
   getAccessLogs,
   triggerNoShowEvaluation,
 } from './access.controller.js';
-import { requireAuth, requireRole } from '../auth/auth.middleware.js';
+import { requireAuth, requireRole, optionalAuth } from '../auth/auth.middleware.js';
 
 export const accessRouter = Router();
 
@@ -17,7 +17,7 @@ accessRouter.post('/webhook/zkbio', handleZkBioWebhook);
 accessRouter.post('/simulate', simulateTurnstileScan);
 
 // Live attendance and audit feeds
-accessRouter.get('/live-occupancy', getLiveOccupancy);
+accessRouter.get('/live-occupancy', optionalAuth, getLiveOccupancy);
 accessRouter.get('/logs', requireAuth, requireRole(['admin', 'super_admin', 'trainer']), getAccessLogs);
 
 // Admin trigger for No-Show processing

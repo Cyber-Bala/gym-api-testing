@@ -38,7 +38,7 @@ export const UserProfileBadge: React.FC<UserProfileBadgeProps> = ({ compact = fa
           type="button"
           onClick={() => setModalOpen(true)}
           className={cn(
-            'inline-flex items-center justify-center gap-2 rounded-xl bg-primary text-white font-semibold shadow-sm transition-all hover:bg-primary-hover active:scale-95 dark:text-slate-950',
+            'inline-flex items-center justify-center gap-2 rounded-xl bg-primary text-white font-semibold shadow-sm transition-all hover:bg-primary-hover active:scale-95',
             compact ? 'h-9 px-3 text-xs' : 'h-10 px-4 text-xs sm:text-sm'
           )}
         >

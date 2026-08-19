@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { paymentService } from './payment.service.js';
 import { createOrderSchema, verifyPaymentSchema } from './payment.types.js';
 import { ValidationError, UnauthorizedError } from '../../shared/errors/index.js';
@@ -59,3 +59,25 @@ export const verifyPayment = async (
     next(err);
   }
 };
+
+export const getMyPaymentHistory = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user || !req.user.studentDetails) {
+      throw new UnauthorizedError('Student authentication required');
+    }
+
+    const history = await paymentService.getPaymentHistory(req.user.personId);
+
+    res.status(200).json({
+      success: true,
+      data: history,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+

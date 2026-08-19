@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { Modal, Badge, Alert, Stat } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface RowValidationError {
@@ -32,6 +34,7 @@ interface ExcelImportModalProps {
 }
 
 export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  const toast = useToast();
   const [importType, setImportType] = useState<'students' | 'staff'>('students');
   const [loading, setLoading] = useState<boolean>(false);
   const [report, setReport] = useState<IngestionResultReport | null>(null);
@@ -40,8 +43,17 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({ isOpen, onCl
 
   if (!isOpen) return null;
 
-  const handleDownloadTemplate = () => {
-    window.open(`/api/v1/people/template/${importType}`, '_blank');
+  const handleDownloadTemplate = async () => {
+    try {
+      await api.downloadBlob(
+        `/api/v1/people/template/${importType}`,
+        `rec_${importType}_import_template.csv`
+      );
+      toast.success(`Downloaded ${importType} spreadsheet template!`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Template Download Failed');
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -65,23 +77,15 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({ isOpen, onCl
 
       const endpoint = importType === 'students' ? '/api/v1/people/import/students' : '/api/v1/people/import/staff';
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows }),
-        credentials: 'include',
-      });
+      const resData = await api.post<IngestionResultReport>(endpoint, { rows });
 
-      const resData = await response.json();
-      if (!response.ok || !resData.success) {
-        throw new Error(resData.error?.message || 'Failed to process import');
-      }
-
-      setReport(resData.data);
+      setReport(resData);
+      toast.success(`Import completed: ${resData.successfulRows} row(s) added.`);
       if (onSuccess) onSuccess();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
+      toast.error(msg, 'Import Error');
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -123,21 +127,17 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({ isOpen, onCl
         },
       ];
 
-      const res = await fetch('/api/v1/people/import/students', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: mockBatch }),
-        credentials: 'include',
+      const resData = await api.post<IngestionResultReport>('/api/v1/people/import/students', {
+        rows: mockBatch,
       });
 
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error?.message || 'Quick import failed');
-
-      setReport(resData.data);
+      setReport(resData);
+      toast.success('Sample batch simulated and validated.');
       if (onSuccess) onSuccess();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
+      toast.error(msg, 'Sample Import Failed');
     } finally {
       setLoading(false);
     }

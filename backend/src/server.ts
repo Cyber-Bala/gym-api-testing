@@ -6,6 +6,7 @@ import { pool } from './shared/database/index.js';
 import { redis } from './shared/redis/index.js';
 import { ensureBucketsExist } from './shared/storage/index.js';
 import { runMigrations } from './db/migrate.js';
+import { schedulerService } from './modules/scheduler/scheduler.service.js';
 
 const startServer = async () => {
   try {
@@ -26,10 +27,13 @@ const startServer = async () => {
         { port: config.PORT, env: config.NODE_ENV, apiPrefix: config.API_PREFIX },
         `College Gym API Server running at http://localhost:${config.PORT}`
       );
+      // Start background automation schedulers
+      schedulerService.start();
     });
 
     const gracefulShutdown = (signal: string) => {
       logger.info(`Received ${signal}. Starting graceful shutdown...`);
+      schedulerService.stop();
       server.close(async () => {
         logger.info('HTTP server closed.');
         try {

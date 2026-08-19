@@ -8,6 +8,8 @@ import {
 import { Card, Badge, Modal, Alert, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Select, Textarea } from '../ui/Input';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface ConflictItem {
@@ -23,6 +25,7 @@ interface ConflictItem {
 }
 
 export const ConflictResolutionDesk: React.FC = () => {
+  const toast = useToast();
   const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [notification, setNotification] = useState<string | null>(null);
@@ -36,10 +39,9 @@ export const ConflictResolutionDesk: React.FC = () => {
   const fetchConflicts = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/conflicts/list', { credentials: 'include' });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setConflicts(data.data || []);
+      const data = await api.get<ConflictItem[]>('/api/v1/conflicts/list');
+      if (Array.isArray(data)) {
+        setConflicts(data);
       }
     } catch {
       // background error
@@ -57,25 +59,21 @@ export const ConflictResolutionDesk: React.FC = () => {
     if (!resolvingConflict) return;
     setSubmitting(true);
     try {
-      const res = await fetch('/api/v1/conflicts/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conflictId: resolvingConflict.id,
-          resolution: resolutionType,
-          notes: resolutionNotes,
-        }),
-        credentials: 'include',
+      await api.post('/api/v1/conflicts/resolve', {
+        conflictId: resolvingConflict.id,
+        resolution: resolutionType,
+        notes: resolutionNotes,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Resolution failed');
 
-      setNotification(`Conflict resolved as '${resolutionType}'. Logged to institutional audit trail.`);
+      const msg = `Conflict resolved as '${resolutionType}'. Logged to audit trail.`;
+      setNotification(msg);
+      toast.success(msg);
       setResolvingConflict(null);
       setResolutionNotes('');
       fetchConflicts();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Resolution Failed');
     } finally {
       setSubmitting(false);
     }

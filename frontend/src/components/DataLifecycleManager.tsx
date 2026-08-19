@@ -10,6 +10,8 @@ import {
 import { Card, Badge, Modal, Alert, Stat, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input, Select } from '../ui/Input';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface ArchiveJob {
@@ -31,6 +33,7 @@ interface LifecycleSummary {
 }
 
 export const DataLifecycleManager: React.FC = () => {
+  const toast = useToast();
   const [summary, setSummary] = useState<LifecycleSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [notification, setNotification] = useState<string | null>(null);
@@ -49,10 +52,9 @@ export const DataLifecycleManager: React.FC = () => {
   const fetchSummary = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/archive/summary', { credentials: 'include' });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSummary(data.data);
+      const data = await api.get<LifecycleSummary>('/api/v1/archive/summary');
+      if (data) {
+        setSummary(data);
       }
     } catch {
       // background error
@@ -69,20 +71,19 @@ export const DataLifecycleManager: React.FC = () => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await fetch('/api/v1/archive/job', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entityType, cutoffDate }),
-        credentials: 'include',
+      const data = await api.post<{ recordCount: number }>('/api/v1/archive/job', {
+        entityType,
+        cutoffDate,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Archive job failed');
 
-      setNotification(`Cold storage parquet archive created for ${entityType} (${data.data.recordCount} records).`);
+      const msg = `Cold storage archive created for ${entityType} (${data.recordCount} records).`;
+      setNotification(msg);
+      toast.success(msg);
       setShowArchiveModal(false);
       fetchSummary();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Archive Job Failed');
     } finally {
       setSubmitting(false);
     }
@@ -93,24 +94,20 @@ export const DataLifecycleManager: React.FC = () => {
     setSubmitting(true);
     try {
       const studentIds = departureStudentId ? [departureStudentId] : ['11111111-1111-1111-1111-111111111111'];
-      const res = await fetch('/api/v1/archive/departure', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentIds,
-          reason: departureReason,
-        }),
-        credentials: 'include',
+      const data = await api.post<{ message?: string }>('/api/v1/archive/departure', {
+        studentIds,
+        reason: departureReason,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Departure processing failed');
 
-      setNotification(data.data.message || 'Student departures processed.');
+      const msg = data.message || 'Student departures processed and anonymized.';
+      setNotification(msg);
+      toast.success(msg);
       setShowDepartureModal(false);
       setDepartureStudentId('');
       fetchSummary();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Departure Processing Failed');
     } finally {
       setSubmitting(false);
     }

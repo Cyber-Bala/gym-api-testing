@@ -1,8 +1,9 @@
-﻿<!doctype html>
-<html lang="en" class="dark">
+<!doctype html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#4A154B" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -11,17 +12,22 @@
     <meta name="description" content="College Gym Management System — Rajalakshmi Engineering College" />
     <title>College Gym Management System — REC</title>
     <script>
-      // Clear old caches and update worker on initial load
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for (var reg of registrations) {
-            reg.update();
+      (function() {
+        try {
+          var saved = localStorage.getItem('theme');
+          var isDark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.dataset.theme = 'dark';
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.dataset.theme = 'light';
           }
-        });
-      }
+        } catch (e) {}
+      })();
     </script>
   </head>
-  <body class="bg-gray-50 dark:bg-[#0F0F12] text-gray-900 dark:text-gray-100 min-h-screen transition-colors duration-200">
+  <body class="bg-background text-text min-h-screen transition-colors duration-200">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

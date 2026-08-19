@@ -14,6 +14,8 @@ import {
 import { Card, Badge, Modal, Alert, Stat, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input, Textarea } from '../ui/Input';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface ExecutiveAnalytics {
@@ -47,6 +49,7 @@ interface AuditLog {
 }
 
 export const ExecutiveAnalyticsDashboard: React.FC = () => {
+  const toast = useToast();
   const [analytics, setAnalytics] = useState<ExecutiveAnalytics | null>(null);
   const [closures, setClosures] = useState<GymClosure[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -62,21 +65,15 @@ export const ExecutiveAnalyticsDashboard: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [anRes, clRes, auRes] = await Promise.all([
-        fetch('/api/v1/admin/analytics', { credentials: 'include' }),
-        fetch('/api/v1/admin/calendar', { credentials: 'include' }),
-        fetch('/api/v1/admin/audit-logs', { credentials: 'include' }),
-      ]);
-
       const [anData, clData, auData] = await Promise.all([
-        anRes.json(),
-        clRes.json(),
-        auRes.json(),
+        api.get<ExecutiveAnalytics>('/api/v1/admin/analytics'),
+        api.get<GymClosure[]>('/api/v1/admin/calendar'),
+        api.get<AuditLog[]>('/api/v1/admin/audit-logs'),
       ]);
 
-      if (anRes.ok && anData.success) setAnalytics(anData.data);
-      if (clRes.ok && clData.success) setClosures(clData.data || []);
-      if (auRes.ok && auData.success) setAuditLogs(auData.data || []);
+      if (anData) setAnalytics(anData);
+      if (Array.isArray(clData)) setClosures(clData);
+      if (Array.isArray(auData)) setAuditLogs(auData);
     } catch {
       // background error
     } finally {
@@ -92,26 +89,21 @@ export const ExecutiveAnalyticsDashboard: React.FC = () => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await fetch('/api/v1/admin/calendar/closure', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          closureDate,
-          reason: closureReason,
-        }),
-        credentials: 'include',
+      const data = await api.post<{ message?: string }>('/api/v1/admin/calendar/closure', {
+        closureDate,
+        reason: closureReason,
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Failed to schedule closure');
-
-      setSuccessMsg(data.message || 'Closure scheduled and affected bookings cancelled');
+      const msg = data.message || 'Closure scheduled and affected bookings cancelled';
+      setSuccessMsg(msg);
+      toast.success(msg);
       setShowClosureModal(false);
       setClosureDate('');
       setClosureReason('');
       fetchData();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Failed to Schedule Closure');
     } finally {
       setSubmitting(false);
     }

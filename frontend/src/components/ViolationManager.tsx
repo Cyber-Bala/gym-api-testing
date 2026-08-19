@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import {
-  AlertOctagon,
   ShieldAlert,
   ShieldCheck,
   RefreshCw,
   CheckCircle2,
   Zap,
-  Sparkles,
+  Bot,
   Ban,
   Unlock,
 } from 'lucide-react';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { Card, Badge, Modal, Alert, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input, Textarea } from '../ui/Input';
@@ -38,6 +39,7 @@ interface FlaggedStudent {
 }
 
 export const ViolationManager: React.FC = () => {
+  const toast = useToast();
   const [flagged, setFlagged] = useState<FlaggedStudent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -56,13 +58,13 @@ export const ViolationManager: React.FC = () => {
   const fetchFlagged = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/violations/flagged', { credentials: 'include' });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setFlagged(data.data || []);
+      const data = await api.get<FlaggedStudent[]>('/api/v1/violations/flagged');
+      if (Array.isArray(data)) {
+        setFlagged(data);
       }
-    } catch {
-      // background error
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Failed to Load Flagged Students');
     } finally {
       setLoading(false);
     }
@@ -74,27 +76,22 @@ export const ViolationManager: React.FC = () => {
 
   const handleForgive = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!forgivingViolation) return;
+    if (!forgivingViolation || !forgiveReason.trim()) return;
+
     setSubmitting(true);
     try {
-      const res = await fetch('/api/v1/violations/forgive', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          violationId: forgivingViolation.id,
-          reason: forgiveReason,
-        }),
-        credentials: 'include',
+      await api.post('/api/v1/violations/forgive', {
+        violationId: forgivingViolation.id,
+        reason: forgiveReason.trim(),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Failed to forgive strike');
 
-      setNotification('Strike successfully forgiven and removed.');
+      toast.success('Violation forgiven and strike point deducted.');
       setForgivingViolation(null);
       setForgiveReason('');
       fetchFlagged();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Forgiveness Error');
     } finally {
       setSubmitting(false);
     }
@@ -102,28 +99,23 @@ export const ViolationManager: React.FC = () => {
 
   const handleManualBan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!banningStudent) return;
+    if (!banningStudent || !banReason.trim()) return;
+
     setSubmitting(true);
     try {
-      const res = await fetch('/api/v1/violations/ban', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId: banningStudent.studentId,
-          banDurationDays: banDuration,
-          reason: banReason,
-        }),
-        credentials: 'include',
+      await api.post('/api/v1/violations/ban', {
+        studentId: banningStudent.studentId,
+        banDurationDays: banDuration,
+        reason: banReason.trim(),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Failed to suspend student');
 
-      setNotification(`Student suspended for ${banDuration} days.`);
+      toast.success(`Student suspended from gym access for ${banDuration} days.`);
       setBanningStudent(null);
       setBanReason('');
       fetchFlagged();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Suspension Error');
     } finally {
       setSubmitting(false);
     }
@@ -131,28 +123,23 @@ export const ViolationManager: React.FC = () => {
 
   const handleManualUnban = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!unbanningStudent) return;
+    if (!unbanningStudent || !unbanReason.trim()) return;
+
     setSubmitting(true);
     try {
-      const res = await fetch('/api/v1/violations/unban', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId: unbanningStudent.studentId,
-          reason: unbanReason,
-          resetStrikes: resetStrikesOnUnban,
-        }),
-        credentials: 'include',
+      await api.post('/api/v1/violations/unban', {
+        studentId: unbanningStudent.studentId,
+        reason: unbanReason.trim(),
+        resetStrikes: resetStrikesOnUnban,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Failed to reinstate student');
 
-      setNotification('Student gym booking privileges restored.');
+      toast.success('Student gym booking privileges restored.');
       setUnbanningStudent(null);
       setUnbanReason('');
       fetchFlagged();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Reinstatement Error');
     } finally {
       setSubmitting(false);
     }
@@ -160,19 +147,14 @@ export const ViolationManager: React.FC = () => {
 
   const handleRunAutoUnban = async () => {
     try {
-      const res = await fetch('/api/v1/violations/auto-unban-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setNotification(`Auto-unban worker ran: ${data.data.unbannedCount} student(s) reinstated.`);
-        fetchFlagged();
-      }
+      const data = await api.post<{ unbannedCount: number }>('/api/v1/violations/auto-unban-check', {});
+      const msg = `Auto-unban sweep completed: ${data.unbannedCount} student(s) reinstated.`;
+      setNotification(msg);
+      toast.info(msg, 'Auto-Unban Sweep Complete');
+      fetchFlagged();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Auto-Unban Sweep Failed');
     }
   };
 
@@ -188,8 +170,11 @@ export const ViolationManager: React.FC = () => {
                 Unified Violation & 3-Strike Ban Manager
               </h3>
             </div>
-            <p className="text-xs text-secondary mt-0.5">
-              3-Strike Automated 3-Day Suspension Engine • Administrative Forgiveness & Audit Logging
+            <p className="text-xs text-secondary mt-0.5 flex items-center gap-2 flex-wrap">
+              <span>3-Strike Automated 3-Day Suspension Engine • Administrative Forgiveness</span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success bg-success-muted px-2 py-0.5 rounded-md border border-success/30">
+                <Bot className="w-3 h-3" /> Auto-Restore Active (Every 10m)
+              </span>
             </p>
           </div>
 
@@ -201,7 +186,7 @@ export const ViolationManager: React.FC = () => {
               className="border-success/30 text-success hover:bg-success-muted"
             >
               <Zap className="w-3.5 h-3.5" />
-              <span>Run Auto-Unban Worker</span>
+              <span>Run Auto-Unban Sweep</span>
             </Button>
 
             <IconButton
@@ -229,48 +214,58 @@ export const ViolationManager: React.FC = () => {
           <EmptyState
             icon={<ShieldCheck className="w-8 h-8 text-success" />}
             title="All Students in Good Standing"
-            description="Zero active strike violations or bans. The gym community is adhering cleanly to attendance and 2-hour notice policies."
+            description="Zero active strike violations or bans. The gym community is adhering cleanly to attendance and notice policies."
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {flagged.map((st) => (
+            {flagged.map((s) => (
               <div
-                key={st.studentId}
+                key={s.studentId}
                 className={cn(
-                  'p-5 rounded-2xl border bg-surface transition-colors',
-                  st.isBanned
+                  'p-5 rounded-2xl border bg-surface flex flex-col justify-between space-y-4 shadow-sm transition-colors',
+                  s.isBanned
                     ? 'border-danger/40 bg-danger-muted/10'
-                    : 'border-warning/40 bg-warning-muted/10'
+                    : s.violationCount >= 2
+                    ? 'border-warning/40 bg-warning-muted/10'
+                    : 'border-border'
                 )}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-bold text-sm sm:text-base text-text truncate">{st.name}</h4>
-                      <Badge tone={st.isBanned ? 'danger' : 'warning'}>
-                        {st.isBanned ? 'Suspended (3-Day Ban)' : `${st.violationCount} Active Strike(s)`}
-                      </Badge>
+                      <h4 className="font-bold text-base text-text">{s.name}</h4>
+                      {s.isBanned ? (
+                        <Badge tone="danger">BANNED ({s.violationCount}/3 STRIKES)</Badge>
+                      ) : (
+                        <Badge tone={s.violationCount >= 2 ? 'warning' : 'neutral'}>
+                          {s.violationCount}/3 ACTIVE STRIKES
+                        </Badge>
+                      )}
                     </div>
-                    <p className="text-xs text-muted font-mono mt-0.5 truncate">
-                      Roll: {st.rollNumber} • {st.department}
+
+                    <p className="text-xs text-muted font-mono mt-0.5">
+                      {s.rollNumber} • {s.department}
                     </p>
+                    <p className="text-xs text-secondary font-mono">{s.email}</p>
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {st.isBanned ? (
+                    {s.isBanned ? (
                       <Button
-                        variant="success"
+                        variant="outline"
                         size="xs"
-                        onClick={() => setUnbanningStudent(st)}
+                        onClick={() => setUnbanningStudent(s)}
+                        className="border-success/40 text-success hover:bg-success-muted"
                       >
                         <Unlock className="w-3.5 h-3.5" />
-                        <span>Unban</span>
+                        <span>Reinstate</span>
                       </Button>
                     ) : (
                       <Button
-                        variant="danger"
+                        variant="outline"
                         size="xs"
-                        onClick={() => setBanningStudent(st)}
+                        onClick={() => setBanningStudent(s)}
+                        className="border-danger/40 text-danger hover:bg-danger-muted"
                       >
                         <Ban className="w-3.5 h-3.5" />
                         <span>Ban</span>
@@ -279,43 +274,49 @@ export const ViolationManager: React.FC = () => {
                   </div>
                 </div>
 
-                {st.isBanned && st.banExpiresAt && (
-                  <p className="text-xs text-danger font-semibold mt-2">
-                    Suspension active until: {new Date(st.banExpiresAt).toLocaleDateString()} {new Date(st.banExpiresAt).toLocaleTimeString()}
-                  </p>
+                {s.isBanned && s.banExpiresAt && (
+                  <div className="p-3 rounded-xl border border-danger/20 bg-danger-muted/30 text-xs text-danger flex items-center justify-between">
+                    <span>Active Suspension Lock</span>
+                    <span className="font-mono font-bold">
+                      Expires: {new Date(s.banExpiresAt).toLocaleDateString()}
+                    </span>
+                  </div>
                 )}
 
-                {/* Violations List */}
-                <div className="mt-3 pt-3 border-t border-border space-y-2">
-                  <p className="text-xs font-bold text-muted uppercase tracking-wider">
-                    Violation History ({st.violations.length})
+                {/* Strikes List */}
+                <div className="space-y-2 border-t border-border pt-3">
+                  <p className="text-[11px] font-bold text-muted uppercase tracking-wider">
+                    Violation History ({s.violations.length})
                   </p>
 
-                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                    {st.violations.map((v) => (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {s.violations.map((v) => (
                       <div
                         key={v.id}
-                        className="p-2.5 rounded-xl bg-surface-elevated border border-border flex items-center justify-between text-xs"
+                        className="p-2.5 rounded-xl border border-border bg-border-subtle/40 flex items-center justify-between text-xs gap-2"
                       >
-                        <div className="min-w-0 pr-2">
+                        <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <AlertOctagon className="w-3.5 h-3.5 text-danger shrink-0" />
-                            <span className="font-semibold capitalize text-text truncate">
-                              {v.violationType.replace('_', ' ')}
+                            <span className="font-bold capitalize text-text">
+                              {v.violationType.replace(/_/g, ' ')}
+                            </span>
+                            <span className="text-[10px] text-muted font-mono">
+                              {new Date(v.createdAt).toLocaleDateString()}
                             </span>
                           </div>
-                          <p className="text-[11px] text-muted mt-0.5 truncate">
-                            {v.description || 'No description recorded'} • {new Date(v.createdAt).toLocaleDateString()}
-                          </p>
+                          {v.description && (
+                            <p className="text-[11px] text-secondary truncate mt-0.5">
+                              {v.description}
+                            </p>
+                          )}
                         </div>
 
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="xs"
                           onClick={() => setForgivingViolation(v)}
-                          className="shrink-0 text-success border-success/30 hover:bg-success-muted"
+                          className="text-primary hover:bg-primary-muted shrink-0 text-[11px]"
                         >
-                          <Sparkles className="w-3 h-3" />
                           <span>Forgive</span>
                         </Button>
                       </div>
@@ -328,132 +329,148 @@ export const ViolationManager: React.FC = () => {
         )}
       </Card>
 
-      {/* Forgive Strike Modal */}
-      <Modal
-        open={Boolean(forgivingViolation)}
-        title="Forgive Violation Strike"
-        onClose={() => setForgivingViolation(null)}
-        footer={
-          <>
-            <Button variant="secondary" size="sm" onClick={() => setForgivingViolation(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="success"
-              size="sm"
-              loading={submitting}
-              onClick={handleForgive}
-            >
-              Confirm Forgiveness
-            </Button>
-          </>
-        }
-      >
-        <form onSubmit={handleForgive} className="space-y-4 text-xs">
-          <p className="text-secondary">
-            Forgiving this strike will decrement the student's violation counter and will be recorded in the audit log.
-          </p>
+      {/* Forgive Violation Modal */}
+      {forgivingViolation && (
+        <Modal
+          open={Boolean(forgivingViolation)}
+          onClose={() => setForgivingViolation(null)}
+          title="Forgive Strike Violation"
+        >
+          <form onSubmit={handleForgive} className="space-y-4 text-xs">
+            <p className="text-secondary leading-relaxed">
+              Forgiving this violation will remove 1 strike from the student’s record and restore good standing if below 3 strikes.
+            </p>
 
-          <Textarea
-            label="Reason for Forgiveness"
-            required
-            rows={2}
-            value={forgiveReason}
-            onChange={(e) => setForgiveReason(e.target.value)}
-            placeholder="e.g. Valid medical emergency certificate provided"
-          />
-        </form>
-      </Modal>
+            <Input
+              label="Administrative Justification Reason"
+              required
+              placeholder="e.g. Valid medical leave certificate presented to HOD."
+              value={forgiveReason}
+              onChange={(e) => setForgiveReason(e.target.value)}
+            />
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setForgivingViolation(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                type="submit"
+                loading={submitting}
+              >
+                Confirm Forgiveness
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {/* Manual Ban Modal */}
-      <Modal
-        open={Boolean(banningStudent)}
-        title="Manual Gym Suspension"
-        onClose={() => setBanningStudent(null)}
-        footer={
-          <>
-            <Button variant="secondary" size="sm" onClick={() => setBanningStudent(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              loading={submitting}
-              onClick={handleManualBan}
-            >
-              Suspend Student
-            </Button>
-          </>
-        }
-      >
-        <form onSubmit={handleManualBan} className="space-y-4 text-xs">
-          <Input
-            label="Suspension Duration (Days)"
-            type="number"
-            min={1}
-            max={365}
-            required
-            value={banDuration}
-            onChange={(e) => setBanDuration(parseInt(e.target.value, 10))}
-          />
+      {banningStudent && (
+        <Modal
+          open={Boolean(banningStudent)}
+          onClose={() => setBanningStudent(null)}
+          title={`Manual Suspension — ${banningStudent.name}`}
+        >
+          <form onSubmit={handleManualBan} className="space-y-4 text-xs">
+            <p className="text-secondary leading-relaxed">
+              Manually place a temporary lock on this student’s gym booking permissions and biometric turnstile entry.
+            </p>
 
-          <Textarea
-            label="Audit Suspension Reason"
-            required
-            rows={2}
-            value={banReason}
-            onChange={(e) => setBanReason(e.target.value)}
-            placeholder="e.g. Disciplinary equipment misuse or safety violation"
-          />
-        </form>
-      </Modal>
+            <Input
+              label="Suspension Duration (Days)"
+              type="number"
+              min={1}
+              max={30}
+              required
+              value={banDuration}
+              onChange={(e) => setBanDuration(parseInt(e.target.value, 10))}
+            />
+
+            <Textarea
+              label="Disciplinary Reason"
+              required
+              placeholder="e.g. Failure to comply with gym floor dress code and trainer instructions."
+              value={banReason}
+              onChange={(e) => setBanReason(e.target.value)}
+            />
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setBanningStudent(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                type="submit"
+                loading={submitting}
+              >
+                Issue Disciplinary Suspension
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {/* Manual Unban Modal */}
-      <Modal
-        open={Boolean(unbanningStudent)}
-        title="Reinstate Gym Privileges"
-        onClose={() => setUnbanningStudent(null)}
-        footer={
-          <>
-            <Button variant="secondary" size="sm" onClick={() => setUnbanningStudent(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="success"
-              size="sm"
-              loading={submitting}
-              onClick={handleManualUnban}
-            >
-              Reinstate Access
-            </Button>
-          </>
-        }
-      >
-        <form onSubmit={handleManualUnban} className="space-y-4 text-xs">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              id="resetStrikes"
-              checked={resetStrikesOnUnban}
-              onChange={(e) => setResetStrikesOnUnban(e.target.checked)}
-              className="rounded border-border text-primary focus:ring-primary w-4 h-4"
-            />
-            <span className="font-medium text-text">
-              Reset strike count to 0 (Clean slate)
-            </span>
-          </label>
+      {unbanningStudent && (
+        <Modal
+          open={Boolean(unbanningStudent)}
+          onClose={() => setUnbanningStudent(null)}
+          title={`Reinstate Student Access — ${unbanningStudent.name}`}
+        >
+          <form onSubmit={handleManualUnban} className="space-y-4 text-xs">
+            <p className="text-secondary leading-relaxed">
+              Lifting this suspension will immediately restore slot booking and turnstile access for this student.
+            </p>
 
-          <Textarea
-            label="Reinstatement Audit Reason"
-            required
-            rows={2}
-            value={unbanReason}
-            onChange={(e) => setUnbanReason(e.target.value)}
-            placeholder="e.g. Disciplinary board cleared suspension"
-          />
-        </form>
-      </Modal>
+            <Input
+              label="Reinstatement Justification"
+              required
+              placeholder="e.g. Apology letter received and suspension period completed."
+              value={unbanReason}
+              onChange={(e) => setUnbanReason(e.target.value)}
+            />
+
+            <label className="flex items-center gap-2 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={resetStrikesOnUnban}
+                onChange={(e) => setResetStrikesOnUnban(e.target.checked)}
+                className="rounded border-border text-primary focus:ring-primary"
+              />
+              <span className="text-secondary font-medium">Reset active strike count to 0 upon unban</span>
+            </label>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setUnbanningStudent(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                type="submit"
+                loading={submitting}
+              >
+                Confirm Reinstatement
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 };
-

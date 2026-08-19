@@ -12,6 +12,8 @@ import {
 import { Card, Badge, Modal, Alert, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface AccessDevice {
@@ -37,6 +39,7 @@ interface FaceSyncTask {
 }
 
 export const DeviceBiometricsManager: React.FC = () => {
+  const toast = useToast();
   const [devices, setDevices] = useState<AccessDevice[]>([]);
   const [syncQueue, setSyncQueue] = useState<FaceSyncTask[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -51,15 +54,13 @@ export const DeviceBiometricsManager: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [devRes, qRes] = await Promise.all([
-        fetch('/api/v1/biometrics/devices', { credentials: 'include' }),
-        fetch('/api/v1/biometrics/sync-queue', { credentials: 'include' }),
+      const [devData, qData] = await Promise.all([
+        api.get<AccessDevice[]>('/api/v1/biometrics/devices'),
+        api.get<FaceSyncTask[]>('/api/v1/biometrics/sync-queue'),
       ]);
 
-      const [devData, qData] = await Promise.all([devRes.json(), qRes.json()]);
-
-      if (devRes.ok && devData.success) setDevices(devData.data || []);
-      if (qRes.ok && qData.success) setSyncQueue(qData.data || []);
+      if (Array.isArray(devData)) setDevices(devData);
+      if (Array.isArray(qData)) setSyncQueue(qData);
     } catch {
       // background error
     } finally {
@@ -74,18 +75,14 @@ export const DeviceBiometricsManager: React.FC = () => {
   const handleProcessSync = async () => {
     setProcessing(true);
     try {
-      const res = await fetch('/api/v1/biometrics/sync-process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setNotification(data.message || 'Biometric synchronization processed');
-        fetchData();
-      }
+      const data = await api.post<{ message?: string }>('/api/v1/biometrics/sync-process', {});
+      const msg = data.message || 'Biometric synchronization processed';
+      setNotification(msg);
+      toast.success(msg);
+      fetchData();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Sync Processing Failed');
     } finally {
       setProcessing(false);
     }
@@ -93,19 +90,14 @@ export const DeviceBiometricsManager: React.FC = () => {
 
   const handleRetrySync = async (syncId: string) => {
     try {
-      const res = await fetch('/api/v1/biometrics/sync-retry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ syncId }),
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setNotification(data.message || 'Sync task re-queued for transmission');
-        fetchData();
-      }
+      const data = await api.post<{ message?: string }>('/api/v1/biometrics/sync-retry', { syncId });
+      const msg = data.message || 'Sync task re-queued for transmission';
+      setNotification(msg);
+      toast.info(msg);
+      fetchData();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Retry Failed');
     }
   };
 
@@ -113,24 +105,20 @@ export const DeviceBiometricsManager: React.FC = () => {
     e.preventDefault();
     setEnrollSubmitting(true);
     try {
-      const res = await fetch('/api/v1/biometrics/face-enroll', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId: enrollStudentId || '11111111-1111-1111-1111-111111111111',
-          faceImageBase64: 'data:image/jpeg;base64,mock_biometric_face_vector',
-        }),
-        credentials: 'include',
+      await api.post('/api/v1/biometrics/face-enroll', {
+        studentId: enrollStudentId || '11111111-1111-1111-1111-111111111111',
+        faceImageBase64: 'data:image/jpeg;base64,mock_biometric_face_vector',
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Face enrollment failed');
 
-      setNotification('Face biometric enrolled & queued for hardware sync.');
+      const msg = 'Face biometric enrolled & queued for hardware sync.';
+      setNotification(msg);
+      toast.success(msg);
       setShowEnrollModal(false);
       setEnrollStudentId('');
       fetchData();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Enrollment Failed');
     } finally {
       setEnrollSubmitting(false);
     }

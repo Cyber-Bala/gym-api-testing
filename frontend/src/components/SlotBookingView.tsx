@@ -17,6 +17,8 @@ import { useAuth } from '../context/AuthContext';
 import { Card, Badge, ProgressBar, Modal, Alert } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input, Textarea } from '../ui/Input';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface SlotItem {
@@ -60,6 +62,7 @@ interface SlotBookingViewProps {
 
 export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSuccess }) => {
   const { user } = useAuth();
+  const toast = useToast();
   const [data, setData] = useState<RollingWindowData | null>(null);
   const [selectedDateIdx, setSelectedDateIdx] = useState<number>(0);
   const [sessionFilter, setSessionFilter] = useState<'all' | 'morning' | 'evening'>('all');
@@ -81,12 +84,8 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/booking/slots/window', {
-        credentials: 'include',
-      });
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error?.message || 'Failed to load slots');
-      setData(resData.data);
+      const resData = await api.get<RollingWindowData>('/api/v1/booking/slots/window');
+      setData(resData);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -118,24 +117,17 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
     setBookingSuccessMsg(null);
 
     try {
-      const res = await fetch('/api/v1/booking/reserve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slotId }),
-        credentials: 'include',
-      });
+      await api.post('/api/v1/booking/reserve', { slotId });
 
-      const resData = await res.json();
-      if (!res.ok || !resData.success) {
-        throw new Error(resData.error?.message || 'Slot reservation failed');
-      }
-
-      setBookingSuccessMsg('Gym slot reserved successfully! Your face turnstile scan is ready.');
+      const successText = 'Gym slot reserved successfully! Your face turnstile scan is ready.';
+      setBookingSuccessMsg(successText);
+      toast.success(successText, 'Slot Booked');
       fetchSlots();
       if (onBookingSuccess) onBookingSuccess();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
+      toast.error(msg, 'Reservation Error');
     } finally {
       setReservingSlotId(null);
     }
@@ -147,21 +139,17 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
 
     setSavingEdit(true);
     try {
-      const res = await fetch(`/api/v1/booking/slots/${editSlot.id}/capacity`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ capacity: editCapacity, reason: editReason }),
-        credentials: 'include',
+      await api.patch(`/api/v1/booking/slots/${editSlot.id}/capacity`, {
+        capacity: editCapacity,
+        reason: editReason,
       });
 
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error?.message || 'Failed to update capacity');
-
+      toast.success('Slot capacity updated successfully.');
       setEditSlot(null);
       fetchSlots();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert(msg);
+      toast.error(msg, 'Capacity Update Failed');
     } finally {
       setSavingEdit(false);
     }
@@ -172,20 +160,16 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
     if (!reason) return;
 
     try {
-      const res = await fetch(`/api/v1/booking/slots/${slot.id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: !slot.isActive, reason }),
-        credentials: 'include',
+      await api.patch(`/api/v1/booking/slots/${slot.id}/status`, {
+        isActive: !slot.isActive,
+        reason,
       });
 
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error?.message || 'Failed to toggle status');
-
+      toast.success(`Slot status updated (${slot.isActive ? 'closed' : 'reopened'}).`);
       fetchSlots();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert(msg);
+      toast.error(msg, 'Status Toggle Failed');
     }
   };
 
@@ -209,7 +193,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
             </h3>
           </div>
           <p className="text-xs text-secondary mt-0.5">
-            3-Day Rolling Window (IST) • 100 Cap/Slot • Maximum 1 Slot per Day
+            3-Day Rolling Window (IST) • 100 Cap/Slot • Max 3 Slots in 3-Day Window (Max 3/Day)
           </p>
         </div>
 

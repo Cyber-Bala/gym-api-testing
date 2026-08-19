@@ -11,6 +11,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { Card, Alert, Stat } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface WorkShift {
@@ -46,6 +48,7 @@ interface MonthlyPayrollItem {
 
 export const TrainerTimesheet: React.FC = () => {
   const { user } = useAuth();
+  const toast = useToast();
   const [profile, setProfile] = useState<TrainerProfile | null>(null);
   const [payroll, setPayroll] = useState<MonthlyPayrollItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -59,18 +62,14 @@ export const TrainerTimesheet: React.FC = () => {
     setLoading(true);
     try {
       if (isTrainer) {
-        const res = await fetch('/api/v1/trainer/profile', { credentials: 'include' });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          setProfile(data.data);
-        }
+        const data = await api.get<TrainerProfile>('/api/v1/trainer/profile');
+        setProfile(data);
       }
 
       if (isAdmin) {
-        const res = await fetch('/api/v1/trainer/payroll', { credentials: 'include' });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          setPayroll(data.data || []);
+        const data = await api.get<MonthlyPayrollItem[]>('/api/v1/trainer/payroll');
+        if (Array.isArray(data)) {
+          setPayroll(data);
         }
       }
     } catch {
@@ -88,18 +87,14 @@ export const TrainerTimesheet: React.FC = () => {
     setClocking(true);
     setSuccessMsg(null);
     try {
-      const res = await fetch('/api/v1/trainer/clock-in', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Clock in failed');
-
-      setSuccessMsg('Successfully clocked in! Shift timer is running.');
+      await api.post('/api/v1/trainer/clock-in', {});
+      const msg = 'Successfully clocked in! Shift timer is running.';
+      setSuccessMsg(msg);
+      toast.success(msg, 'Trainer Shift Active');
       fetchData();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Clock In Failed');
     } finally {
       setClocking(false);
     }
@@ -109,18 +104,17 @@ export const TrainerTimesheet: React.FC = () => {
     setClocking(true);
     setSuccessMsg(null);
     try {
-      const res = await fetch('/api/v1/trainer/clock-out', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Clock out failed');
-
-      setSuccessMsg(`Clocked out! Workout shift: ${data.data.durationMinutes} min • Earned: ₹${data.data.calculatedStipend}`);
+      const data = await api.post<{ durationMinutes: number; calculatedStipend: number }>(
+        '/api/v1/trainer/clock-out',
+        {}
+      );
+      const msg = `Clocked out! Workout shift: ${data.durationMinutes} min • Earned: ₹${data.calculatedStipend}`;
+      setSuccessMsg(msg);
+      toast.success(msg, 'Shift Completed');
       fetchData();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Clock Out Failed');
     } finally {
       setClocking(false);
     }
@@ -287,10 +281,20 @@ export const TrainerTimesheet: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => alert('Exporting monthly payroll ledger report...')}
+              onClick={async () => {
+                try {
+                  await api.downloadBlob(
+                    '/api/v1/reports/export-csv?reportType=payroll',
+                    'rec_trainer_payroll_ledger.csv'
+                  );
+                  toast.success('Downloaded Trainer Payroll Ledger (CSV)');
+                } catch {
+                  toast.error('Failed to download payroll ledger');
+                }
+              }}
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export Payroll (.xlsx)</span>
+              <span>Export Payroll (CSV)</span>
             </Button>
           </div>
 

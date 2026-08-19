@@ -419,7 +419,7 @@ export class AccessService {
   /**
    * Get real-time gym occupancy details
    */
-  public async getLiveOccupancy(): Promise<LiveOccupancyStats> {
+  public async getLiveOccupancy(canViewPii = true): Promise<LiveOccupancyStats> {
     const activeSessions = await db
       .select({
         sessionId: accessSessions.id,
@@ -462,7 +462,7 @@ export class AccessService {
       currentCount,
       maxCapacity,
       occupancyPercentage,
-      occupants,
+      occupants: canViewPii ? occupants : [],
     };
   }
 

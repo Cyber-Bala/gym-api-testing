@@ -20,6 +20,8 @@ import { reportsRouter } from './modules/reports/reports.routes.js';
 import { conflictsRouter } from './modules/conflicts/conflicts.routes.js';
 import { archiveRouter } from './modules/archive/archive.routes.js';
 import { integrationRouter } from './modules/integration/integration.routes.js';
+import { notificationRouter } from './modules/notification/notification.routes.js';
+import { schedulerRouter } from './modules/scheduler/scheduler.routes.js';
 import { NotFoundError } from './shared/errors/index.js';
 
 export const createApp = (): Express => {
@@ -63,6 +65,9 @@ export const createApp = (): Express => {
   app.use(`${config.API_PREFIX}/conflicts`, conflictsRouter);
   app.use(`${config.API_PREFIX}/archive`, archiveRouter);
   app.use(`${config.API_PREFIX}/integration`, integrationRouter);
+  app.use(`${config.API_PREFIX}/notifications`, notificationRouter);
+  app.use(`${config.API_PREFIX}/scheduler`, schedulerRouter);
+  app.use(`${config.API_PREFIX}/admin/scheduler`, schedulerRouter);
 
   // 404 Handler for undefined routes
   app.use('*', (req, _res, next) => {

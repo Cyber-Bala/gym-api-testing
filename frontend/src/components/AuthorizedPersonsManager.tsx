@@ -3,6 +3,8 @@ import { ShieldCheck, Plus, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-
 import { Card, Badge, Modal, Alert } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input, Textarea } from '../ui/Input';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface AuthorizedPersonItem {
@@ -19,6 +21,7 @@ interface AuthorizedPersonItem {
 }
 
 export const AuthorizedPersonsManager: React.FC = () => {
+  const toast = useToast();
   const [list, setList] = useState<AuthorizedPersonItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,15 +39,12 @@ export const AuthorizedPersonsManager: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/people/authorized-persons', {
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Failed to load authorized persons');
-      setList(data.data || []);
+      const data = await api.get<AuthorizedPersonItem[]>('/api/v1/people/authorized-persons');
+      setList(data || []);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
+      toast.error(msg, 'Failed to Load VIP Directory');
     } finally {
       setLoading(false);
     }
@@ -60,16 +60,15 @@ export const AuthorizedPersonsManager: React.FC = () => {
     setError(null);
 
     try {
-      const res = await fetch('/api/v1/people/authorized-persons', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone, designation, notes }),
-        credentials: 'include',
+      await api.post('/api/v1/people/authorized-persons', {
+        name,
+        email,
+        phone: phone || undefined,
+        designation,
+        notes: notes || undefined,
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Failed to provision authorized person');
-
+      toast.success(`VIP Guest Access provisioned for ${name}.`);
       setModalOpen(false);
       setName('');
       setEmail('');
@@ -80,6 +79,7 @@ export const AuthorizedPersonsManager: React.FC = () => {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
+      toast.error(msg, 'Provisioning Error');
     } finally {
       setSubmitting(false);
     }
@@ -90,20 +90,12 @@ export const AuthorizedPersonsManager: React.FC = () => {
     if (!reason) return;
 
     try {
-      const res = await fetch(`/api/v1/people/authorized-persons/${id}/revoke`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason }),
-        credentials: 'include',
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Failed to revoke access');
-
+      await api.post(`/api/v1/people/authorized-persons/${id}/revoke`, { reason });
+      toast.success(`Access revoked for ${personName}.`);
       fetchList();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert(msg);
+      toast.error(msg, 'Revocation Failed');
     }
   };
 

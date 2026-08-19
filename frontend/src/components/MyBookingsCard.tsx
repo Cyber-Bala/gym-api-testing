@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { Card, Badge, Modal, Alert, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface UserBooking {
@@ -26,6 +28,7 @@ interface MyBookingsCardProps {
 
 export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged }) => {
   const { user } = useAuth();
+  const toast = useToast();
   const [bookings, setBookings] = useState<UserBooking[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -36,12 +39,9 @@ export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged
     if (!user) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/booking/my-bookings', {
-        credentials: 'include',
-      });
-      const resData = await res.json();
-      if (res.ok) {
-        setBookings(resData.data || []);
+      const data = await api.get<UserBooking[]>('/api/v1/booking/my-bookings');
+      if (Array.isArray(data)) {
+        setBookings(data);
       }
     } catch {
       // Ignore background fetch error
@@ -59,6 +59,7 @@ export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged
   }
 
   const formatTime12h = (timeStr: string) => {
+    if (!timeStr) return '';
     const [hh, mm] = timeStr.split(':');
     const hour = parseInt(hh, 10);
     const ampm = hour >= 12 ? 'PM' : 'AM';
@@ -71,23 +72,18 @@ export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged
     setCancellingId(cancelModalBooking.id);
 
     try {
-      const res = await fetch(`/api/v1/booking/cancel/${cancelModalBooking.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: cancelReason || 'Student requested cancellation' }),
-        credentials: 'include',
+      await api.post(`/api/v1/booking/cancel/${cancelModalBooking.id}`, {
+        reason: cancelReason || 'Student requested cancellation',
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Failed to cancel booking');
-
+      toast.success('Reservation cancelled successfully.');
       setCancelModalBooking(null);
       setCancelReason('');
       fetchBookings();
       if (onBookingChanged) onBookingChanged();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert(msg);
+      toast.error(msg, 'Cancellation Failed');
     } finally {
       setCancellingId(null);
     }

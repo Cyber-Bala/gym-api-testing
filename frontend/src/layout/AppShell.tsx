@@ -3,6 +3,7 @@ import { Dumbbell, Menu, MoreHorizontal, X, FileSpreadsheet } from 'lucide-react
 import { useAuth } from '../context/AuthContext';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { UserProfileBadge } from '../components/UserProfileBadge';
+import { NotificationCenter } from '../components/NotificationCenter';
 import { ExcelImportModal } from '../components/ExcelImportModal';
 import { cn } from '../lib/cn';
 import { AppView, NavItem, visibleNav, getMobilePrimary } from './nav';
@@ -60,7 +61,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
           'flex w-full items-center gap-3 rounded-xl px-3 text-left font-semibold transition-colors',
           dense ? 'h-11 text-xs' : 'h-10 text-xs',
           selected
-            ? 'bg-primary text-white shadow-sm dark:text-slate-950 font-bold'
+            ? 'bg-primary text-white shadow-sm font-bold'
             : 'text-secondary hover:bg-border-subtle hover:text-text'
         )}
       >
@@ -101,6 +102,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
           </div>
 
           <div className="flex items-center gap-1.5">
+            <NotificationCenter compact />
             <ThemeToggle compact />
             <UserProfileBadge compact />
           </div>
@@ -218,6 +220,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
                   <span>Bulk Excel Import</span>
                 </button>
               )}
+              <NotificationCenter />
               <UserProfileBadge />
             </div>
           </header>

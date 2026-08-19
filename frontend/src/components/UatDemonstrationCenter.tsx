@@ -8,6 +8,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { Card, Badge } from '../ui/primitives';
 import { Button } from '../ui/Button';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface WorkflowStep {
@@ -31,6 +33,7 @@ interface E2EResult {
 
 export const UatDemonstrationCenter: React.FC = () => {
   const { user, devLogin } = useAuth();
+  const toast = useToast();
   const [running, setRunning] = useState<boolean>(false);
   const [result, setResult] = useState<E2EResult | null>(null);
 
@@ -70,16 +73,16 @@ export const UatDemonstrationCenter: React.FC = () => {
   const handleRunAllFlows = async () => {
     setRunning(true);
     try {
-      const res = await fetch('/api/v1/integration/run-all-flows', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setResult(data.data);
+      const data = await api.post<E2EResult>('/api/v1/integration/run-all-flows', {});
+      setResult(data);
+      if (data.overallStatus === 'passed') {
+        toast.success(`All ${data.passedFlows} E2E flows passed successfully in ${data.totalDurationMs}ms!`);
+      } else {
+        toast.error(`E2E Suite completed with ${data.failedFlows} failure(s).`);
       }
-    } catch {
-      // background error
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'E2E Suite Execution Failed');
     } finally {
       setRunning(false);
     }

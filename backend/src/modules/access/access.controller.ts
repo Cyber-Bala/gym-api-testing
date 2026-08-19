@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { accessService } from './access.service.js';
 import { noShowService } from './no-show.service.js';
 import { zkbioWebhookSchema } from './access.types.js';
@@ -51,12 +51,15 @@ export const simulateTurnstileScan = async (
 };
 
 export const getLiveOccupancy = async (
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const stats = await accessService.getLiveOccupancy();
+    const isStaffOrAdmin = Boolean(
+      req.user && ['admin', 'super_admin', 'trainer'].includes(req.user.role)
+    );
+    const stats = await accessService.getLiveOccupancy(isStaffOrAdmin);
 
     res.status(200).json({
       success: true,

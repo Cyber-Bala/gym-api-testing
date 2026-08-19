@@ -1,6 +1,6 @@
-﻿import crypto from 'crypto';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError, ValidationError } from '../../shared/errors/index.js';
@@ -98,6 +98,40 @@ export class PaymentService {
       paymentId,
       membership,
     };
+  }
+
+  /**
+   * Get payment transactions history for a student
+   */
+  public async getPaymentHistory(studentId: string) {
+    const orders = await db
+      .select({
+        id: paymentOrders.id,
+        orderId: paymentOrders.orderId,
+        paymentId: paymentOrders.paymentId,
+        amount: paymentOrders.amount,
+        currency: paymentOrders.currency,
+        status: paymentOrders.status,
+        createdAt: paymentOrders.createdAt,
+        planName: membershipPlans.name,
+        durationDays: membershipPlans.durationDays,
+      })
+      .from(paymentOrders)
+      .leftJoin(membershipPlans, eq(paymentOrders.planId, membershipPlans.id))
+      .where(eq(paymentOrders.studentId, studentId))
+      .orderBy(desc(paymentOrders.createdAt));
+
+    return orders.map((o) => ({
+      id: o.id,
+      orderId: o.orderId,
+      paymentId: o.paymentId,
+      amount: parseFloat(o.amount),
+      currency: o.currency,
+      status: o.status,
+      planName: o.planName || 'Gym Pass',
+      durationDays: o.durationDays || 30,
+      createdAt: o.createdAt.toISOString(),
+    }));
   }
 }
 

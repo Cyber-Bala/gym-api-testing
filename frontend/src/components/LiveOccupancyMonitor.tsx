@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Users,
   Activity,
-  UserCheck,
-  UserX,
   Scan,
   RefreshCw,
   Clock,
@@ -12,7 +10,12 @@ import {
   Play,
   LogOut,
   LogIn,
+  ShieldAlert,
+  Bot,
 } from 'lucide-react';
+import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { Card, Badge, ProgressBar, Alert, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input, Select } from '../ui/Input';
@@ -50,12 +53,14 @@ interface ScanResult {
 }
 
 export const LiveOccupancyMonitor: React.FC = () => {
+  const { user } = useAuth();
+  const toast = useToast();
   const [stats, setStats] = useState<LiveOccupancyStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [simulating, setSimulating] = useState<boolean>(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
-  // Custom Simulator Form
+  // Custom Simulator Form (Super Admin only)
   const [customIdentifier, setCustomIdentifier] = useState<string>('2024CS001');
   const [identifierType, setIdentifierType] = useState<'roll_number' | 'staff_id' | 'email'>('roll_number');
   const [eventType, setEventType] = useState<'entry' | 'exit'>('entry');
@@ -64,16 +69,12 @@ export const LiveOccupancyMonitor: React.FC = () => {
   const [runningNoShow, setRunningNoShow] = useState<boolean>(false);
   const [noShowMessage, setNoShowMessage] = useState<string | null>(null);
 
+  const isSuperAdmin = user?.role === 'super_admin';
+
   const fetchLiveOccupancy = async () => {
-    setLoading(true);
     try {
-      const res = await fetch('/api/v1/access/live-occupancy', {
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setStats(data.data);
-      }
+      const data = await api.get<LiveOccupancyStats>('/api/v1/access/live-occupancy');
+      setStats(data);
     } catch {
       // Background fetch error
     } finally {
@@ -112,23 +113,33 @@ export const LiveOccupancyMonitor: React.FC = () => {
         };
 
     try {
-      const res = await fetch('/api/v1/access/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        credentials: 'include',
-      });
-
-      const resData = await res.json();
-      if (resData.data) {
-        setScanResult(resData.data);
+      const resData = await api.post<ScanResult>('/api/v1/access/simulate', payload);
+      setScanResult(resData);
+      if (resData.accessGranted) {
+        toast.success(resData.message, 'Turnstile Hardware Access Granted');
+      } else {
+        toast.error(resData.denialReason || resData.message, 'Turnstile Access Denied');
       }
       fetchLiveOccupancy();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert(msg);
+      toast.error(msg, 'Simulation Error');
     } finally {
       setSimulating(false);
+    }
+  };
+
+  const handleManualCheckout = async (occ: LiveGymOccupant) => {
+    try {
+      await api.post('/api/v1/floor/checkout', {
+        personId: occ.personId,
+        notes: 'Manual floor supervisor checkout',
+      });
+      toast.success(`Checked out ${occ.name} from gym floor.`);
+      fetchLiveOccupancy();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Checkout Failed');
     }
   };
 
@@ -136,22 +147,18 @@ export const LiveOccupancyMonitor: React.FC = () => {
     setRunningNoShow(true);
     setNoShowMessage(null);
     try {
-      const res = await fetch('/api/v1/access/admin/process-no-shows', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-        credentials: 'include',
-      });
+      const data = await api.post<{
+        violationsIssued: number;
+        studentsSuspended: number;
+        completedSlotsEvaluated: number;
+      }>('/api/v1/access/admin/process-no-shows', {});
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Failed to trigger evaluation');
-
-      setNoShowMessage(
-        `Evaluation finished: ${data.data.violationsIssued} violation strike(s) issued, ${data.data.studentsSuspended} student(s) suspended.`
-      );
+      const msg = `Evaluation finished: ${data.violationsIssued} strike(s) issued, ${data.studentsSuspended} student(s) suspended.`;
+      setNoShowMessage(msg);
+      toast.info(msg, 'No-Show Audit Completed');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert(msg);
+      toast.error(msg, 'No-Show Audit Failed');
     } finally {
       setRunningNoShow(false);
     }
@@ -169,8 +176,11 @@ export const LiveOccupancyMonitor: React.FC = () => {
                 Live Gym Occupancy & Attendance
               </h3>
             </div>
-            <p className="text-xs text-secondary mt-0.5">
-              Real-time Turnstile Biometric Stream (ZKBio CV) • Capacity Threshold: 100
+            <p className="text-xs text-secondary mt-0.5 flex items-center gap-2 flex-wrap">
+              <span>Real-time Turnstile Biometric Stream (ZKBio CV) • Capacity Threshold: 100</span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success bg-success-muted px-2 py-0.5 rounded-md border border-success/30">
+                <Bot className="w-3 h-3" /> Auto-Audit Active (Every 5m)
+              </span>
             </p>
           </div>
 
@@ -244,8 +254,12 @@ export const LiveOccupancyMonitor: React.FC = () => {
             {stats.occupants.length === 0 ? (
               <EmptyState
                 icon={<Users className="w-6 h-6" />}
-                title="Gym is currently empty"
-                description="Use the turnstile simulator below to simulate face biometric check-in scans."
+                title="Gym floor is clear"
+                description={
+                  isSuperAdmin
+                    ? 'No members currently checked in. Use the Super Admin Turnstile Simulator below to test entry events.'
+                    : 'No members are currently checked into the gym floor.'
+                }
               />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -265,20 +279,31 @@ export const LiveOccupancyMonitor: React.FC = () => {
                         </p>
                       </div>
 
-                      <IconButton
-                        label="Simulate Exit"
-                        size="sm"
-                        variant="danger"
-                        onClick={() =>
-                          handleSimulateScan({
-                            identifierType: 'email',
-                            identifierValue: occ.email,
-                            eventType: 'exit',
-                          })
-                        }
-                      >
-                        <LogOut className="w-3.5 h-3.5" />
-                      </IconButton>
+                      {isSuperAdmin ? (
+                        <IconButton
+                          label="Simulate Exit"
+                          size="sm"
+                          variant="danger"
+                          onClick={() =>
+                            handleSimulateScan({
+                              identifierType: 'email',
+                              identifierValue: occ.email,
+                              eventType: 'exit',
+                            })
+                          }
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                        </IconButton>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => handleManualCheckout(occ)}
+                          className="text-danger hover:bg-danger-muted text-[11px]"
+                        >
+                          <span>Checkout</span>
+                        </Button>
+                      )}
                     </div>
 
                     <div className="pt-2 border-t border-border flex items-center justify-between text-xs text-muted">
@@ -298,192 +323,184 @@ export const LiveOccupancyMonitor: React.FC = () => {
         )}
       </Card>
 
-      {/* Hardware Biometric Turnstile Simulator */}
-      <Card className="space-y-6">
-        <div className="flex items-center gap-2">
-          <Scan className="w-5 h-5 text-primary" />
-          <div>
-            <h3 className="font-bold text-base text-text">
-              ZKBio CV Turnstile Hardware Simulator
-            </h3>
-            <p className="text-xs text-secondary">
-              Test real-time biometric face authentication, grace window validation, and exit duration tracking.
+      {/* Hardware Biometric Turnstile Simulator — SUPER ADMIN ONLY */}
+      {isSuperAdmin && (
+        <Card className="space-y-6 border-primary/30">
+          <div className="flex items-center justify-between gap-2 border-b border-border pb-4">
+            <div className="flex items-center gap-2">
+              <Scan className="w-5 h-5 text-primary" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-base text-text">
+                    ZKBio CV Turnstile Hardware Simulator
+                  </h3>
+                  <Badge tone="danger">Super Admin Only</Badge>
+                </div>
+                <p className="text-xs text-secondary mt-0.5">
+                  Test biometric turnstile ingress/egress, grace windows, and antipassback enforcement.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Simulator Preset Buttons */}
+          <div className="space-y-2">
+            <p className="text-xs font-bold text-muted uppercase tracking-wider">
+              Quick Persona Biometric Scans
             </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="justify-start text-xs border-success/30 hover:bg-success-muted text-text"
+                loading={simulating}
+                onClick={() =>
+                  handleSimulateScan({
+                    identifierType: 'roll_number',
+                    identifierValue: '2024CS001',
+                    eventType: 'entry',
+                  })
+                }
+              >
+                <LogIn className="w-3.5 h-3.5 text-success" />
+                <span className="truncate">Karthik (Hosteller Entry)</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="justify-start text-xs border-accent/30 hover:bg-accent-muted text-text"
+                loading={simulating}
+                onClick={() =>
+                  handleSimulateScan({
+                    identifierType: 'roll_number',
+                    identifierValue: '2024IT002',
+                    eventType: 'entry',
+                  })
+                }
+              >
+                <LogIn className="w-3.5 h-3.5 text-accent" />
+                <span className="truncate">Priya (Day Scholar Entry)</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="justify-start text-xs border-warning/30 hover:bg-warning-muted text-text"
+                loading={simulating}
+                onClick={() =>
+                  handleSimulateScan({
+                    identifierType: 'email',
+                    identifierValue: 'trainer@rajalakshmi.edu.in',
+                    eventType: 'entry',
+                  })
+                }
+              >
+                <LogIn className="w-3.5 h-3.5 text-warning" />
+                <span className="truncate">Trainer Vignesh Bypass</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="justify-start text-xs border-primary/30 hover:bg-primary-muted text-text"
+                loading={simulating}
+                onClick={() =>
+                  handleSimulateScan({
+                    identifierType: 'staff_id',
+                    identifierValue: 'REC-STAFF-101',
+                    eventType: 'entry',
+                  })
+                }
+              >
+                <LogIn className="w-3.5 h-3.5 text-primary" />
+                <span className="truncate">Staff Dr. Ramesh Entry</span>
+              </Button>
+            </div>
           </div>
-        </div>
 
-        {/* Quick Simulator Preset Buttons */}
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-muted uppercase tracking-wider">
-            Quick Persona Scans
-          </p>
+          {/* Custom Turnstile Trigger Form */}
+          <div className="p-4 rounded-2xl border border-border bg-surface-elevated/40 space-y-4">
+            <p className="text-xs font-bold text-text">Custom Turnstile Event Dispatcher</p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-            <button
-              type="button"
-              onClick={() =>
-                handleSimulateScan({
-                  identifierType: 'roll_number',
-                  identifierValue: '2024CS001',
-                  eventType: 'entry',
-                })
-              }
-              className="p-3.5 rounded-xl border border-border hover:border-primary/40 bg-surface text-left transition-colors"
-            >
-              <div className="flex items-center justify-between text-xs font-bold text-text">
-                <span>Karthik (Hosteller)</span>
-                <LogIn className="w-3.5 h-3.5 text-primary" />
-              </div>
-              <p className="text-[11px] text-muted font-mono mt-0.5">Roll: 2024CS001</p>
-              <span className="text-[10px] text-success font-semibold mt-1 block">
-                Simulate Face Entry
-              </span>
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Select
+                label="Identifier Type"
+                value={identifierType}
+                onChange={(e) => setIdentifierType(e.target.value as any)}
+              >
+                <option value="roll_number">Student Roll Number</option>
+                <option value="staff_id">Staff Employee ID</option>
+                <option value="email">College Email</option>
+              </Select>
 
-            <button
-              type="button"
-              onClick={() =>
-                handleSimulateScan({
-                  identifierType: 'email',
-                  identifierValue: 'trainer@rajalakshmi.edu.in',
-                  eventType: 'entry',
-                })
-              }
-              className="p-3.5 rounded-xl border border-border hover:border-primary/40 bg-surface text-left transition-colors"
-            >
-              <div className="flex items-center justify-between text-xs font-bold text-text">
-                <span>Vignesh (Trainer)</span>
-                <LogIn className="w-3.5 h-3.5 text-primary" />
-              </div>
-              <p className="text-[11px] text-muted font-mono mt-0.5">Bypass Access</p>
-              <span className="text-[10px] text-primary font-semibold mt-1 block">
-                Simulate Face Entry
-              </span>
-            </button>
+              <Input
+                label="Identifier Value"
+                value={customIdentifier}
+                onChange={(e) => setCustomIdentifier(e.target.value)}
+                placeholder="e.g. 2024CS001"
+              />
 
-            <button
-              type="button"
-              onClick={() =>
-                handleSimulateScan({
-                  identifierType: 'staff_id',
-                  identifierValue: 'REC-FAC-108',
-                  eventType: 'entry',
-                })
-              }
-              className="p-3.5 rounded-xl border border-border hover:border-primary/40 bg-surface text-left transition-colors"
-            >
-              <div className="flex items-center justify-between text-xs font-bold text-text">
-                <span>Dr. Ramesh (Faculty)</span>
-                <LogIn className="w-3.5 h-3.5 text-primary" />
-              </div>
-              <p className="text-[11px] text-muted font-mono mt-0.5">Staff ID: REC-FAC-108</p>
-              <span className="text-[10px] text-accent font-semibold mt-1 block">
-                Simulate Face Entry
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                handleSimulateScan({
-                  identifierType: 'roll_number',
-                  identifierValue: 'UNKNOWN_ROLL_99',
-                  eventType: 'entry',
-                })
-              }
-              className="p-3.5 rounded-xl border border-danger/30 bg-danger-muted/20 hover:border-danger text-left transition-colors"
-            >
-              <div className="flex items-center justify-between text-xs font-bold text-danger">
-                <span>Unregistered User</span>
-                <UserX className="w-3.5 h-3.5 text-danger" />
-              </div>
-              <p className="text-[11px] text-muted font-mono mt-0.5">Unknown Face</p>
-              <span className="text-[10px] text-danger font-semibold mt-1 block">
-                Test Denial Flow
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Custom Scan Trigger Form */}
-        <div className="p-4 rounded-2xl border border-border bg-border-subtle/30 space-y-3">
-          <p className="text-xs font-bold text-muted uppercase tracking-wider">
-            Custom Hardware Event
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs items-end">
-            <Select
-              label="Event Type"
-              value={eventType}
-              onChange={(e) => setEventType(e.target.value as any)}
-            >
-              <option value="entry">Entry Turnstile (IN)</option>
-              <option value="exit">Exit Turnstile (OUT)</option>
-            </Select>
-
-            <Select
-              label="Identifier Type"
-              value={identifierType}
-              onChange={(e) => setIdentifierType(e.target.value as any)}
-            >
-              <option value="roll_number">Roll Number</option>
-              <option value="staff_id">Staff ID</option>
-              <option value="email">Email</option>
-            </Select>
-
-            <Input
-              label="Identifier Value"
-              type="text"
-              value={customIdentifier}
-              onChange={(e) => setCustomIdentifier(e.target.value)}
-              placeholder="e.g. 2024CS001"
-            />
+              <Select
+                label="Event Direction"
+                value={eventType}
+                onChange={(e) => setEventType(e.target.value as any)}
+              >
+                <option value="entry">Entry Gate (Check-In)</option>
+                <option value="exit">Exit Gate (Check-Out)</option>
+              </Select>
+            </div>
 
             <Button
               variant="primary"
               size="md"
               loading={simulating}
               onClick={() => handleSimulateScan()}
-              className="w-full"
+              className="w-full sm:w-auto"
             >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Send Hardware Scan</span>
+              <Play className="w-4 h-4" />
+              <span>Dispatch Biometric Scan Event</span>
             </Button>
           </div>
-        </div>
 
-        {/* Live Scan Decision Result */}
-        {scanResult && (
-          <Alert tone={scanResult.accessGranted ? 'success' : 'danger'}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                {scanResult.accessGranted ? (
-                  <UserCheck className="w-5 h-5 text-success shrink-0" />
-                ) : (
-                  <UserX className="w-5 h-5 text-danger shrink-0" />
-                )}
-                <div>
-                  <h4 className="font-bold text-xs sm:text-sm">
-                    {scanResult.accessGranted ? 'ACCESS GRANTED (Turnstile Unlocked)' : 'ACCESS DENIED (Turnstile Locked)'}
+          {/* Biometric Gate Decision Result */}
+          {scanResult && (
+            <div
+              className={cn(
+                'p-4 rounded-2xl border space-y-2 transition-all animate-in fade-in duration-200',
+                scanResult.accessGranted
+                  ? 'border-success/40 bg-success-muted/30 text-success'
+                  : 'border-danger/40 bg-danger-muted/30 text-danger'
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {scanResult.accessGranted ? (
+                    <CheckCircle2 className="w-5 h-5 text-success" />
+                  ) : (
+                    <ShieldAlert className="w-5 h-5 text-danger" />
+                  )}
+                  <h4 className="font-bold text-sm">
+                    {scanResult.accessGranted ? 'ACCESS GRANTED — Gate Unlocked' : 'ACCESS DENIED — Turnstile Locked'}
                   </h4>
-                  <p className="text-xs opacity-90 mt-0.5">{scanResult.message}</p>
                 </div>
+                <Badge tone={scanResult.accessGranted ? 'success' : 'danger'}>
+                  {scanResult.eventType.toUpperCase()}
+                </Badge>
               </div>
 
-              <Badge tone={scanResult.accessGranted ? 'success' : 'danger'}>
-                {scanResult.eventType}
-              </Badge>
+              <p className="text-xs font-medium text-text">{scanResult.message}</p>
+
+              {scanResult.durationMinutes !== undefined && (
+                <p className="text-xs text-secondary font-mono">
+                  Recorded Workout Session Duration: {scanResult.durationMinutes} minutes
+                </p>
+              )}
             </div>
-
-            {scanResult.durationMinutes !== undefined && scanResult.durationMinutes > 0 && (
-              <div className="mt-2.5 pt-2 border-t border-current/20 text-xs font-semibold">
-                Completed Workout Duration: {scanResult.durationMinutes} Minutes
-              </div>
-            )}
-          </Alert>
-        )}
-      </Card>
+          )}
+        </Card>
+      )}
     </div>
   );
 };
-

@@ -12,6 +12,8 @@ import {
 import { Card, Badge, Modal, Alert, Stat, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Textarea } from '../ui/Input';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface LiveFloorOccupant {
@@ -47,6 +49,7 @@ interface StaffWellnessItem {
 }
 
 export const TrainerFloorManager: React.FC = () => {
+  const toast = useToast();
   const [status, setStatus] = useState<FloorStatus | null>(null);
   const [staffWellness, setStaffWellness] = useState<StaffWellnessItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -60,15 +63,13 @@ export const TrainerFloorManager: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [floorRes, staffRes] = await Promise.all([
-        fetch('/api/v1/floor/status', { credentials: 'include' }),
-        fetch('/api/v1/floor/staff-wellness', { credentials: 'include' }),
+      const [floorData, staffData] = await Promise.all([
+        api.get<FloorStatus>('/api/v1/floor/status'),
+        api.get<StaffWellnessItem[]>('/api/v1/floor/staff-wellness'),
       ]);
 
-      const [floorData, staffData] = await Promise.all([floorRes.json(), staffRes.json()]);
-
-      if (floorRes.ok && floorData.success) setStatus(floorData.data);
-      if (staffRes.ok && staffData.success) setStaffWellness(staffData.data || []);
+      if (floorData) setStatus(floorData);
+      if (Array.isArray(staffData)) setStaffWellness(staffData);
     } catch {
       // background error
     } finally {
@@ -87,24 +88,20 @@ export const TrainerFloorManager: React.FC = () => {
     if (!checkoutOccupant) return;
     setSubmitting(true);
     try {
-      const res = await fetch('/api/v1/floor/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: checkoutOccupant.sessionId,
-          reason: checkoutReason,
-        }),
-        credentials: 'include',
+      const data = await api.post<{ durationMinutes?: number }>('/api/v1/floor/checkout', {
+        sessionId: checkoutOccupant.sessionId,
+        reason: checkoutReason,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Manual checkout failed');
 
-      setNotification(`Checked out ${checkoutOccupant.name}. Recorded duration: ${data.data.durationMinutes} min.`);
+      const msg = `Checked out ${checkoutOccupant.name}. Recorded duration: ${data.durationMinutes || 0} min.`;
+      setNotification(msg);
+      toast.success(msg);
       setCheckoutOccupant(null);
       setCheckoutReason('Workout slot expired');
       fetchData();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Manual Checkout Failed');
     } finally {
       setSubmitting(false);
     }

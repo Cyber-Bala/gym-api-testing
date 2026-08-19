@@ -1,4 +1,4 @@
-﻿import { eq, and, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError, ConflictError } from '../../shared/errors/index.js';
@@ -72,16 +72,37 @@ export class AdminService {
       (v) => v.createdAt.toISOString().slice(0, 7) === currentMonth
     ).length;
 
-    // 7. Peak Hours Breakdown (Static model / hourly aggregate)
-    const peakHours = [
-      { hour: '06:00 - 07:00', count: Math.min(85, totalHostellers * 2) },
-      { hour: '07:00 - 08:00', count: Math.min(95, totalHostellers * 3) },
-      { hour: '08:00 - 09:00', count: 42 },
-      { hour: '16:00 - 17:00', count: 78 },
-      { hour: '17:00 - 18:00', count: 98 },
-      { hour: '18:00 - 19:00', count: 94 },
-      { hour: '19:00 - 20:00', count: 68 },
+    // 7. Peak Hours Breakdown (Dynamic aggregate from access_sessions)
+    const hourBuckets = [
+      { hour: '06:00 - 07:00', startHour: 6, count: 0 },
+      { hour: '07:00 - 08:00', startHour: 7, count: 0 },
+      { hour: '08:00 - 09:00', startHour: 8, count: 0 },
+      { hour: '09:00 - 10:00', startHour: 9, count: 0 },
+      { hour: '16:00 - 17:00', startHour: 16, count: 0 },
+      { hour: '17:00 - 18:00', startHour: 17, count: 0 },
+      { hour: '18:00 - 19:00', startHour: 18, count: 0 },
+      { hour: '19:00 - 20:00', startHour: 19, count: 0 },
     ];
+
+    const recentSessions = await db
+      .select({ entryTimestamp: accessSessions.entryTimestamp })
+      .from(accessSessions)
+      .limit(500);
+
+    for (const s of recentSessions) {
+      if (s.entryTimestamp) {
+        const hour = new Date(s.entryTimestamp).getHours();
+        const bucket = hourBuckets.find((b) => b.startHour === hour);
+        if (bucket) {
+          bucket.count += 1;
+        }
+      }
+    }
+
+    const peakHours = hourBuckets.map((b) => ({
+      hour: b.hour,
+      count: b.count,
+    }));
 
     return {
       totalRegisteredStudents,
