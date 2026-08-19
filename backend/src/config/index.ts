@@ -32,6 +32,7 @@ const envSchema = z.object({
 
   // Sessions & Auth
   SESSION_SECRET: z.string().default('dev_session_secret_replace_in_production_32chars'),
+  ALLOW_DEV_LOGIN: z.string().transform((v) => v === 'true' || v === '1').default('true'),
   GOOGLE_CLIENT_ID: z.string().default('placeholder_client_id'),
   GOOGLE_CLIENT_SECRET: z.string().default('placeholder_client_secret'),
   GOOGLE_REDIRECT_URI: z.string().default('http://localhost:4000/api/v1/auth/google/callback'),

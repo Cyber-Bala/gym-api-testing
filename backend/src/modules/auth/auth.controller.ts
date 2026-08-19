@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authService } from './auth.service.js';
 import { ValidationError, UnauthorizedError } from '../../shared/errors/index.js';
@@ -56,7 +56,7 @@ export const googleLogin = async (req: Request, res: Response, next: NextFunctio
 
 export const devLogin = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (config.NODE_ENV === 'production') {
+    if (config.NODE_ENV === 'production' && !config.ALLOW_DEV_LOGIN) {
       throw new UnauthorizedError('Dev login is disabled in production environment');
     }
 
