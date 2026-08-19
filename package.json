@@ -1,0 +1,32 @@
+{
+  "name": "college-gym-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "College Gym Management System — Responsive PWA, Modular Monolith Backend & Access Control",
+  "workspaces": [
+    "backend",
+    "frontend",
+    "worker"
+  ],
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:worker": "npm --prefix worker run dev",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "db:generate": "npm --prefix backend run db:generate",
+    "db:migrate": "npm --prefix backend run db:migrate",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "keywords": [
+    "gym-management",
+    "pwa",
+    "access-control",
+    "modular-monolith"
+  ],
+  "author": "Rajalakshmi Engineering College",
+  "license": "UNLICENSED"
+}
