@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { authService } from './auth.service.js';
 import { UnauthorizedError, ForbiddenError } from '../../shared/errors/index.js';
 import { SessionUser, UserRole } from './auth.types.js';
@@ -44,6 +44,33 @@ export const requireAuth = async (req: Request, _res: Response, next: NextFuncti
   } catch (err) {
     next(err);
   }
+};
+
+/**
+ * Optional Authentication: Attaches session user if cookie or token is present, but doesn't throw if absent
+ */
+export const optionalAuth = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+  try {
+    let sessionId = req.cookies?.[SESSION_COOKIE_NAME];
+
+    if (!sessionId && req.headers.authorization) {
+      const parts = req.headers.authorization.split(' ');
+      if (parts.length === 2 && parts[0] === 'Bearer') {
+        sessionId = parts[1];
+      }
+    }
+
+    if (sessionId) {
+      const sessionData = await authService.getSession(sessionId);
+      if (sessionData) {
+        req.user = sessionData.user;
+        req.sessionId = sessionData.id;
+      }
+    }
+  } catch {
+    // Silent fail for optional auth
+  }
+  next();
 };
 
 /**

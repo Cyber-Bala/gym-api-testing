@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import {
   getRollingWindowSlots,
   getSlotsForDate,
@@ -9,13 +9,13 @@ import {
   updateSlotCapacity,
   updateSlotStatus,
 } from './booking.controller.js';
-import { requireAuth, requireRole } from '../auth/auth.middleware.js';
+import { requireAuth, optionalAuth, requireRole } from '../auth/auth.middleware.js';
 
 export const bookingRouter = Router();
 
-// Public / Semi-public slot visibility
-bookingRouter.get('/slots/window', getRollingWindowSlots);
-bookingRouter.get('/slots', getSlotsForDate);
+// Slot visibility with optional user session
+bookingRouter.get('/slots/window', optionalAuth, getRollingWindowSlots);
+bookingRouter.get('/slots', optionalAuth, getSlotsForDate);
 
 // Student booking & cancellation operations
 bookingRouter.post('/reserve', requireAuth, reserveSlot);
