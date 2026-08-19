@@ -122,8 +122,8 @@ export class BookingService {
     const isToday = dateStr === todayStr;
     const currentISTTime = this.getISTCurrentTime();
 
-    // Check if student has an existing active booking on this date
-    let userBookedSlotId: string | undefined;
+    // Check all active bookings the student has on this date
+    const userBookedSlotIds: string[] = [];
     if (studentId && dbSlots.length > 0) {
       const slotIds = dbSlots.map((s) => s.id);
       
@@ -144,13 +144,12 @@ export class BookingService {
             inArray(bookings.slotId, slotIds),
             eq(bookings.bookingStatus, 'booked')
           )
-        )
-        .limit(1);
+        );
 
-      if (userBookings.length > 0) {
-        userBookedSlotId = userBookings[0].slotId;
-      }
+      userBookedSlotIds.push(...userBookings.map((b) => b.slotId));
     }
+
+    const userBookedSet = new Set(userBookedSlotIds);
 
     const slotDtos: SlotDto[] = dbSlots.map((slot) => {
       const startHHmm = slot.startTime.slice(0, 5);
@@ -163,7 +162,7 @@ export class BookingService {
 
       return {
         id: slot.id,
-        date: slot.slotDate,
+        date: typeof slot.slotDate === 'string' ? slot.slotDate.slice(0, 10) : this.formatISTDate(slot.slotDate),
         startTime: slot.startTime,
         endTime: slot.endTime,
         capacity,
@@ -173,7 +172,7 @@ export class BookingService {
         isFull,
         isActive: slot.status === 'open',
         isPast,
-        isBookedByCurrentUser: userBookedSlotId === slot.id,
+        isBookedByCurrentUser: userBookedSet.has(slot.id),
       };
     });
 
@@ -197,8 +196,10 @@ export class BookingService {
       dayLabel,
       dayOfWeek,
       isToday,
-      hasUserBookedOnDate: !!userBookedSlotId,
-      userBookedSlotId,
+      hasUserBookedOnDate: userBookedSlotIds.length >= 3,
+      userBookedSlotId: userBookedSlotIds[0],
+      userBookedCountOnDate: userBookedSlotIds.length,
+      userBookedSlotIds,
       totalCapacity,
       totalBooked,
       slots: slotDtos,
@@ -217,8 +218,14 @@ export class BookingService {
       days.push(daySlots);
     }
 
+    const totalUserBookingsInWindow = days.reduce(
+      (sum, d) => sum + (d.userBookedCountOnDate || 0),
+      0
+    );
+
     return {
       windowDates,
+      totalUserBookingsInWindow,
       days,
     };
   }

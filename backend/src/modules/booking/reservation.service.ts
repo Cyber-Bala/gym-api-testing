@@ -167,9 +167,22 @@ export class ReservationService {
           throw new ValidationError('Cannot reserve a time slot that has already started or passed');
         }
 
-        // Check single-slot-per-day rule (FR-BK-004)
-        const duplicateCheck = await client.query(
-          `SELECT b.id 
+        // 1. Exact slot duplicate check
+        const exactSlotCheck = await client.query(
+          `SELECT id FROM booking.bookings 
+           WHERE student_id = $1 AND slot_id = $2 AND booking_status = 'booked'`,
+          [studentTableId, slotId]
+        );
+
+        if (exactSlotCheck.rows.length > 0) {
+          throw new ConflictError(
+            `You already have an active reservation for this exact time slot (${slot.start_time.slice(0, 5)} – ${slot.end_time.slice(0, 5)}).`
+          );
+        }
+
+        // 2. Check daily quota: max 3 slots on the same day
+        const dailyCountRes = await client.query(
+          `SELECT COUNT(*)::int AS count 
            FROM booking.bookings b
            JOIN booking.slots s ON b.slot_id = s.id
            WHERE b.student_id = $1 
@@ -178,9 +191,29 @@ export class ReservationService {
           [studentTableId, slotDateStr]
         );
 
-        if (duplicateCheck.rows.length > 0) {
+        const dailyCount = Number(dailyCountRes.rows[0]?.count || 0);
+        if (dailyCount >= 3) {
           throw new ConflictError(
-            `You already have a confirmed slot on ${slotDateStr}. College policy allows a maximum of 1 slot per calendar day.`
+            `You have already reached the maximum limit of 3 slots on ${slotDateStr}.`
+          );
+        }
+
+        // 3. Check total window quota: max 3 slots total across the 3-day rolling window
+        const windowDates = bookingService.getRollingWindowDates();
+        const windowCountRes = await client.query(
+          `SELECT COUNT(*)::int AS count 
+           FROM booking.bookings b
+           JOIN booking.slots s ON b.slot_id = s.id
+           WHERE b.student_id = $1 
+             AND s.slot_date = ANY($2) 
+             AND b.booking_status = 'booked'`,
+          [studentTableId, windowDates]
+        );
+
+        const windowCount = Number(windowCountRes.rows[0]?.count || 0);
+        if (windowCount >= 3) {
+          throw new ConflictError(
+            `You have reached the maximum allowed limit of 3 active bookings across the 3-day window (3/3 slots booked).`
           );
         }
 

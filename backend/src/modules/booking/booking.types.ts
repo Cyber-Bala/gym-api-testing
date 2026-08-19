@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 export const DEFAULT_SLOT_CAPACITY = 100;
 
@@ -43,6 +43,8 @@ export interface DaySlotsDto {
   isToday: boolean;
   hasUserBookedOnDate: boolean;
   userBookedSlotId?: string;
+  userBookedCountOnDate?: number;
+  userBookedSlotIds?: string[];
   totalCapacity: number;
   totalBooked: number;
   slots: SlotDto[];
@@ -50,6 +52,7 @@ export interface DaySlotsDto {
 
 export interface RollingWindowSlotsResponse {
   windowDates: string[];
+  totalUserBookingsInWindow?: number;
   days: DaySlotsDto[];
 }
 

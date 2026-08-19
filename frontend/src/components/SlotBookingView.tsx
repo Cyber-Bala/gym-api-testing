@@ -41,6 +41,8 @@ interface DaySlots {
   isToday: boolean;
   hasUserBookedOnDate: boolean;
   userBookedSlotId?: string;
+  userBookedCountOnDate?: number;
+  userBookedSlotIds?: string[];
   totalCapacity: number;
   totalBooked: number;
   slots: SlotItem[];
@@ -48,6 +50,7 @@ interface DaySlots {
 
 interface RollingWindowData {
   windowDates: string[];
+  totalUserBookingsInWindow?: number;
   days: DaySlots[];
 }
 
@@ -264,11 +267,11 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                   <span className="text-[10px] uppercase font-bold tracking-wider text-primary">
                     {day.dayLabel}
                   </span>
-                  {day.hasUserBookedOnDate && (
-                    <Badge tone="success">
-                      <CheckCircle2 className="w-3 h-3" /> Booked
+                  {day.userBookedCountOnDate && day.userBookedCountOnDate > 0 ? (
+                    <Badge tone={day.userBookedCountOnDate >= 3 ? 'warning' : 'success'}>
+                      <CheckCircle2 className="w-3 h-3" /> {day.userBookedCountOnDate}/3 Booked
                     </Badge>
-                  )}
+                  ) : null}
                 </div>
                 <h4 className="font-bold text-base text-text mt-1">
                   {day.dayOfWeek}
@@ -289,20 +292,32 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </div>
       )}
 
-      {/* Single Slot Per Day Rule Reminder */}
-      {currentDay?.hasUserBookedOnDate && (
+      {/* Quota Indicators and Reminders */}
+      {(data?.totalUserBookingsInWindow || 0) >= 3 ? (
         <Alert tone="warning">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold">Daily Slot Quota Reached for {currentDay.dayLabel}</p>
+              <p className="font-bold">3-Day Window Quota Reached (3/3 Slots Active)</p>
               <p className="mt-0.5 text-xs text-secondary">
-                You already have a confirmed slot on this date. Students are limited to 1 slot per calendar day.
+                You have reached the maximum allowed limit of 3 active bookings across the 3-day window. To book a new slot, cancel an existing upcoming booking first.
               </p>
             </div>
           </div>
         </Alert>
-      )}
+      ) : (currentDay?.userBookedCountOnDate || 0) >= 3 ? (
+        <Alert tone="warning">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Daily Slot Quota Reached for {currentDay?.dayLabel} (3/3 Booked)</p>
+              <p className="mt-0.5 text-xs text-secondary">
+                You have booked the maximum limit of 3 slots on this day. You can book remaining slots on the other available window dates.
+              </p>
+            </div>
+          </div>
+        </Alert>
+      ) : null}
 
       {/* Day Scholar Pass Reminder */}
       {user?.studentDetails?.residency === 'day_scholar' && (
@@ -369,7 +384,16 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredSlots.map((slot) => {
               const isMorning = parseInt(slot.startTime.split(':')[0], 10) < 12;
-              const canBook = isStudent && !slot.isPast && slot.isActive && !slot.isFull && !currentDay.hasUserBookedOnDate;
+              const isDayLimitReached = (currentDay.userBookedCountOnDate || 0) >= 3;
+              const isWindowLimitReached = (data?.totalUserBookingsInWindow || 0) >= 3;
+              const canBook =
+                isStudent &&
+                !slot.isPast &&
+                slot.isActive &&
+                !slot.isFull &&
+                !slot.isBookedByCurrentUser &&
+                !isDayLimitReached &&
+                !isWindowLimitReached;
 
               return (
                 <div
