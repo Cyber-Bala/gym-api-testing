@@ -1,431 +1,512 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { AppView } from '../layout/nav';
-import { Card, Badge, Stat, PageHeader } from '../ui/primitives';
-import { Button } from '../ui/Button';
+import { Card, Badge, Stat, ProgressBar, EmptyState } from '../ui/primitives';
+import { Button, IconButton } from '../ui/Button';
+import { api } from '../lib/api';
+import { cn } from '../lib/cn';
 import {
-  Calendar,
-  CreditCard,
   Activity,
-  Users,
+  AlertTriangle,
   Award,
-  ShieldAlert,
-  GraduationCap,
-  Sparkles,
-  ArrowRight,
+  BarChart3,
+  Calendar,
+  CheckCircle2,
   Clock,
-  FileSpreadsheet,
-  HeartPulse,
-  Shield,
-  TrendingUp,
+  CreditCard,
+  Flame,
+  GraduationCap,
+  IndianRupee,
+  RefreshCw,
+  ShieldAlert,
+  Timer,
+  Users,
 } from 'lucide-react';
 
 interface HomeDashboardProps {
   onNavigate: (view: AppView) => void;
 }
 
+interface LiveOccupancy {
+  currentCount: number;
+  maxCapacity: number;
+  occupancyPercentage: number;
+}
+
+interface DaySlot {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  capacity: number;
+  bookedCount: number;
+  availableSpots: number;
+  occupancyPercentage: number;
+  isFull: boolean;
+  isActive: boolean;
+  isPast: boolean;
+  isBookedByCurrentUser?: boolean;
+}
+
+interface DaySlots {
+  date: string;
+  dayLabel: string;
+  dayOfWeek: string;
+  isToday: boolean;
+  totalCapacity: number;
+  totalBooked: number;
+  slots: DaySlot[];
+}
+
+interface AdminAnalytics {
+  totalRegisteredStudents: number;
+  totalHostellers: number;
+  totalDayScholars: number;
+  activeMembershipsCount: number;
+  todayTotalCheckIns: number;
+  currentLiveOccupants: number;
+  totalMonthlyRevenue: number;
+  totalViolationsThisMonth: number;
+  peakHours: { hour: string; count: number }[];
+}
+
+interface FloorStatus {
+  currentSlotName: string;
+  totalInsideCount: number;
+  overstayerCount: number;
+}
+
+interface BookingItem {
+  id: string;
+  slotDate: string;
+  startTime: string;
+  endTime: string;
+  bookingStatus: string;
+}
+
+interface MembershipInfo {
+  activeMembership?: {
+    planName: string;
+    daysRemaining: number;
+    isActive: boolean;
+  } | null;
+}
+
+const formatTime12h = (timeStr?: string) => {
+  if (!timeStr) return '';
+  const [hh, mm] = timeStr.split(':');
+  const hour = parseInt(hh, 10);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${mm} ${ampm}`;
+};
+
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
   const { user } = useAuth();
-  const [liveOccupancy, setLiveOccupancy] = useState<number | null>(null);
-  const [upcomingBooking, setUpcomingBooking] = useState<any | null>(null);
+  const [live, setLive] = useState<LiveOccupancy | null>(null);
+  const [today, setToday] = useState<DaySlots | null>(null);
+  const [floor, setFloor] = useState<FloorStatus | null>(null);
+  const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
+  const [bookings, setBookings] = useState<BookingItem[]>([]);
+  const [membership, setMembership] = useState<MembershipInfo | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const isStudent = user?.role === 'student' || user?.personType === 'student';
+  const isTrainer = user?.role === 'trainer';
+  const isAdmin = user ? ['admin', 'super_admin'].includes(user.role) : false;
+  const isStaffOrVIP = user ? ['staff', 'authorized_person'].includes(user.role) : false;
+
+  const load = useCallback(async () => {
+    const jobs: Promise<void>[] = [];
+
+    jobs.push(
+      api
+        .get<LiveOccupancy>('/api/v1/access/live-occupancy')
+        .then((d) => setLive(d))
+        .catch(() => undefined)
+    );
+
+    jobs.push(
+      api
+        .get<DaySlots>('/api/v1/booking/slots', {
+          params: { date: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) },
+        })
+        .then((d) => setToday(d))
+        .catch(() => undefined)
+    );
+
+    if (isStudent) {
+      jobs.push(
+        api
+          .get<BookingItem[]>('/api/v1/booking/my-bookings')
+          .then((d) => setBookings(Array.isArray(d) ? d : []))
+          .catch(() => undefined)
+      );
+      jobs.push(
+        api
+          .get<MembershipInfo>('/api/v1/membership/my-membership')
+          .then((d) => setMembership(d))
+          .catch(() => undefined)
+      );
+    }
+
+    if (isTrainer || isAdmin) {
+      jobs.push(
+        api
+          .get<FloorStatus>('/api/v1/floor/status')
+          .then((d) => setFloor(d))
+          .catch(() => undefined)
+      );
+    }
+
+    if (isAdmin) {
+      jobs.push(
+        api
+          .get<AdminAnalytics>('/api/v1/admin/analytics')
+          .then((d) => setAnalytics(d))
+          .catch(() => undefined)
+      );
+    }
+
+    await Promise.all(jobs);
+    setLastUpdated(new Date());
+  }, [isStudent, isTrainer, isAdmin]);
 
   useEffect(() => {
-    const fetchQuickSummary = async () => {
-      try {
-        const occRes = await fetch('/api/v1/access/live-occupancy', { credentials: 'include' });
-        const occData = await occRes.json();
-        if (occRes.ok && occData.data) {
-          setLiveOccupancy(occData.data.currentCount);
-        }
+    load();
+  }, [load]);
 
-        if (user && (user.role === 'student' || user.personType === 'student')) {
-          const bRes = await fetch('/api/v1/booking/my-bookings', { credentials: 'include' });
-          const bData = await bRes.json();
-          if (bRes.ok && bData.data && bData.data.length > 0) {
-            const activeB = bData.data.find((b: any) => b.bookingStatus === 'booked');
-            setUpcomingBooking(activeB || null);
-          }
-        }
-      } catch {
-        // background fetch
-      }
-    };
-    fetchQuickSummary();
-  }, [user]);
+  const greeting = useMemo(() => {
+    const hour = parseInt(
+      new Date().toLocaleString('en-US', {
+        timeZone: 'Asia/Kolkata',
+        hour: 'numeric',
+        hour12: false,
+      }),
+      10
+    );
+    if (hour < 5) return 'Good night';
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }, []);
 
-  // Format 12-hour time helper
-  const formatTime12h = (timeStr?: string) => {
-    if (!timeStr) return '';
-    const [hh, mm] = timeStr.split(':');
-    const hour = parseInt(hh, 10);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const hour12 = hour % 12 || 12;
-    return `${hour12}:${mm} ${ampm}`;
-  };
+  const upcomingBooking = useMemo(
+    () => bookings.find((b) => b.bookingStatus === 'booked') || null,
+    [bookings]
+  );
 
-  const isStudent = user && (user.role === 'student' || user.personType === 'student');
-  const isTrainer = user && user.role === 'trainer';
-  const isAdmin = user && ['admin', 'super_admin'].includes(user.role);
-  const isSuperAdmin = user && user.role === 'super_admin';
-  const isStaffOrVIP = user && ['staff', 'authorized_person'].includes(user.role);
+  const passStatus = useMemo(() => {
+    if (!user) return '—';
+    if (user.studentDetails?.residency === 'hosteller') return 'Free access';
+    return membership?.activeMembership?.isActive ? membership.activeMembership.planName : 'No active pass';
+  }, [user, membership]);
+
+  const passHint = useMemo(() => {
+    if (!user) return undefined;
+    if (user.studentDetails?.residency === 'hosteller') return 'Hosteller inclusive access';
+    const mem = membership?.activeMembership;
+    return mem?.isActive ? `${mem.daysRemaining} days remaining` : 'Day scholar pass required to book';
+  }, [user, membership]);
+
+  const maxPeak = useMemo(
+    () => Math.max(...(analytics?.peakHours.map((p) => p.count) ?? [0]), 1),
+    [analytics]
+  );
+
+  const renderSlotCard = (slot: DaySlot) => (
+    <Card
+      key={slot.id}
+      className={cn(
+        'p-4 space-y-2.5',
+        slot.isBookedByCurrentUser && 'border-success/40 bg-success-muted/30'
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-text">
+          {formatTime12h(slot.startTime)} – {formatTime12h(slot.endTime)}
+        </span>
+        {slot.isBookedByCurrentUser ? (
+          <Badge tone="success">Your slot</Badge>
+        ) : slot.isPast ? (
+          <Badge tone="neutral">Passed</Badge>
+        ) : !slot.isActive ? (
+          <Badge tone="danger">Closed</Badge>
+        ) : slot.isFull ? (
+          <Badge tone="danger">Full</Badge>
+        ) : (
+          <Badge tone="success">{slot.availableSpots} open</Badge>
+        )}
+      </div>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between text-[11px] text-muted">
+          <span>
+            {slot.bookedCount} / {slot.capacity} booked
+          </span>
+          <span>{slot.occupancyPercentage}%</span>
+        </div>
+        <ProgressBar
+          value={slot.occupancyPercentage}
+          tone={slot.isFull ? 'danger' : slot.occupancyPercentage >= 75 ? 'warning' : 'success'}
+        />
+      </div>
+    </Card>
+  );
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <PageHeader
-        title={user ? `Welcome, ${user.name.split(' ')[0]}` : 'Gym Facility'}
-        badge={
-          user && (
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="page-title">
+              {greeting}, {user?.name.split(' ')[0] ?? 'there'}
+            </h1>
             <Badge tone="primary" className="capitalize font-mono text-xs">
-              {user.role.replace('_', ' ')}
+              {user?.role.replace('_', ' ') ?? 'signed out'}
             </Badge>
-          )
-        }
-        actions={
-          <Button variant="primary" size="sm" onClick={() => onNavigate('book')}>
-            <Calendar className="w-4 h-4 text-accent" />
-            <span>Book Slot</span>
-          </Button>
-        }
-      />
+          </div>
+          <p className="text-xs text-secondary">
+            Live facility analytics • Today's batch occupancy • Your status
+          </p>
+        </div>
 
-      {/* Student View */}
+        <div className="flex items-center gap-2">
+          {isStudent && (
+            <Button variant="primary" size="sm" onClick={() => onNavigate('book')}>
+              <Calendar className="w-4 h-4 text-accent" />
+              <span>Book a Slot</span>
+            </Button>
+          )}
+          <IconButton label="Refresh analytics" size="sm" onClick={load}>
+            <RefreshCw className="w-4 h-4" />
+          </IconButton>
+        </div>
+      </div>
+
+      {/* KPI Stats — Student */}
       {isStudent && (
-        <div className="space-y-5">
-          {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Stat
+            label="Live Occupancy"
+            value={live ? `${live.currentCount} / ${live.maxCapacity}` : '—'}
+            hint={live ? `${live.occupancyPercentage}% full right now` : undefined}
+            icon={<Activity className="w-4 h-4" />}
+          />
+          <Stat
+            label="Upcoming Booking"
+            value={upcomingBooking ? formatTime12h(upcomingBooking.startTime) : 'None'}
+            hint={upcomingBooking ? upcomingBooking.slotDate : '3-day window open'}
+            icon={<Clock className="w-4 h-4" />}
+          />
+          <Stat label="Membership" value={passStatus} hint={passHint} icon={<CreditCard className="w-4 h-4" />} />
+          <Stat
+            label="Disciplinary"
+            value={user?.studentDetails?.isBanned ? 'Banned' : `${user?.studentDetails?.violationCount ?? 0} strikes`}
+            hint={user?.studentDetails?.isBanned ? '3-strike suspension active' : '3-strike policy'}
+            icon={<ShieldAlert className="w-4 h-4" />}
+          />
+        </div>
+      )}
+
+      {/* KPI Stats — Trainer */}
+      {isTrainer && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Stat
+            label="On the Floor"
+            value={floor ? String(floor.totalInsideCount) : live ? String(live.currentCount) : '—'}
+            hint={floor ? floor.currentSlotName || undefined : undefined}
+            icon={<Users className="w-4 h-4" />}
+          />
+          <Stat
+            label="Overstayers"
+            value={floor ? String(floor.overstayerCount) : '—'}
+            hint={floor && floor.overstayerCount > 0 ? 'Exceeded 75 min limit' : 'Within limits'}
+            icon={<Timer className="w-4 h-4" />}
+          />
+          <Stat
+            label="Booked Today"
+            value={today ? `${today.totalBooked} / ${today.totalCapacity}` : '—'}
+            icon={<Calendar className="w-4 h-4" />}
+          />
+          <Stat
+            label="Live Occupancy"
+            value={live ? `${live.currentCount} / ${live.maxCapacity}` : '—'}
+            hint={live ? `${live.occupancyPercentage}% full` : undefined}
+            icon={<Activity className="w-4 h-4" />}
+          />
+        </div>
+      )}
+
+      {/* KPI Stats — Admin */}
+      {isAdmin && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Stat
-              label="Residency"
-              value={user?.studentDetails?.residency === 'hosteller' ? 'Hosteller (Free)' : 'Day Scholar'}
+              label="Registered Students"
+              value={analytics ? analytics.totalRegisteredStudents.toLocaleString() : '—'}
+              hint={
+                analytics
+                  ? `${analytics.totalHostellers.toLocaleString()} hostellers • ${analytics.totalDayScholars.toLocaleString()} day scholars`
+                  : undefined
+              }
+              icon={<GraduationCap className="w-4 h-4" />}
+            />
+            <Stat
+              label="Active Memberships"
+              value={analytics ? String(analytics.activeMembershipsCount) : '—'}
               icon={<CreditCard className="w-4 h-4" />}
             />
             <Stat
-              label="Live Gym Occupancy"
-              value={liveOccupancy !== null ? `${liveOccupancy} / 100` : '—'}
-              icon={<Activity className="w-4 h-4" />}
-            />
-            <Stat
-              label="Disciplinary Status"
-              value={user?.studentDetails?.isBanned ? 'Banned' : `${user?.studentDetails?.violationCount || 0} Strikes`}
-              icon={<ShieldAlert className="w-4 h-4" />}
-            />
-          </div>
-
-          {/* Next Workout Card or Booking CTA */}
-          {upcomingBooking ? (
-            <Card className="border-success/30 bg-success-muted/30 p-5 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Badge tone="success">Confirmed Slot</Badge>
-                    <span className="text-xs font-mono text-muted">{upcomingBooking.slotDate}</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-text flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-success" />
-                    <span>
-                      {formatTime12h(upcomingBooking.startTime)} – {formatTime12h(upcomingBooking.endTime)}
-                    </span>
-                  </h3>
-                </div>
-
-                <Button variant="outline" size="sm" onClick={() => onNavigate('book')}>
-                  <span>View Bookings</span>
-                </Button>
-              </div>
-            </Card>
-          ) : (
-            <Card className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="font-bold text-sm text-text">No workout booked for today</h3>
-                <p className="text-xs text-secondary mt-0.5">3-day rolling booking window is open.</p>
-              </div>
-              <Button variant="primary" size="sm" onClick={() => onNavigate('book')}>
-                <Calendar className="w-4 h-4 text-accent" />
-                <span>Reserve Slot</span>
-              </Button>
-            </Card>
-          )}
-
-          {/* Quick Action Navigation Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Card
-              interactive
-              onClick={() => onNavigate('book')}
-              className="p-4 flex items-center justify-between"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-primary-muted text-primary">
-                  <Calendar className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-xs text-text">Book Workout Slot</h4>
-                  <p className="text-[11px] text-muted">10 Daily Batches</p>
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-muted" />
-            </Card>
-
-            {user?.studentDetails?.residency !== 'hosteller' && (
-              <Card
-                interactive
-                onClick={() => onNavigate('memberships')}
-                className="p-4 flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-primary-muted text-primary">
-                    <CreditCard className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-xs text-text">Gym Passes</h4>
-                    <p className="text-[11px] text-muted">1M / 3M / 1Y Plans</p>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-muted" />
-              </Card>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Trainer View */}
-      {isTrainer && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Stat
-              label="Floor Occupants"
-              value={liveOccupancy !== null ? `${liveOccupancy} / 100` : '—'}
+              label="Check-ins Today"
+              value={analytics ? String(analytics.todayTotalCheckIns) : '—'}
               icon={<Users className="w-4 h-4" />}
             />
             <Stat
-              label="Floor Supervision"
-              value="Active"
-              icon={<Activity className="w-4 h-4" />}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card interactive onClick={() => onNavigate('floor_management')} className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-primary-muted text-primary">
-                  <Users className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-xs text-text">Gym Floor</h4>
-                  <p className="text-[11px] text-muted">Active Occupants</p>
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-muted" />
-            </Card>
-
-            <Card interactive onClick={() => onNavigate('trainer_shifts')} className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-primary-muted text-primary">
-                  <Award className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-xs text-text">Shifts & Timesheet</h4>
-                  <p className="text-[11px] text-muted">Turnstile Scan Logs</p>
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-muted" />
-            </Card>
-
-            <Card interactive onClick={() => onNavigate('live_attendance')} className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-primary-muted text-primary">
-                  <Activity className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-xs text-text">Live Turnstiles</h4>
-                  <p className="text-[11px] text-muted">Biometric Scans</p>
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-muted" />
-            </Card>
-
-            <Card interactive onClick={() => onNavigate('book')} className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-primary-muted text-primary">
-                  <Calendar className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-xs text-text">Slot Bookings</h4>
-                  <p className="text-[11px] text-muted">Daily Schedule</p>
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-muted" />
-            </Card>
-          </div>
-        </div>
-      )}
-
-      {/* Admin / Super Admin View */}
-      {isAdmin && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Stat
               label="Live Occupancy"
-              value={liveOccupancy !== null ? `${liveOccupancy} / 100` : '—'}
+              value={live ? `${live.currentCount} / ${live.maxCapacity}` : '—'}
+              hint={live ? `${live.occupancyPercentage}% full` : undefined}
               icon={<Activity className="w-4 h-4" />}
             />
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Stat
-              label="Booking Window"
-              value="3 Days (10 Slots)"
-              icon={<Calendar className="w-4 h-4" />}
+              label="Revenue This Month"
+              value={analytics ? `₹${analytics.totalMonthlyRevenue.toLocaleString('en-IN')}` : '—'}
+              icon={<IndianRupee className="w-4 h-4" />}
             />
             <Stat
-              label="Disciplinary Engine"
-              value="3 Strikes Policy"
+              label="Violations This Month"
+              value={analytics ? String(analytics.totalViolationsThisMonth) : '—'}
               icon={<ShieldAlert className="w-4 h-4" />}
             />
             <Stat
-              label="Archival Storage"
-              value="Parquet/Zstd"
-              icon={<FileSpreadsheet className="w-4 h-4" />}
+              label="Overstayers Now"
+              value={floor ? String(floor.overstayerCount) : '—'}
+              hint={floor && floor.overstayerCount > 0 ? 'Needs checkout' : 'All clear'}
+              icon={<Timer className="w-4 h-4" />}
+            />
+            <Stat
+              label="Booked Today"
+              value={today ? `${today.totalBooked} / ${today.totalCapacity}` : '—'}
+              hint={today ? `${today.dayOfWeek} schedule` : undefined}
+              icon={<Calendar className="w-4 h-4" />}
             />
           </div>
+        </>
+      )}
 
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted px-1">
-              Management Modules
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <Card interactive onClick={() => onNavigate('live_attendance')} className="p-3.5 flex items-center justify-between">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-2 rounded-xl bg-primary-muted text-primary shrink-0">
-                    <Activity className="w-4 h-4" />
-                  </div>
-                  <span className="font-bold text-xs text-text truncate">Live Attendance</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-muted shrink-0" />
-              </Card>
-
-              <Card interactive onClick={() => onNavigate('floor_management')} className="p-3.5 flex items-center justify-between">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-2 rounded-xl bg-primary-muted text-primary shrink-0">
-                    <Users className="w-4 h-4" />
-                  </div>
-                  <span className="font-bold text-xs text-text truncate">Gym Floor & Overstayers</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-muted shrink-0" />
-              </Card>
-
-              <Card interactive onClick={() => onNavigate('students')} className="p-3.5 flex items-center justify-between">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-2 rounded-xl bg-primary-muted text-primary shrink-0">
-                    <GraduationCap className="w-4 h-4" />
-                  </div>
-                  <span className="font-bold text-xs text-text truncate">Student Directory</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-muted shrink-0" />
-              </Card>
-
-              <Card interactive onClick={() => onNavigate('violations')} className="p-3.5 flex items-center justify-between">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-2 rounded-xl bg-primary-muted text-primary shrink-0">
-                    <ShieldAlert className="w-4 h-4" />
-                  </div>
-                  <span className="font-bold text-xs text-text truncate">Violations & Strikes</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-muted shrink-0" />
-              </Card>
-
-              <Card interactive onClick={() => onNavigate('reports')} className="p-3.5 flex items-center justify-between">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-2 rounded-xl bg-primary-muted text-primary shrink-0">
-                    <FileSpreadsheet className="w-4 h-4" />
-                  </div>
-                  <span className="font-bold text-xs text-text truncate">Institutional Reports</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-muted shrink-0" />
-              </Card>
-
-              <Card interactive onClick={() => onNavigate('analytics')} className="p-3.5 flex items-center justify-between">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-2 rounded-xl bg-primary-muted text-primary shrink-0">
-                    <TrendingUp className="w-4 h-4" />
-                  </div>
-                  <span className="font-bold text-xs text-text truncate">Analytics & Blackouts</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-muted shrink-0" />
-              </Card>
-
-              <Card interactive onClick={() => onNavigate('authorized_persons')} className="p-3.5 flex items-center justify-between">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-2 rounded-xl bg-primary-muted text-primary shrink-0">
-                    <Shield className="w-4 h-4" />
-                  </div>
-                  <span className="font-bold text-xs text-text truncate">Authorized VIP Guests</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-muted shrink-0" />
-              </Card>
-
-              <Card interactive onClick={() => onNavigate('conflicts')} className="p-3.5 flex items-center justify-between">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-2 rounded-xl bg-primary-muted text-primary shrink-0">
-                    <ShieldAlert className="w-4 h-4" />
-                  </div>
-                  <span className="font-bold text-xs text-text truncate">Access Conflicts</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-muted shrink-0" />
-              </Card>
-
-              {isSuperAdmin && (
-                <Card interactive onClick={() => onNavigate('lifecycle')} className="p-3.5 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="p-2 rounded-xl bg-accent-muted text-accent shrink-0">
-                      <Sparkles className="w-4 h-4" />
-                    </div>
-                    <span className="font-bold text-xs text-text truncate">Data Lifecycle Archive</span>
-                  </div>
-                  <ArrowRight className="w-3.5 h-3.5 text-muted shrink-0" />
-                </Card>
-              )}
-            </div>
-          </div>
+      {/* KPI Stats — Staff / VIP */}
+      {isStaffOrVIP && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Stat
+            label="Access Privilege"
+            value={user?.role === 'staff' ? 'Faculty Wellness' : 'VIP Access'}
+            icon={<Award className="w-4 h-4" />}
+          />
+          <Stat
+            label="Live Occupancy"
+            value={live ? `${live.currentCount} / ${live.maxCapacity}` : '—'}
+            hint={live ? `${live.occupancyPercentage}% full` : undefined}
+            icon={<Activity className="w-4 h-4" />}
+          />
+          <Stat
+            label="Booked Today"
+            value={today ? `${today.totalBooked} / ${today.totalCapacity}` : '—'}
+            icon={<Calendar className="w-4 h-4" />}
+          />
         </div>
       )}
 
-      {/* Staff / VIP View */}
-      {isStaffOrVIP && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Stat
-              label="Access Privilege"
-              value={user?.role === 'staff' ? 'Faculty Wellness' : 'VIP Access'}
-              icon={<HeartPulse className="w-4 h-4" />}
-            />
-            <Stat
-              label="Live Occupancy"
-              value={liveOccupancy !== null ? `${liveOccupancy} / 100` : '—'}
-              icon={<Activity className="w-4 h-4" />}
-            />
-            <Stat
-              label="Biometric Status"
-              value="Verified"
-              icon={<Shield className="w-4 h-4" />}
-            />
+      {/* Role-specific highlights */}
+      {isStudent && upcomingBooking && (
+        <Card className="p-4 border-success/40 bg-success-muted/30 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-3 flex-1">
+            <div className="p-2.5 rounded-xl bg-success text-white shrink-0">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-text">
+                Workout confirmed for {upcomingBooking.slotDate}
+              </p>
+              <p className="text-[11px] text-secondary">
+                {formatTime12h(upcomingBooking.startTime)} – {formatTime12h(upcomingBooking.endTime)} • Show your ID at the turnstile
+              </p>
+            </div>
           </div>
+        </Card>
+      )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Card interactive onClick={() => onNavigate('book')} className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-primary-muted text-primary">
-                  <Calendar className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-xs text-text">Slot Bookings</h4>
-                  <p className="text-[11px] text-muted">View Daily Batches</p>
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-muted" />
-            </Card>
+      {isTrainer && floor && floor.overstayerCount > 0 && (
+        <Card className="p-4 flex items-center gap-3 border-warning/30 bg-warning-muted/30">
+          <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+          <div className="flex-1">
+            <p className="text-xs font-bold text-text">
+              {floor.overstayerCount} overstayer{floor.overstayerCount > 1 ? 's' : ''} on the floor
+            </p>
+            <p className="text-[11px] text-secondary">
+              Sessions past the 75-minute workout limit need manual checkout.
+            </p>
+          </div>
+          <Button variant="outline" size="xs" onClick={() => onNavigate('floor_management')}>
+            Review
+          </Button>
+        </Card>
+      )}
+
+      {/* Today's Batch Occupancy */}
+      <Card className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-primary" />
+            <h3 className="font-bold text-sm text-text">Today's Batch Occupancy</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge tone="primary">{today?.dayLabel ?? 'Today'}</Badge>
+            {lastUpdated && (
+              <span className="text-[10px] text-muted font-mono">
+                {lastUpdated.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} IST
+              </span>
+            )}
           </div>
         </div>
+
+        {!today || today.slots.length === 0 ? (
+          <EmptyState
+            icon={<Calendar className="w-6 h-6" />}
+            title="No batches for today"
+            description="The slot schedule is generated for the 3-day rolling window."
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {today.slots.map(renderSlotCard)}
+          </div>
+        )}
+      </Card>
+
+      {/* Peak Usage Hours — Admin */}
+      {isAdmin && analytics && analytics.peakHours.length > 0 && (
+        <Card className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Flame className="w-4 h-4 text-accent" />
+            <h3 className="font-bold text-sm text-text">Peak Usage Hours</h3>
+          </div>
+          <div className="space-y-2">
+            {analytics.peakHours.map((p) => (
+              <div key={p.hour} className="flex items-center gap-3">
+                <span className="w-28 shrink-0 text-[11px] text-muted font-mono">{p.hour}</span>
+                <div className="flex-1 h-2 rounded-full bg-border-subtle overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-300"
+                    style={{ width: `${Math.round((p.count / maxPeak) * 100)}%` }}
+                  />
+                </div>
+                <span className="w-8 text-right text-[11px] font-bold text-text">{p.count}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
     </div>
   );
 };
-
-

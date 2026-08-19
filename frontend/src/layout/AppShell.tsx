@@ -118,8 +118,8 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             aria-label="Close menu"
             onClick={() => setDrawerOpen(false)}
           />
-          <aside className="relative flex h-full w-[min(20rem,86vw)] flex-col border-r border-white/5 bg-surface pt-[var(--safe-top)] shadow-2xl animate-in slide-in-from-left duration-200">
-            <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
+          <aside className="relative flex h-full w-[min(20rem,86vw)] flex-col border-r border-border bg-surface pt-[var(--safe-top)] shadow-2xl animate-in slide-in-from-left duration-200">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white shadow-sm">
                   <Dumbbell className="h-4 w-4" />
@@ -156,7 +156,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
               })}
             </nav>
 
-            <div className="border-t border-white/5 p-4">
+            <div className="border-t border-border p-4">
               <ThemeToggle className="w-full justify-center" />
             </div>
           </aside>
@@ -166,8 +166,8 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
       {/* Main Desktop Grid */}
       <div className="flex-1 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
         {/* Desktop Sidebar Navigation */}
-        <aside className="sticky top-0 hidden h-screen flex-col border-r border-white/5 bg-surface pt-[var(--safe-top)] lg:flex">
-          <div className="flex items-center gap-3 border-b border-white/5 px-5 py-4">
+        <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-surface pt-[var(--safe-top)] lg:flex">
+          <div className="flex items-center gap-3 border-b border-border px-5 py-4">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shadow-sm shrink-0">
               <Dumbbell className="h-5 w-5" />
             </div>
@@ -194,7 +194,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             })}
           </nav>
 
-          <div className="border-t border-white/5 p-4">
+          <div className="border-t border-border p-4">
             <ThemeToggle className="w-full justify-center" />
           </div>
         </aside>
@@ -202,7 +202,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
         {/* Desktop Main Content Area */}
         <div className="flex min-h-screen min-w-0 flex-col">
           {/* Desktop Top Header Bar */}
-          <header className="sticky top-0 z-30 hidden items-center justify-between border-b border-white/5 bg-surface px-8 py-3 lg:flex shadow-sm">
+          <header className="sticky top-0 z-30 hidden items-center justify-between border-b border-border bg-surface px-8 py-3 lg:flex shadow-sm">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-muted">Portal</span>
               <span className="text-muted">/</span>
@@ -232,7 +232,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             {children}
           </main>
 
-          <footer className="hidden border-t border-white/5 px-8 py-4 text-xs text-muted lg:block bg-surface">
+          <footer className="hidden border-t border-border px-8 py-4 text-xs text-muted lg:block bg-surface">
             <div className="mx-auto flex max-w-wide items-center justify-between">
               <p>© 2026 Rajalakshmi Engineering College. All rights reserved.</p>
               <div className="flex items-center gap-3 font-mono text-[11px]">
@@ -249,7 +249,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
 
       {/* Mobile Bottom Navigation Bar */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/5 bg-surface shadow-2xl pb-[var(--safe-bottom)] lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface shadow-2xl pb-[var(--safe-bottom)] lg:hidden"
         aria-label="Primary Mobile Navigation"
       >
         <div className="flex h-14 items-center justify-around px-2 max-w-md mx-auto">

@@ -153,7 +153,7 @@ export const TrainerTimesheet: React.FC = () => {
 
               <div className="overflow-x-auto rounded-xl bg-surface-elevated shadow-sm">
                 <table className="w-full text-xs text-left">
-                  <thead className="text-muted font-semibold border-b border-white/5">
+                  <thead className="text-muted font-semibold border-b border-border">
                     <tr>
                       <th className="p-3">Date</th>
                       <th className="p-3">Entry Time</th>

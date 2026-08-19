@@ -244,7 +244,7 @@ export const LiveOccupancyMonitor: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs text-muted">
+                    <div className="pt-2 border-t border-border flex items-center justify-between text-xs text-muted">
                       <span className="flex items-center gap-1 text-secondary font-medium">
                         <Clock className="w-3.5 h-3.5 text-success" />
                         <span>Inside: {occ.minutesInside} min</span>

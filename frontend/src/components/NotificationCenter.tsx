@@ -149,7 +149,7 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
       {/* Popover Dropdown */}
       {isOpen && (
         <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-surface-elevated shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="flex items-center justify-between pb-2.5 border-b border-white/5">
+          <div className="flex items-center justify-between pb-2.5 border-b border-border">
             <div className="flex items-center gap-2">
               <Bell className="w-4 h-4 text-primary" />
               <h4 className="font-bold text-sm text-text">Notifications</h4>

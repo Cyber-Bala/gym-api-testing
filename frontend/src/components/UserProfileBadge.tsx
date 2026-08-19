@@ -103,7 +103,7 @@ export const UserProfileBadge: React.FC<UserProfileBadgeProps> = ({ compact = fa
       {dropdownOpen && (
         <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-surface-elevated shadow-2xl p-4 space-y-3.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
           {/* User Details */}
-          <div className="space-y-1.5 pb-3 border-b border-white/5">
+          <div className="space-y-1.5 pb-3 border-b border-border">
             <div className="flex items-center justify-between">
               <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${badge.color}`}>
                 {badge.label}
