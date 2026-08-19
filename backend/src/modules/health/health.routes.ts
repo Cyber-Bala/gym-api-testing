@@ -3,5 +3,6 @@ import { getLiveness, getReadiness } from './health.controller.js';
 
 export const healthRouter = Router();
 
+healthRouter.get('/', getLiveness);
 healthRouter.get('/live', getLiveness);
 healthRouter.get('/ready', getReadiness);
