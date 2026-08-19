@@ -5,33 +5,33 @@
 :root {
   --color-primary: #4A154B;
   --color-primary-hover: #380E39;
-  --color-primary-muted: #F5EDF5;
+  --color-primary-muted: #EAD0F7;
   --color-accent: #B89324;
   --color-accent-hover: #9C7C1B;
   --color-accent-muted: #FBF6E5;
-  --color-background: #F8FAFC;
+  --color-background: #f0defa;
   --color-surface: #FFFFFF;
-  --color-surface-elevated: #FFFFFF;
-  --color-border: #E2E8F0;
-  --color-border-subtle: #F1F5F9;
-  --color-text: #0F172A;
-  --color-text-secondary: #475569;
-  --color-text-muted: #94A3B8;
+  --color-surface-elevated: #FAF4FD;
+  --color-border: #E2D1ED;
+  --color-border-subtle: #F6EBFC;
+  --color-text: #1C0F24;
+  --color-text-secondary: #584B61;
+  --color-text-muted: #8E7E97;
   --color-success: #059669;
   --color-success-muted: #ECFDF5;
   --color-warning: #D97706;
   --color-warning-muted: #FFFBEB;
   --color-danger: #DC2626;
   --color-danger-muted: #FEF2F2;
-  --color-overlay: rgba(15, 23, 42, 0.45);
+  --color-overlay: rgba(28, 15, 36, 0.5);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .dark, [data-theme="dark"] {
-  --color-primary: #C084FC;
-  --color-primary-hover: #D8B4FE;
-  --color-primary-muted: rgba(192, 132, 252, 0.12);
+  --color-primary: #701fa6;
+  --color-primary-hover: #892ec9;
+  --color-primary-muted: rgba(112, 31, 166, 0.25);
   --color-accent: #FACC15;
   --color-accent-hover: #FDE047;
   --color-accent-muted: rgba(250, 204, 21, 0.12);
