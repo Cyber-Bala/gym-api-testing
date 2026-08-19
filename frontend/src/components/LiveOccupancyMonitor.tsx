@@ -13,6 +13,10 @@ import {
   LogOut,
   LogIn,
 } from 'lucide-react';
+import { Card, Badge, ProgressBar, Alert, EmptyState } from '../ui/primitives';
+import { Button, IconButton } from '../ui/Button';
+import { Input, Select } from '../ui/Input';
+import { cn } from '../lib/cn';
 
 interface LiveGymOccupant {
   sessionId: string;
@@ -156,84 +160,76 @@ export const LiveOccupancyMonitor: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Header & Occupancy Summary */}
-      <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 lg:p-8 space-y-6">
+      <Card className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-rec-purple dark:text-rec-gold" />
-              <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+              <Activity className="w-5 h-5 text-primary" />
+              <h3 className="font-bold text-base sm:text-lg text-text">
                 Live Gym Occupancy & Attendance
               </h3>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            <p className="text-xs text-secondary mt-0.5">
               Real-time Turnstile Biometric Stream (ZKBio CV) • Capacity Threshold: 100
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleTriggerNoShows}
-              disabled={runningNoShow}
-              className="px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-xs font-semibold hover:bg-amber-100 transition-colors flex items-center gap-1.5"
-              title="Evaluate No-Shows for ended slots"
+              loading={runningNoShow}
+              className="border-warning/30 text-warning hover:bg-warning-muted"
             >
-              <Zap className={`w-3.5 h-3.5 ${runningNoShow ? 'animate-spin' : ''}`} />
+              <Zap className="w-3.5 h-3.5" />
               <span>Run No-Show Audit</span>
-            </button>
+            </Button>
 
-            <button
+            <IconButton
+              label="Refresh occupancy"
+              size="sm"
               onClick={fetchLiveOccupancy}
               disabled={loading}
-              className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300"
-              title="Refresh occupancy"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            </IconButton>
           </div>
         </div>
 
         {/* No-Show Alert */}
         {noShowMessage && (
-          <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-200 text-xs flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>{noShowMessage}</span>
-          </div>
+          <Alert tone="warning" onDismiss={() => setNoShowMessage(null)}>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-warning shrink-0" />
+              <span className="font-medium">{noShowMessage}</span>
+            </div>
+          </Alert>
         )}
 
         {/* Occupancy Progress Gauge */}
         {stats && (
-          <div className="p-6 rounded-2xl bg-gray-50 dark:bg-[#202024] border border-gray-100 dark:border-gray-800 space-y-3">
+          <div className="p-5 rounded-2xl border border-border bg-border-subtle/40 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-rec-purple dark:text-rec-gold" />
-                <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                <Users className="w-4 h-4 text-primary" />
+                <span className="text-xs font-bold uppercase tracking-wider text-text">
                   Inside Gym Right Now
                 </span>
               </div>
               <div className="text-right">
-                <span className="text-2xl font-black text-gray-900 dark:text-white">
+                <span className="text-2xl font-black text-text">
                   {stats.currentCount}
                 </span>
-                <span className="text-xs text-gray-500 font-medium"> / {stats.maxCapacity} Capacity</span>
+                <span className="text-xs text-muted font-medium"> / {stats.maxCapacity} Capacity</span>
               </div>
             </div>
 
-            <div className="w-full h-3 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  stats.occupancyPercentage >= 90
-                    ? 'bg-red-500'
-                    : stats.occupancyPercentage >= 70
-                    ? 'bg-amber-500'
-                    : 'bg-emerald-500'
-                }`}
-                style={{ width: `${Math.max(2, stats.occupancyPercentage)}%` }}
-              />
-            </div>
+            <ProgressBar value={stats.occupancyPercentage} />
 
-            <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 pt-1">
-              <span>Real-time face verification</span>
-              <span>{stats.maxCapacity - stats.currentCount} remaining slots</span>
+            <div className="flex items-center justify-between text-xs text-muted pt-1">
+              <span>Real-time face verification stream</span>
+              <span className="font-medium text-text">{stats.maxCapacity - stats.currentCount} spots remaining</span>
             </div>
           </div>
         )}
@@ -241,35 +237,38 @@ export const LiveOccupancyMonitor: React.FC = () => {
         {/* Active Occupants Grid */}
         {stats && (
           <div className="space-y-3">
-            <h4 className="font-bold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+            <h4 className="font-bold text-xs text-muted uppercase tracking-wider">
               Current Gym Occupants ({stats.occupants.length})
             </h4>
 
             {stats.occupants.length === 0 ? (
-              <div className="p-8 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800 text-center text-xs text-gray-500 dark:text-gray-400">
-                Gym is currently empty. Use the simulator below to simulate face turnstile check-ins!
-              </div>
+              <EmptyState
+                icon={<Users className="w-6 h-6" />}
+                title="Gym is currently empty"
+                description="Use the turnstile simulator below to simulate face biometric check-in scans."
+              />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {stats.occupants.map((occ) => (
                   <div
                     key={occ.sessionId}
-                    className="p-4 rounded-2xl bg-white dark:bg-[#202024] border border-gray-200 dark:border-gray-700/80 shadow-sm flex flex-col justify-between space-y-3"
+                    className="p-4 rounded-2xl border border-border bg-surface flex flex-col justify-between space-y-3 shadow-sm hover:border-primary/40 transition-colors"
                   >
                     <div className="flex items-start justify-between">
                       <div>
-                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-rec-purple-50 dark:bg-rec-purple-900/40 text-rec-purple dark:text-rec-gold border border-rec-purple-200 dark:border-rec-purple-800/40">
-                          {occ.role}
-                        </span>
-                        <h5 className="font-bold text-sm text-gray-900 dark:text-white mt-1">
+                        <Badge tone="primary">{occ.role}</Badge>
+                        <h5 className="font-bold text-sm text-text mt-1.5">
                           {occ.name}
                         </h5>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-0.5">
+                        <p className="text-xs text-muted font-mono mt-0.5">
                           {occ.email}
                         </p>
                       </div>
 
-                      <button
+                      <IconButton
+                        label="Simulate Exit"
+                        size="sm"
+                        variant="danger"
                         onClick={() =>
                           handleSimulateScan({
                             identifierType: 'email',
@@ -277,16 +276,14 @@ export const LiveOccupancyMonitor: React.FC = () => {
                             eventType: 'exit',
                           })
                         }
-                        className="p-1.5 rounded-lg border border-red-200 dark:border-red-900/40 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 text-xs transition-colors"
-                        title="Simulate Exit for this user"
                       >
                         <LogOut className="w-3.5 h-3.5" />
-                      </button>
+                      </IconButton>
                     </div>
 
-                    <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-xs text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                    <div className="pt-2 border-t border-border flex items-center justify-between text-xs text-muted">
+                      <span className="flex items-center gap-1 text-secondary font-medium">
+                        <Clock className="w-3.5 h-3.5 text-success" />
                         <span>Inside: {occ.minutesInside} min</span>
                       </span>
                       <span className="text-[11px] font-mono">
@@ -299,17 +296,17 @@ export const LiveOccupancyMonitor: React.FC = () => {
             )}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Hardware Biometric Turnstile Simulator */}
-      <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 lg:p-8 space-y-6">
+      <Card className="space-y-6">
         <div className="flex items-center gap-2">
-          <Scan className="w-5 h-5 text-rec-purple dark:text-rec-gold" />
+          <Scan className="w-5 h-5 text-primary" />
           <div>
-            <h3 className="font-bold text-base text-gray-900 dark:text-white">
+            <h3 className="font-bold text-base text-text">
               ZKBio CV Turnstile Hardware Simulator
             </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-secondary">
               Test real-time biometric face authentication, grace window validation, and exit duration tracking.
             </p>
           </div>
@@ -317,12 +314,13 @@ export const LiveOccupancyMonitor: React.FC = () => {
 
         {/* Quick Simulator Preset Buttons */}
         <div className="space-y-2">
-          <p className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+          <p className="text-xs font-bold text-muted uppercase tracking-wider">
             Quick Persona Scans
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
             <button
+              type="button"
               onClick={() =>
                 handleSimulateScan({
                   identifierType: 'roll_number',
@@ -330,19 +328,20 @@ export const LiveOccupancyMonitor: React.FC = () => {
                   eventType: 'entry',
                 })
               }
-              className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-rec-purple dark:hover:border-rec-gold bg-gray-50 dark:bg-[#202024] text-left transition-all group"
+              className="p-3.5 rounded-xl border border-border hover:border-primary/40 bg-surface text-left transition-colors"
             >
-              <div className="flex items-center justify-between text-xs font-bold text-gray-900 dark:text-white">
+              <div className="flex items-center justify-between text-xs font-bold text-text">
                 <span>Karthik (Hosteller)</span>
-                <LogIn className="w-3.5 h-3.5 text-rec-purple dark:text-rec-gold group-hover:scale-110 transition-transform" />
+                <LogIn className="w-3.5 h-3.5 text-primary" />
               </div>
-              <p className="text-[11px] text-gray-500 font-mono mt-0.5">Roll: 2024CS001</p>
-              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1 block">
+              <p className="text-[11px] text-muted font-mono mt-0.5">Roll: 2024CS001</p>
+              <span className="text-[10px] text-success font-semibold mt-1 block">
                 Simulate Face Entry
               </span>
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 handleSimulateScan({
                   identifierType: 'email',
@@ -350,19 +349,20 @@ export const LiveOccupancyMonitor: React.FC = () => {
                   eventType: 'entry',
                 })
               }
-              className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-rec-purple dark:hover:border-rec-gold bg-gray-50 dark:bg-[#202024] text-left transition-all group"
+              className="p-3.5 rounded-xl border border-border hover:border-primary/40 bg-surface text-left transition-colors"
             >
-              <div className="flex items-center justify-between text-xs font-bold text-gray-900 dark:text-white">
+              <div className="flex items-center justify-between text-xs font-bold text-text">
                 <span>Vignesh (Trainer)</span>
-                <LogIn className="w-3.5 h-3.5 text-rec-purple dark:text-rec-gold group-hover:scale-110 transition-transform" />
+                <LogIn className="w-3.5 h-3.5 text-primary" />
               </div>
-              <p className="text-[11px] text-gray-500 font-mono mt-0.5">Bypass Access</p>
-              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold mt-1 block">
+              <p className="text-[11px] text-muted font-mono mt-0.5">Bypass Access</p>
+              <span className="text-[10px] text-primary font-semibold mt-1 block">
                 Simulate Face Entry
               </span>
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 handleSimulateScan({
                   identifierType: 'staff_id',
@@ -370,19 +370,20 @@ export const LiveOccupancyMonitor: React.FC = () => {
                   eventType: 'entry',
                 })
               }
-              className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-rec-purple dark:hover:border-rec-gold bg-gray-50 dark:bg-[#202024] text-left transition-all group"
+              className="p-3.5 rounded-xl border border-border hover:border-primary/40 bg-surface text-left transition-colors"
             >
-              <div className="flex items-center justify-between text-xs font-bold text-gray-900 dark:text-white">
+              <div className="flex items-center justify-between text-xs font-bold text-text">
                 <span>Dr. Ramesh (Faculty)</span>
-                <LogIn className="w-3.5 h-3.5 text-rec-purple dark:text-rec-gold group-hover:scale-110 transition-transform" />
+                <LogIn className="w-3.5 h-3.5 text-primary" />
               </div>
-              <p className="text-[11px] text-gray-500 font-mono mt-0.5">Staff ID: REC-FAC-108</p>
-              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold mt-1 block">
+              <p className="text-[11px] text-muted font-mono mt-0.5">Staff ID: REC-FAC-108</p>
+              <span className="text-[10px] text-accent font-semibold mt-1 block">
                 Simulate Face Entry
               </span>
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 handleSimulateScan({
                   identifierType: 'roll_number',
@@ -390,14 +391,14 @@ export const LiveOccupancyMonitor: React.FC = () => {
                   eventType: 'entry',
                 })
               }
-              className="p-3 rounded-xl border border-red-200 dark:border-red-900/40 hover:border-red-400 bg-red-50/40 dark:bg-red-950/20 text-left transition-all group"
+              className="p-3.5 rounded-xl border border-danger/30 bg-danger-muted/20 hover:border-danger text-left transition-colors"
             >
-              <div className="flex items-center justify-between text-xs font-bold text-red-900 dark:text-red-300">
+              <div className="flex items-center justify-between text-xs font-bold text-danger">
                 <span>Unregistered User</span>
-                <UserX className="w-3.5 h-3.5 text-red-600" />
+                <UserX className="w-3.5 h-3.5 text-danger" />
               </div>
-              <p className="text-[11px] text-red-600/70 font-mono mt-0.5">Unknown Face</p>
-              <span className="text-[10px] text-red-600 font-semibold mt-1 block">
+              <p className="text-[11px] text-muted font-mono mt-0.5">Unknown Face</p>
+              <span className="text-[10px] text-danger font-semibold mt-1 block">
                 Test Denial Flow
               </span>
             </button>
@@ -405,104 +406,84 @@ export const LiveOccupancyMonitor: React.FC = () => {
         </div>
 
         {/* Custom Scan Trigger Form */}
-        <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#202024] border border-gray-100 dark:border-gray-800 space-y-3">
-          <p className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+        <div className="p-4 rounded-2xl border border-border bg-border-subtle/30 space-y-3">
+          <p className="text-xs font-bold text-muted uppercase tracking-wider">
             Custom Hardware Event
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-            <div>
-              <label className="font-medium text-gray-600 dark:text-gray-400 block mb-1">
-                Event Type
-              </label>
-              <select
-                value={eventType}
-                onChange={(e) => setEventType(e.target.value as any)}
-                className="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#18181B] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-              >
-                <option value="entry">Entry Turnstile (IN)</option>
-                <option value="exit">Exit Turnstile (OUT)</option>
-              </select>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs items-end">
+            <Select
+              label="Event Type"
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value as any)}
+            >
+              <option value="entry">Entry Turnstile (IN)</option>
+              <option value="exit">Exit Turnstile (OUT)</option>
+            </Select>
 
-            <div>
-              <label className="font-medium text-gray-600 dark:text-gray-400 block mb-1">
-                Identifier Type
-              </label>
-              <select
-                value={identifierType}
-                onChange={(e) => setIdentifierType(e.target.value as any)}
-                className="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#18181B] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-              >
-                <option value="roll_number">Roll Number</option>
-                <option value="staff_id">Staff ID</option>
-                <option value="email">Email</option>
-              </select>
-            </div>
+            <Select
+              label="Identifier Type"
+              value={identifierType}
+              onChange={(e) => setIdentifierType(e.target.value as any)}
+            >
+              <option value="roll_number">Roll Number</option>
+              <option value="staff_id">Staff ID</option>
+              <option value="email">Email</option>
+            </Select>
 
-            <div>
-              <label className="font-medium text-gray-600 dark:text-gray-400 block mb-1">
-                Identifier Value
-              </label>
-              <input
-                type="text"
-                value={customIdentifier}
-                onChange={(e) => setCustomIdentifier(e.target.value)}
-                placeholder="e.g. 2024CS001"
-                className="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#18181B] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-              />
-            </div>
+            <Input
+              label="Identifier Value"
+              type="text"
+              value={customIdentifier}
+              onChange={(e) => setCustomIdentifier(e.target.value)}
+              placeholder="e.g. 2024CS001"
+            />
 
-            <div className="flex items-end">
-              <button
-                onClick={() => handleSimulateScan()}
-                disabled={simulating}
-                className="w-full py-2 px-4 rounded-xl bg-rec-purple hover:bg-rec-purple-600 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rec-purple/20 transition-all disabled:opacity-50"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>{simulating ? 'Processing...' : 'Send Hardware Scan'}</span>
-              </button>
-            </div>
+            <Button
+              variant="primary"
+              size="md"
+              loading={simulating}
+              onClick={() => handleSimulateScan()}
+              className="w-full"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Send Hardware Scan</span>
+            </Button>
           </div>
         </div>
 
         {/* Live Scan Decision Result */}
         {scanResult && (
-          <div
-            className={`p-5 rounded-2xl border transition-all ${
-              scanResult.accessGranted
-                ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200'
-                : 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800/60 text-red-900 dark:text-red-200'
-            }`}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2">
+          <Alert tone={scanResult.accessGranted ? 'success' : 'danger'}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
                 {scanResult.accessGranted ? (
-                  <UserCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <UserCheck className="w-5 h-5 text-success shrink-0" />
                 ) : (
-                  <UserX className="w-5 h-5 text-red-600 dark:text-red-400" />
+                  <UserX className="w-5 h-5 text-danger shrink-0" />
                 )}
                 <div>
-                  <h4 className="font-bold text-sm">
+                  <h4 className="font-bold text-xs sm:text-sm">
                     {scanResult.accessGranted ? 'ACCESS GRANTED (Turnstile Unlocked)' : 'ACCESS DENIED (Turnstile Locked)'}
                   </h4>
                   <p className="text-xs opacity-90 mt-0.5">{scanResult.message}</p>
                 </div>
               </div>
 
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-black/10 dark:bg-white/10 uppercase">
+              <Badge tone={scanResult.accessGranted ? 'success' : 'danger'}>
                 {scanResult.eventType}
-              </span>
+              </Badge>
             </div>
 
             {scanResult.durationMinutes !== undefined && scanResult.durationMinutes > 0 && (
-              <div className="mt-3 pt-2 border-t border-emerald-200 dark:border-emerald-800/40 text-xs font-semibold">
+              <div className="mt-2.5 pt-2 border-t border-current/20 text-xs font-semibold">
                 Completed Workout Duration: {scanResult.durationMinutes} Minutes
               </div>
             )}
-          </div>
+          </Alert>
         )}
-      </div>
+      </Card>
     </div>
   );
 };
+

@@ -1,0 +1,294 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Dumbbell, Menu, MoreHorizontal, X, FileSpreadsheet } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { ThemeToggle } from '../components/ThemeToggle';
+import { UserProfileBadge } from '../components/UserProfileBadge';
+import { ExcelImportModal } from '../components/ExcelImportModal';
+import { cn } from '../lib/cn';
+import { AppView, MOBILE_PRIMARY, NavItem, visibleNav } from './nav';
+
+interface AppShellProps {
+  active: AppView;
+  onNavigate: (view: AppView) => void;
+  children: React.ReactNode;
+}
+
+export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children }) => {
+  const { user } = useAuth();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const items = useMemo(() => visibleNav(user?.role), [user?.role]);
+
+  const roleKey = user?.role ?? 'guest';
+  const primaryIds = MOBILE_PRIMARY[roleKey] ?? MOBILE_PRIMARY.guest;
+  const primary = primaryIds
+    .map((id) => items.find((i) => i.id === id))
+    .filter(Boolean) as NavItem[];
+  const overflow = items.filter((i) => !primaryIds.includes(i.id));
+
+  useEffect(() => {
+    setDrawerOpen(false);
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  }, [active]);
+
+  const groups = [
+    { title: 'Core Facility', ids: ['home', 'book', 'memberships'] as AppView[] },
+    {
+      title: 'Operations',
+      ids: ['live_attendance', 'floor_management', 'trainer_shifts', 'biometrics'] as AppView[],
+    },
+    {
+      title: 'Directory & People',
+      ids: ['students', 'authorized_persons', 'violations', 'conflicts'] as AppView[],
+    },
+    { title: 'Administration & Insights', ids: ['reports', 'analytics', 'lifecycle', 'health', 'uat_demo'] as AppView[] },
+  ];
+
+  const currentItem = items.find((i) => i.id === active) || items[0];
+  const isAdminOrTrainer = user && ['admin', 'super_admin', 'trainer'].includes(user.role);
+
+  const NavButton = ({ item, dense }: { item: NavItem; dense?: boolean }) => {
+    const Icon = item.icon;
+    const selected = active === item.id;
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          onNavigate(item.id);
+          setDrawerOpen(false);
+        }}
+        className={cn(
+          'flex w-full items-center gap-3 rounded-xl px-3 text-left font-semibold transition-colors',
+          dense ? 'h-11 text-xs' : 'h-10 text-xs',
+          selected
+            ? 'bg-primary text-white shadow-sm dark:text-slate-950 font-bold'
+            : 'text-secondary hover:bg-border-subtle hover:text-text'
+        )}
+      >
+        <Icon className={cn('h-4 w-4 shrink-0', selected ? 'text-accent' : 'text-muted')} />
+        <span className="truncate">{item.label}</span>
+      </button>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-background text-text flex flex-col">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-surface focus:p-3 focus:shadow-xl focus:border focus:border-border"
+      >
+        Skip to main content
+      </a>
+
+      {/* Mobile Top Sticky Bar */}
+      <header className="sticky top-0 z-40 border-b border-border bg-surface pt-[var(--safe-top)] lg:hidden">
+        <div className="flex h-14 items-center justify-between gap-2 px-4">
+          <button
+            type="button"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface text-secondary hover:bg-border-subtle hover:text-text"
+            aria-label="Open full menu"
+            onClick={() => setDrawerOpen(true)}
+          >
+            <Menu className="h-4 w-4" />
+          </button>
+
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-accent border border-accent/30 shrink-0">
+              <Dumbbell className="h-4 w-4" />
+            </div>
+            <span className="truncate text-xs font-bold text-text">
+              {currentItem ? currentItem.label : 'REC Gym'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <ThemeToggle compact />
+            <UserProfileBadge compact />
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile Drawer Sheet */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden animate-in fade-in duration-150">
+          <button
+            type="button"
+            className="absolute inset-0 bg-[var(--color-overlay)] backdrop-blur-sm"
+            aria-label="Close menu"
+            onClick={() => setDrawerOpen(false)}
+          />
+          <aside className="relative flex h-full w-[min(20rem,86vw)] flex-col border-r border-border bg-surface pt-[var(--safe-top)] shadow-2xl animate-in slide-in-from-left duration-200">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-accent border border-accent/30">
+                  <Dumbbell className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="font-bold text-xs text-text">REC College Gym</p>
+                  <p className="text-[10px] text-muted">Rajalakshmi</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setDrawerOpen(false)}
+                className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-border-subtle"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+              {groups.map((group) => {
+                const groupItems = items.filter((i) => group.ids.includes(i.id));
+                if (!groupItems.length) return null;
+                return (
+                  <div key={group.title} className="space-y-1">
+                    <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted">
+                      {group.title}
+                    </p>
+                    {groupItems.map((item) => (
+                      <NavButton key={item.id} item={item} dense />
+                    ))}
+                  </div>
+                );
+              })}
+            </nav>
+
+            <div className="border-t border-border p-4">
+              <ThemeToggle className="w-full justify-center" />
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* Main Desktop Grid */}
+      <div className="flex-1 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
+        {/* Desktop Sidebar Navigation */}
+        <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-surface pt-[var(--safe-top)] lg:flex">
+          <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-accent border border-accent/30 shrink-0">
+              <Dumbbell className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate font-bold text-sm text-text leading-tight">REC College Gym</p>
+              <p className="truncate text-[11px] text-muted">Rajalakshmi Engineering</p>
+            </div>
+          </div>
+
+          <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+            {groups.map((group) => {
+              const groupItems = items.filter((i) => group.ids.includes(i.id));
+              if (!groupItems.length) return null;
+              return (
+                <div key={group.title} className="space-y-1">
+                  <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted">
+                    {group.title}
+                  </p>
+                  {groupItems.map((item) => (
+                    <NavButton key={item.id} item={item} />
+                  ))}
+                </div>
+              );
+            })}
+          </nav>
+
+          <div className="border-t border-border p-4">
+            <ThemeToggle className="w-full justify-center" />
+          </div>
+        </aside>
+
+        {/* Desktop Main Content Area */}
+        <div className="flex min-h-screen min-w-0 flex-col">
+          {/* Desktop Top Header Bar */}
+          <header className="sticky top-0 z-30 hidden items-center justify-between border-b border-border bg-surface px-8 py-3 lg:flex">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted">Portal</span>
+              <span className="text-muted">/</span>
+              <span className="text-xs font-bold text-text">{currentItem ? currentItem.label : 'Home'}</span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {isAdminOrTrainer && (
+                <button
+                  type="button"
+                  onClick={() => setImportModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-success/30 bg-success-muted text-success text-xs font-semibold hover:bg-success/20 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Bulk Excel Import</span>
+                </button>
+              )}
+              <UserProfileBadge />
+            </div>
+          </header>
+
+          <main
+            id="main"
+            className="mx-auto w-full max-w-wide flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-8 pb-[calc(5.5rem+var(--safe-bottom))] lg:pb-10"
+          >
+            {children}
+          </main>
+
+          <footer className="hidden border-t border-border px-8 py-4 text-xs text-muted lg:block bg-surface">
+            <div className="mx-auto flex max-w-wide items-center justify-between">
+              <p>© 2026 Rajalakshmi Engineering College. All rights reserved.</p>
+              <div className="flex items-center gap-3 font-mono text-[11px]">
+                <span>3-Day Rolling Window</span>
+                <span>•</span>
+                <span>ZKBio Biometric</span>
+                <span>•</span>
+                <span>100 Cap/Slot</span>
+              </div>
+            </div>
+          </footer>
+        </div>
+      </div>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface pb-[var(--safe-bottom)] lg:hidden"
+        aria-label="Primary Mobile Navigation"
+      >
+        <div className="grid h-14 grid-cols-5">
+          {primary.slice(0, 4).map((item) => {
+            const Icon = item.icon;
+            const selected = active === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onNavigate(item.id)}
+                className={cn(
+                  'flex flex-col items-center justify-center gap-1 text-[10px] font-semibold transition-colors',
+                  selected ? 'text-primary' : 'text-muted hover:text-text'
+                )}
+              >
+                <Icon className={cn('h-4 w-4', selected ? 'text-primary' : 'text-muted')} />
+                <span className="truncate max-w-[54px]">{item.shortLabel}</span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className={cn(
+              'flex flex-col items-center justify-center gap-1 text-[10px] font-semibold transition-colors',
+              overflow.some((i) => i.id === active) ? 'text-primary' : 'text-muted hover:text-text'
+            )}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+            <span>More</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* Bulk Excel Import Modal */}
+      <ExcelImportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+      />
+    </div>
+  );
+};
+

@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Plus, RefreshCw, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { ShieldCheck, Plus, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Card, Badge, Modal, Alert } from '../ui/primitives';
+import { Button, IconButton } from '../ui/Button';
+import { Input, Textarea } from '../ui/Input';
+import { cn } from '../lib/cn';
 
 interface AuthorizedPersonItem {
   id: string;
@@ -104,47 +108,52 @@ export const AuthorizedPersonsManager: React.FC = () => {
   };
 
   return (
-    <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 space-y-6">
+    <Card className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-rec-gold" />
-            Authorized Persons Management
+          <h3 className="font-bold text-base sm:text-lg text-text flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-accent" />
+            <span>Authorized Persons Management</span>
           </h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            VIP Trustees, Owners, and Contractors exempt from membership fees and slot quotas
+          <p className="text-xs text-secondary">
+            VIP Trustees, Executives, and Contractors exempt from membership fees and slot quotas
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
+          <IconButton
+            label="Refresh authorized list"
+            size="sm"
             onClick={fetchList}
             disabled={loading}
-            className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-          <button
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          </IconButton>
+
+          <Button
+            variant="primary"
+            size="sm"
             onClick={() => setModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rec-purple hover:bg-rec-purple-600 text-white font-medium text-xs shadow-md shadow-rec-purple/20 transition-all"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>Grant VIP Access</span>
-          </button>
+          </Button>
         </div>
       </div>
 
       {error && (
-        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 text-xs flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{error}</span>
-        </div>
+        <Alert tone="danger" onDismiss={() => setError(null)}>
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-danger shrink-0" />
+            <span>{error}</span>
+          </div>
+        </Alert>
       )}
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-800">
+      <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-left text-xs">
-          <thead className="bg-gray-50 dark:bg-[#202024] text-gray-600 dark:text-gray-300 font-semibold border-b border-gray-200 dark:border-gray-800">
+          <thead className="bg-border-subtle/50 text-muted font-semibold border-b border-border">
             <tr>
               <th className="py-3 px-4">Authorized Person</th>
               <th className="py-3 px-4">Designation</th>
@@ -154,42 +163,42 @@ export const AuthorizedPersonsManager: React.FC = () => {
               <th className="py-3 px-4 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 text-gray-700 dark:text-gray-300">
+          <tbody className="divide-y divide-border text-text">
             {list.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-gray-400">
+                <td colSpan={6} className="py-8 text-center text-muted">
                   {loading ? 'Loading authorized persons...' : 'No authorized persons provisioned'}
                 </td>
               </tr>
             ) : (
               list.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40">
+                <tr key={item.id} className="hover:bg-border-subtle/30 transition-colors">
                   <td className="py-3 px-4">
-                    <p className="font-semibold text-gray-900 dark:text-white">{item.name}</p>
-                    <p className="text-[11px] text-gray-400 font-mono">{item.email}</p>
+                    <p className="font-semibold text-text">{item.name}</p>
+                    <p className="text-[11px] text-muted font-mono">{item.email}</p>
                   </td>
-                  <td className="py-3 px-4 font-medium text-gray-800 dark:text-gray-200">{item.designation}</td>
-                  <td className="py-3 px-4 font-mono text-gray-600 dark:text-gray-400">{item.phone || '—'}</td>
-                  <td className="py-3 px-4 text-gray-500 max-w-xs truncate">{item.notes || '—'}</td>
+                  <td className="py-3 px-4 font-medium text-text">{item.designation}</td>
+                  <td className="py-3 px-4 font-mono text-secondary">{item.phone || '—'}</td>
+                  <td className="py-3 px-4 text-muted max-w-xs truncate">{item.notes || '—'}</td>
                   <td className="py-3 px-4">
                     {item.revokedAt ? (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/40">
-                        Revoked
-                      </span>
+                      <Badge tone="danger">Revoked</Badge>
                     ) : (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 flex items-center gap-1 w-fit">
-                        <CheckCircle2 className="w-3 h-3" /> Active
-                      </span>
+                      <Badge tone="success">
+                        <CheckCircle2 className="w-3 h-3 mr-1 inline" /> Active
+                      </Badge>
                     )}
                   </td>
                   <td className="py-3 px-4 text-right">
                     {!item.revokedAt && (
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="xs"
                         onClick={() => handleRevoke(item.id, item.name)}
-                        className="px-2.5 py-1 rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 font-medium text-[11px] transition-colors"
+                        className="text-danger hover:bg-danger-muted/30"
                       >
                         Revoke Access
-                      </button>
+                      </Button>
                     )}
                   </td>
                 </tr>
@@ -200,95 +209,72 @@ export const AuthorizedPersonsManager: React.FC = () => {
       </div>
 
       {/* Create Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-              <h4 className="font-bold text-base text-gray-900 dark:text-white">Provision Authorized Person</h4>
-              <button onClick={() => setModalOpen(false)} className="p-1 rounded-lg text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      <Modal
+        open={modalOpen}
+        title="Provision Authorized Person (VIP Access)"
+        onClose={() => setModalOpen(false)}
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={submitting}
+              onClick={handleCreate}
+            >
+              Confirm Access
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleCreate} className="space-y-3.5 text-xs">
+          <Input
+            label="Full Name"
+            type="text"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Mr. K. Vijay"
+          />
 
-            <form onSubmit={handleCreate} className="space-y-3 text-xs">
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Mr. K. Vijay"
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
+          <Input
+            label="College / Work Email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="e.g. vijay.trustee@rajalakshmi.edu.in"
+          />
 
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">College / Work Email</label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. vijay.trustee@rajalakshmi.edu.in"
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
+          <Input
+            label="Designation / Role"
+            type="text"
+            required
+            value={designation}
+            onChange={(e) => setDesignation(e.target.value)}
+            placeholder="e.g. College Trustee / External Fitness Auditor"
+          />
 
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">Designation / Role</label>
-                <input
-                  type="text"
-                  required
-                  value={designation}
-                  onChange={(e) => setDesignation(e.target.value)}
-                  placeholder="e.g. College Trustee / External Fitness Auditor"
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
+          <Input
+            label="Phone Number"
+            type="text"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+919876543210"
+          />
 
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">Phone Number</label>
-                <input
-                  type="text"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+919876543210"
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">Notes</label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Special access notes or authorizations..."
-                  rows={2}
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 rounded-xl bg-rec-purple text-white font-semibold disabled:opacity-50"
-                >
-                  {submitting ? 'Granting...' : 'Confirm Access'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+          <Textarea
+            label="Special Access Notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Special access notes or institutional approvals..."
+            rows={2}
+          />
+        </form>
+      </Modal>
+    </Card>
   );
 };
+

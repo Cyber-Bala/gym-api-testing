@@ -5,10 +5,16 @@ import {
   Calendar,
   RefreshCw,
   Plus,
-  X,
   CheckCircle2,
   FileText,
+  Users,
+  CreditCard,
+  Clock,
 } from 'lucide-react';
+import { Card, Badge, Modal, Alert, Stat, EmptyState } from '../ui/primitives';
+import { Button, IconButton } from '../ui/Button';
+import { Input, Textarea } from '../ui/Input';
+import { cn } from '../lib/cn';
 
 interface ExecutiveAnalytics {
   totalRegisteredStudents: number;
@@ -114,101 +120,84 @@ export const ExecutiveAnalyticsDashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 lg:p-8 space-y-6">
+      <Card className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-rec-purple dark:text-rec-gold" />
-              <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              <h3 className="font-bold text-base sm:text-lg text-text">
                 Institutional Executive Dashboard & Analytics
               </h3>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            <p className="text-xs text-secondary mt-0.5">
               Live Facility KPIs • Operational Calendar • Automated Emergency Closure Cascade
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => setShowClosureModal(true)}
-              className="px-3 py-1.5 rounded-xl bg-rec-purple hover:bg-rec-purple-600 text-white font-semibold text-xs flex items-center gap-1.5 shadow-md shadow-rec-purple/20 transition-all"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Schedule Emergency Closure</span>
-            </button>
+            </Button>
 
-            <button
+            <IconButton
+              label="Refresh analytics"
+              size="sm"
               onClick={fetchData}
               disabled={loading}
-              className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300"
-              title="Refresh analytics"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            </IconButton>
           </div>
         </div>
 
         {successMsg && (
-          <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between">
+          <Alert tone="success" onDismiss={() => setSuccessMsg(null)}>
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
               <span>{successMsg}</span>
             </div>
-            <button onClick={() => setSuccessMsg(null)} className="text-emerald-700 hover:text-emerald-900">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+          </Alert>
         )}
 
         {/* Analytics KPI Metric Cards */}
         {analytics && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-5 rounded-2xl bg-gray-50 dark:bg-[#202024] border border-gray-100 dark:border-gray-800 space-y-1">
-              <span className="text-[11px] text-gray-500 font-medium">Total Registered Students</span>
-              <h4 className="text-2xl font-black text-gray-900 dark:text-white">
-                {analytics.totalRegisteredStudents}
-              </h4>
-              <p className="text-[11px] text-gray-400">
-                {analytics.totalHostellers} Hostellers • {analytics.totalDayScholars} Day Scholars
-              </p>
-            </div>
-
-            <div className="p-5 rounded-2xl bg-gray-50 dark:bg-[#202024] border border-gray-100 dark:border-gray-800 space-y-1">
-              <span className="text-[11px] text-gray-500 font-medium">Today's Check-Ins</span>
-              <h4 className="text-2xl font-black text-gray-900 dark:text-white">
-                {analytics.todayTotalCheckIns}
-              </h4>
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                {analytics.currentLiveOccupants} Currently inside gym
-              </p>
-            </div>
-
-            <div className="p-5 rounded-2xl bg-gray-50 dark:bg-[#202024] border border-gray-100 dark:border-gray-800 space-y-1">
-              <span className="text-[11px] text-gray-500 font-medium">Active Day Scholar Passes</span>
-              <h4 className="text-2xl font-black text-gray-900 dark:text-white">
-                {analytics.activeMembershipsCount}
-              </h4>
-              <p className="text-[11px] text-gray-400">
-                ₹{analytics.totalMonthlyRevenue} monthly revenue
-              </p>
-            </div>
-
-            <div className="p-5 rounded-2xl bg-gray-50 dark:bg-[#202024] border border-gray-100 dark:border-gray-800 space-y-1">
-              <span className="text-[11px] text-gray-500 font-medium">Violations This Month</span>
-              <h4 className="text-2xl font-black text-gray-900 dark:text-white">
-                {analytics.totalViolationsThisMonth}
-              </h4>
-              <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                Late cancellations & No-shows
-              </p>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <Stat
+              label="Total Registered Students"
+              value={analytics.totalRegisteredStudents}
+              hint={`${analytics.totalHostellers} Hostellers • ${analytics.totalDayScholars} Day Scholars`}
+              icon={<Users className="w-4 h-4 text-primary" />}
+            />
+            <Stat
+              label="Today's Check-Ins"
+              value={analytics.todayTotalCheckIns}
+              hint={<span className="text-success font-medium">{analytics.currentLiveOccupants} Currently inside gym</span>}
+              icon={<Clock className="w-4 h-4 text-accent" />}
+            />
+            <Stat
+              label="Active Day Scholar Passes"
+              value={analytics.activeMembershipsCount}
+              hint={`₹${analytics.totalMonthlyRevenue} monthly revenue`}
+              icon={<CreditCard className="w-4 h-4 text-success" />}
+            />
+            <Stat
+              label="Violations This Month"
+              value={analytics.totalViolationsThisMonth}
+              hint={<span className="text-warning font-medium">Late cancellations & No-shows</span>}
+              icon={<AlertTriangle className="w-4 h-4 text-warning" />}
+            />
           </div>
         )}
 
         {/* Peak Hours Breakdown */}
         {analytics && (
           <div className="space-y-3 pt-2">
-            <h4 className="font-bold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+            <h4 className="font-bold text-xs text-muted uppercase tracking-wider">
               Peak Slot Utilization
             </h4>
 
@@ -216,173 +205,150 @@ export const ExecutiveAnalyticsDashboard: React.FC = () => {
               {analytics.peakHours.map((ph) => (
                 <div
                   key={ph.hour}
-                  className="p-3 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-100 dark:border-gray-800 text-center space-y-1"
+                  className="p-3 rounded-xl border border-border bg-border-subtle/30 text-center space-y-1"
                 >
-                  <span className="text-[10px] text-gray-400 font-mono block truncate">{ph.hour}</span>
-                  <p className="font-bold text-sm text-gray-900 dark:text-white">{ph.count}</p>
-                  <span className="text-[9px] text-emerald-600 font-semibold">avg attendees</span>
+                  <span className="text-[10px] text-muted font-mono block truncate">{ph.hour}</span>
+                  <p className="font-bold text-sm text-text">{ph.count}</p>
+                  <span className="text-[9px] text-success font-semibold">avg attendees</span>
                 </div>
               ))}
             </div>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Gym Operational Calendar Blackouts */}
-      <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 lg:p-8 space-y-4">
+      <Card className="space-y-4">
         <div className="flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-rec-purple dark:text-rec-gold" />
+          <Calendar className="w-5 h-5 text-primary" />
           <div>
-            <h3 className="font-bold text-base text-gray-900 dark:text-white">
+            <h3 className="font-bold text-base text-text">
               Gym Operational Calendar & Blackout Closures
             </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-secondary">
               When a blackout is scheduled, all slots on that date are closed and active bookings are automatically cancelled with notice.
             </p>
           </div>
         </div>
 
         {closures.length === 0 ? (
-          <div className="p-6 rounded-2xl bg-gray-50 dark:bg-[#202024] border border-dashed border-gray-200 dark:border-gray-800 text-center text-xs text-gray-500">
-            No scheduled emergency closures or blackout dates.
-          </div>
+          <EmptyState
+            icon={<Calendar className="w-6 h-6" />}
+            title="No Scheduled Closures"
+            description="No upcoming emergency closures or institutional blackout dates scheduled."
+          />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {closures.map((c) => (
               <div
                 key={c.id}
-                className="p-4 rounded-2xl bg-amber-50/30 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 space-y-2"
+                className="p-4 rounded-2xl border border-warning/30 bg-warning-muted/20 space-y-2"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-bold font-mono text-sm text-gray-900 dark:text-white">
+                  <span className="font-bold font-mono text-sm text-text">
                     {c.closureDate}
                   </span>
-                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200">
-                    Closed
-                  </span>
+                  <Badge tone="warning">Closed</Badge>
                 </div>
-                <p className="text-xs text-gray-700 dark:text-gray-300 font-medium">{c.reason}</p>
-                <p className="text-[11px] text-gray-500">
+                <p className="text-xs text-text font-medium">{c.reason}</p>
+                <p className="text-[11px] text-muted">
                   {c.cancelledBookingsCount} bookings automatically cancelled with refund notice
                 </p>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* System Audit Log Explorer */}
-      <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 lg:p-8 space-y-4">
+      <Card className="space-y-4">
         <div className="flex items-center gap-2">
-          <FileText className="w-5 h-5 text-rec-purple dark:text-rec-gold" />
+          <FileText className="w-5 h-5 text-primary" />
           <div>
-            <h3 className="font-bold text-base text-gray-900 dark:text-white">
+            <h3 className="font-bold text-base text-text">
               Institutional Audit Trail Explorer
             </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-secondary">
               Immutable audit log of administrative actions, capacity overrides, emergency closures, and ban operations.
             </p>
           </div>
         </div>
 
-        <div className="overflow-x-auto max-h-80 overflow-y-auto">
+        <div className="overflow-x-auto max-h-80 overflow-y-auto rounded-xl border border-border">
           <table className="w-full text-xs text-left">
-            <thead className="bg-gray-50 dark:bg-[#202024] text-gray-500 sticky top-0">
+            <thead className="bg-border-subtle/60 text-muted font-semibold sticky top-0">
               <tr>
-                <th className="p-3 rounded-l-xl">Timestamp</th>
+                <th className="p-3">Timestamp</th>
                 <th className="p-3">Actor</th>
                 <th className="p-3">Action</th>
                 <th className="p-3">Entity</th>
-                <th className="p-3 rounded-r-xl">Reason</th>
+                <th className="p-3">Reason</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            <tbody className="divide-y divide-border text-text">
               {auditLogs.map((l) => (
-                <tr key={l.id}>
-                  <td className="p-3 font-mono text-gray-400 whitespace-nowrap">
+                <tr key={l.id} className="hover:bg-border-subtle/30 transition-colors">
+                  <td className="p-3 font-mono text-muted whitespace-nowrap">
                     {new Date(l.createdAt).toLocaleDateString()} {new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </td>
-                  <td className="p-3 font-medium text-gray-900 dark:text-white">{l.actorEmail || 'System Worker'}</td>
+                  <td className="p-3 font-medium text-text">{l.actorEmail || 'System Worker'}</td>
                   <td className="p-3">
-                    <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 font-mono text-[10px]">
-                      {l.action}
-                    </span>
+                    <Badge tone="neutral">{l.action}</Badge>
                   </td>
-                  <td className="p-3 font-mono text-gray-500">{l.entity}</td>
-                  <td className="p-3 text-gray-600 dark:text-gray-300 max-w-xs truncate">{l.reason}</td>
+                  <td className="p-3 font-mono text-secondary">{l.entity}</td>
+                  <td className="p-3 text-muted max-w-xs truncate">{l.reason}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
 
       {/* Schedule Closure Modal */}
-      {showClosureModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-              <h4 className="font-bold text-sm text-gray-900 dark:text-white flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
-                Schedule Emergency Blackout Closure
-              </h4>
-              <button onClick={() => setShowClosureModal(false)} className="p-1 text-gray-400">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <Modal
+        open={showClosureModal}
+        title="Schedule Emergency Blackout Closure"
+        onClose={() => setShowClosureModal(false)}
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setShowClosureModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={submitting}
+              onClick={handleCreateClosure}
+            >
+              Confirm Closure & Cascade
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleCreateClosure} className="space-y-4 text-xs">
+          <p className="text-secondary">
+            Scheduling a closure will close all 10 slots on the selected date and automatically cancel any existing student reservations with institutional notification.
+          </p>
 
-            <form onSubmit={handleCreateClosure} className="space-y-3 text-xs">
-              <p className="text-gray-600 dark:text-gray-300">
-                Scheduling a closure will close all 10 slots on the selected date and automatically cancel any existing student reservations with institutional notification.
-              </p>
+          <Input
+            label="Closure Date (YYYY-MM-DD)"
+            type="date"
+            required
+            value={closureDate}
+            onChange={(e) => setClosureDate(e.target.value)}
+          />
 
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">
-                  Closure Date (YYYY-MM-DD)
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={closureDate}
-                  onChange={(e) => setClosureDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">
-                  Reason for Closure
-                </label>
-                <textarea
-                  required
-                  rows={2}
-                  value={closureReason}
-                  onChange={(e) => setClosureReason(e.target.value)}
-                  placeholder="e.g. Annual Gym Flooring Refurbishment & Deep Sanitization"
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowClosureModal(false)}
-                  className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-1.5 rounded-xl bg-rec-purple hover:bg-rec-purple-600 text-white font-semibold disabled:opacity-50"
-                >
-                  {submitting ? 'Executing Closure...' : 'Confirm Closure & Cascade'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+          <Textarea
+            label="Reason for Closure"
+            required
+            rows={2}
+            value={closureReason}
+            onChange={(e) => setClosureReason(e.target.value)}
+            placeholder="e.g. Annual Gym Flooring Refurbishment & Deep Sanitization"
+          />
+        </form>
+      </Modal>
     </div>
   );
 };
+

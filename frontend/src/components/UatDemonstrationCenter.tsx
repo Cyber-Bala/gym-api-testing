@@ -3,9 +3,12 @@ import {
   Sparkles,
   Play,
   CheckCircle2,
-  RefreshCw,
+  Check,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { Card, Badge } from '../ui/primitives';
+import { Button } from '../ui/Button';
+import { cn } from '../lib/cn';
 
 interface WorkflowStep {
   stepId: string;
@@ -33,34 +36,34 @@ export const UatDemonstrationCenter: React.FC = () => {
 
   const personas = [
     {
-      role: 'student (Hosteller)',
+      role: 'Hosteller',
       email: 'hosteller@rajalakshmi.edu.in',
       name: 'Karthik Raja',
-      desc: 'Eligible for instant free gym bookings without pass requirement.',
+      desc: 'Free instantaneous bookings.',
     },
     {
-      role: 'student (Day Scholar)',
+      role: 'Day Scholar',
       email: 'dayscholar@rajalakshmi.edu.in',
       name: 'Priya Sharma',
-      desc: 'Requires active Day Scholar pass (₹500/mo) before booking.',
+      desc: 'Requires active pass before booking.',
     },
     {
-      role: 'trainer',
+      role: 'Trainer',
       email: 'trainer@rajalakshmi.edu.in',
       name: 'Vignesh K',
-      desc: 'Can clock in/out shifts, view live floor, and checkout overstayers.',
+      desc: 'Shifts, floor monitor, overstayers.',
     },
     {
-      role: 'admin',
+      role: 'Admin',
       email: 'admin@rajalakshmi.edu.in',
-      name: 'Gym Administrator',
-      desc: 'Full executive control, emergency blackouts, audit logs, and reports.',
+      name: 'Gym Admin',
+      desc: 'Executive control, audit logs, reports.',
     },
     {
-      role: 'super_admin',
+      role: 'Super Admin',
       email: 'superadmin@rajalakshmi.edu.in',
-      name: 'Principal / Management',
-      desc: 'Unrestricted institutional oversight and cold data archiving.',
+      name: 'Principal',
+      desc: 'Institutional oversight & cold storage.',
     },
   ];
 
@@ -84,43 +87,37 @@ export const UatDemonstrationCenter: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-br from-rec-purple-950 via-gray-900 to-black text-white rounded-3xl border border-rec-gold/30 shadow-2xl p-6 lg:p-8 space-y-6">
+      {/* Top Banner (Solid surface, zero gradients) */}
+      <Card className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1 max-w-2xl">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rec-gold/20 text-rec-gold text-xs font-bold border border-rec-gold/30">
-              <Sparkles className="w-3.5 h-3.5" /> Sprint 17 Production Release Candidate
+            <div className="inline-flex items-center gap-1.5">
+              <Badge tone="accent">
+                <Sparkles className="w-3.5 h-3.5 mr-1" /> Sprint 17 Production Release Candidate
+              </Badge>
             </div>
-            <h3 className="font-extrabold text-2xl tracking-tight text-white">
+            <h3 className="font-bold text-lg sm:text-xl text-text">
               End-to-End System Integration & Stakeholder UAT Console
             </h3>
-            <p className="text-xs text-gray-300 leading-relaxed">
+            <p className="text-xs text-secondary leading-relaxed">
               Demonstrate all 12 operational user flows across the full lifecycle: Student Ingestion, Membership Gating, 3-Day Rolling Window, Concurrency Locking, Turnstile Biometrics, APB, Overstayers, No-Show Penalties, Payroll, and Cold Storage.
             </p>
           </div>
 
-          <button
+          <Button
+            variant="accent"
+            size="md"
             onClick={handleRunAllFlows}
-            disabled={running}
-            className="px-5 py-3 rounded-2xl bg-rec-gold hover:bg-rec-gold-400 text-gray-900 font-extrabold text-sm flex items-center gap-2 shadow-xl shadow-rec-gold/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 shrink-0"
+            loading={running}
           >
-            {running ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Simulating 12 E2E Flows...</span>
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 fill-current" />
-                <span>Run All 12 E2E Flows</span>
-              </>
-            )}
-          </button>
+            <Play className="w-4 h-4 fill-current" />
+            <span>Run All 12 E2E Flows</span>
+          </Button>
         </div>
 
         {/* Stakeholder Persona Switcher */}
-        <div className="pt-4 border-t border-gray-800 space-y-3">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
+        <div className="pt-4 border-t border-border space-y-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-muted">
             Stakeholder Persona Quick-Switch:
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
@@ -129,71 +126,72 @@ export const UatDemonstrationCenter: React.FC = () => {
               return (
                 <button
                   key={p.email}
+                  type="button"
                   onClick={() => devLogin(p.email)}
-                  className={`p-3 rounded-2xl text-left transition-all flex flex-col justify-between space-y-1 ${
+                  className={cn(
+                    'p-3 rounded-2xl text-left transition-colors flex flex-col justify-between space-y-1.5 border',
                     isCurrent
-                      ? 'bg-rec-gold/20 border-2 border-rec-gold text-white shadow-lg'
-                      : 'bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300'
-                  }`}
+                      ? 'bg-primary-muted/20 border-primary shadow-sm text-text'
+                      : 'bg-surface border-border hover:bg-border-subtle/40 text-secondary'
+                  )}
                 >
                   <div>
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-white">{p.name}</span>
+                      <span className="font-bold text-xs text-text">{p.name}</span>
                       {isCurrent && (
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
                       )}
                     </div>
-                    <span className="text-[10px] text-rec-gold font-semibold uppercase">{p.role}</span>
+                    <span className="text-[10px] text-accent font-semibold uppercase">{p.role}</span>
                   </div>
-                  <p className="text-[10px] text-gray-400 leading-tight line-clamp-2">{p.desc}</p>
+                  <p className="text-[10px] text-muted leading-tight line-clamp-2">{p.desc}</p>
                 </button>
               );
             })}
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* E2E Simulation Result Display */}
       {result && (
-        <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 lg:p-8 space-y-6 animate-in fade-in duration-200">
+        <Card className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              <h4 className="font-bold text-base text-gray-900 dark:text-white">
+              <CheckCircle2 className="w-5 h-5 text-success" />
+              <h4 className="font-bold text-base text-text">
                 Integration Verification Results ({result.passedFlows}/{result.totalFlows} Passed • {result.totalDurationMs}ms)
               </h4>
             </div>
-            <span className="px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs font-bold uppercase">
-              Release Candidate Verified
-            </span>
+            <Badge tone="success">Release Candidate Verified</Badge>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {result.flows.map((f) => (
               <div
                 key={f.stepId}
-                className="p-4 rounded-2xl bg-gray-50 dark:bg-[#202024] border border-gray-100 dark:border-gray-800 flex items-start gap-3"
+                className="p-4 rounded-2xl border border-border bg-border-subtle/30 flex items-start gap-3"
               >
-                <div className="w-7 h-7 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
-                  <CheckCircle2 className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-xl bg-success-muted/30 text-success flex items-center justify-center shrink-0 mt-0.5">
+                  <Check className="w-4 h-4" />
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-xs text-rec-purple dark:text-rec-gold">
+                    <span className="font-mono font-bold text-xs text-primary">
                       {f.stepId}
                     </span>
-                    <span className="font-bold text-xs text-gray-900 dark:text-white">{f.name}</span>
+                    <span className="font-bold text-xs text-text">{f.name}</span>
                   </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{f.details}</p>
-                  <span className="text-[10px] text-gray-400 font-mono">
+                  <p className="text-xs text-secondary leading-relaxed">{f.details}</p>
+                  <span className="text-[10px] text-muted font-mono">
                     Category: {f.category} • Latency: {f.latencyMs}ms
                   </span>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
     </div>
   );
 };
+

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Calendar,
   Clock,
@@ -7,7 +7,6 @@ import {
   AlertCircle,
   RefreshCw,
   Sliders,
-  X,
   Lock,
   Sun,
   Moon,
@@ -15,6 +14,10 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { Card, Badge, ProgressBar, Modal, Alert } from '../ui/primitives';
+import { Button, IconButton } from '../ui/Button';
+import { Input, Textarea } from '../ui/Input';
+import { cn } from '../lib/cn';
 
 interface SlotItem {
   id: string;
@@ -56,6 +59,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
   const { user } = useAuth();
   const [data, setData] = useState<RollingWindowData | null>(null);
   const [selectedDateIdx, setSelectedDateIdx] = useState<number>(0);
+  const [sessionFilter, setSessionFilter] = useState<'all' | 'morning' | 'evening'>('all');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [reservingSlotId, setReservingSlotId] = useState<string | null>(null);
@@ -184,183 +188,232 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
 
   const currentDay = data?.days[selectedDateIdx];
 
+  const filteredSlots = (currentDay?.slots || []).filter((slot) => {
+    if (sessionFilter === 'all') return true;
+    const hour = parseInt(slot.startTime.split(':')[0], 10);
+    return sessionFilter === 'morning' ? hour < 12 : hour >= 12;
+  });
+
   return (
-    <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 lg:p-8 space-y-6">
+    <Card className="space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-rec-purple dark:text-rec-gold" />
-            <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+            <Calendar className="w-5 h-5 text-primary" />
+            <h3 className="font-bold text-base sm:text-lg text-text">
               Gym Slot Booking & Availability
             </h3>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+          <p className="text-xs text-secondary mt-0.5">
             3-Day Rolling Window (IST) • 100 Cap/Slot • Maximum 1 Slot per Day
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={fetchSlots}
             disabled={loading}
-            className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300"
-            title="Refresh availability"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            <span>Refresh</span>
+          </Button>
         </div>
       </div>
 
-      {/* Success Notification */}
+      {/* Success Alert */}
       {bookingSuccessMsg && (
-        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between">
+        <Alert tone="success" onDismiss={() => setBookingSuccessMsg(null)}>
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
             <span className="font-semibold">{bookingSuccessMsg}</span>
           </div>
-          <button onClick={() => setBookingSuccessMsg(null)} className="text-emerald-700 hover:text-emerald-900">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+        </Alert>
       )}
 
       {/* Error Alert */}
       {error && (
-        <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 text-xs flex items-center justify-between">
+        <Alert tone="danger" onDismiss={() => setError(null)}>
           <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
+            <AlertCircle className="w-4 h-4 text-danger shrink-0" />
             <span className="font-semibold">{error}</span>
           </div>
-          <button onClick={() => setError(null)} className="text-red-700 hover:text-red-900">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+        </Alert>
       )}
 
-      {/* 3-Day Rolling Window Selector */}
+      {/* 3-Day Rolling Window Tabs */}
       {data && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {data.days.map((day, idx) => (
-            <button
-              key={day.date}
-              onClick={() => setSelectedDateIdx(idx)}
-              className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden ${
-                selectedDateIdx === idx
-                  ? 'border-rec-purple dark:border-rec-gold bg-rec-purple-50/40 dark:bg-rec-purple-950/30 shadow-md'
-                  : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 bg-gray-50/50 dark:bg-[#202024]/50'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-rec-purple dark:text-rec-gold">
-                  {day.dayLabel}
-                </span>
-                {day.hasUserBookedOnDate && (
-                  <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/40">
-                    <CheckCircle2 className="w-3 h-3" /> Booked
-                  </span>
+          {data.days.map((day, idx) => {
+            const isSelected = selectedDateIdx === idx;
+            return (
+              <button
+                key={day.date}
+                type="button"
+                onClick={() => setSelectedDateIdx(idx)}
+                className={cn(
+                  'p-4 rounded-2xl border text-left transition-colors relative',
+                  isSelected
+                    ? 'border-primary bg-primary-muted shadow-sm'
+                    : 'border-border bg-surface hover:bg-border-subtle'
                 )}
-              </div>
-              <h4 className="font-bold text-base text-gray-900 dark:text-white mt-1">
-                {day.dayOfWeek}
-              </h4>
-              <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-0.5">
-                {day.date}
-              </p>
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-primary">
+                    {day.dayLabel}
+                  </span>
+                  {day.hasUserBookedOnDate && (
+                    <Badge tone="success">
+                      <CheckCircle2 className="w-3 h-3" /> Booked
+                    </Badge>
+                  )}
+                </div>
+                <h4 className="font-bold text-base text-text mt-1">
+                  {day.dayOfWeek}
+                </h4>
+                <p className="text-xs text-muted font-mono mt-0.5">
+                  {day.date}
+                </p>
 
-              <div className="mt-3 pt-2 border-t border-gray-200/60 dark:border-gray-800/60 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
-                <span>Occupancy</span>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  {day.totalBooked} / {day.totalCapacity}
-                </span>
-              </div>
-            </button>
-          ))}
+                <div className="mt-3 pt-2 border-t border-border flex items-center justify-between text-xs text-secondary">
+                  <span>Occupancy</span>
+                  <span className="font-semibold text-text">
+                    {day.totalBooked} / {day.totalCapacity}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
       {/* Single Slot Per Day Rule Reminder */}
       {currentDay?.hasUserBookedOnDate && (
-        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-200 text-xs flex items-start gap-2.5">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-          <div>
-            <p className="font-bold">Daily Slot Quota Reached for {currentDay.dayLabel}</p>
-            <p className="mt-0.5 opacity-90">
-              You already have a confirmed slot on this date. In accordance with REC gym policy, students are limited to 1 slot per calendar day.
-            </p>
+        <Alert tone="warning">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Daily Slot Quota Reached for {currentDay.dayLabel}</p>
+              <p className="mt-0.5 text-xs text-secondary">
+                You already have a confirmed slot on this date. Students are limited to 1 slot per calendar day.
+              </p>
+            </div>
           </div>
-        </div>
+        </Alert>
       )}
 
-      {/* Day Scholar Pass Banner */}
+      {/* Day Scholar Pass Reminder */}
       {user?.studentDetails?.residency === 'day_scholar' && (
-        <div className="p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 text-blue-800 dark:text-blue-200 text-xs flex items-center gap-2">
-          <CreditCard className="w-4 h-4 text-blue-600 shrink-0" />
-          <span>
-            Day Scholar account: Slot booking requires an active 1-Month, 3-Month, or 1-Year pass.
-          </span>
-        </div>
+        <Alert tone="info">
+          <div className="flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-primary shrink-0" />
+            <span className="text-xs text-secondary">
+              Day Scholar Account: Booking requires an active gym pass tier (1M, 3M, 1Y).
+            </span>
+          </div>
+        </Alert>
       )}
 
-      {/* Slots Grid */}
+      {/* Session Filter & Slot Grid */}
       {currentDay && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Clock className="w-4 h-4 text-gray-400" />
-              <span>Available Time Batches (10 Daily Slots)</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted flex items-center gap-2">
+              <Clock className="w-4 h-4 text-primary" />
+              <span>Available Batches (10 Daily Slots)</span>
             </h4>
-            <span className="text-xs text-gray-500">
-              {currentDay.slots.filter((s) => !s.isPast && s.isActive && !s.isFull).length} slots open
-            </span>
+
+            {/* Session Tabs */}
+            <div className="flex items-center gap-1 bg-border-subtle p-1 rounded-xl border border-border text-xs">
+              <button
+                type="button"
+                onClick={() => setSessionFilter('all')}
+                className={cn(
+                  'px-3 py-1 rounded-lg font-medium transition-colors',
+                  sessionFilter === 'all'
+                    ? 'bg-surface text-primary shadow-sm font-semibold'
+                    : 'text-secondary hover:text-text'
+                )}
+              >
+                All (10)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSessionFilter('morning')}
+                className={cn(
+                  'px-3 py-1 rounded-lg font-medium transition-colors',
+                  sessionFilter === 'morning'
+                    ? 'bg-surface text-primary shadow-sm font-semibold'
+                    : 'text-secondary hover:text-text'
+                )}
+              >
+                Morning
+              </button>
+              <button
+                type="button"
+                onClick={() => setSessionFilter('evening')}
+                className={cn(
+                  'px-3 py-1 rounded-lg font-medium transition-colors',
+                  sessionFilter === 'evening'
+                    ? 'bg-surface text-primary shadow-sm font-semibold'
+                    : 'text-secondary hover:text-text'
+                )}
+              >
+                Evening
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {currentDay.slots.map((slot) => {
+            {filteredSlots.map((slot) => {
               const isMorning = parseInt(slot.startTime.split(':')[0], 10) < 12;
-
-              let cardBorder = 'border-gray-200 dark:border-gray-800';
-              let badgeColor = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/40';
-
-              if (slot.isBookedByCurrentUser) {
-                cardBorder = 'border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/20';
-                badgeColor = 'bg-emerald-500 text-white border-emerald-600';
-              } else if (!slot.isActive) {
-                cardBorder = 'border-gray-200 dark:border-gray-800 opacity-60 bg-gray-50 dark:bg-[#202024]';
-                badgeColor = 'bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-gray-300';
-              } else if (slot.isPast) {
-                cardBorder = 'border-gray-200 dark:border-gray-800 opacity-60 bg-gray-50 dark:bg-[#202024]';
-                badgeColor = 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 border-gray-300';
-              } else if (slot.isFull) {
-                badgeColor = 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300 border-red-200 dark:border-red-800/40';
-              } else if (slot.occupancyPercentage >= 75) {
-                badgeColor = 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800/40';
-              }
-
               const canBook = isStudent && !slot.isPast && slot.isActive && !slot.isFull && !currentDay.hasUserBookedOnDate;
 
               return (
                 <div
                   key={slot.id}
-                  className={`p-5 rounded-2xl border ${cardBorder} flex flex-col justify-between space-y-4 transition-all hover:shadow-sm`}
+                  className={cn(
+                    'p-5 rounded-2xl border bg-surface flex flex-col justify-between space-y-4 transition-colors',
+                    slot.isBookedByCurrentUser
+                      ? 'border-success/50 bg-success-muted/20'
+                      : !slot.isActive || slot.isPast
+                      ? 'border-border opacity-60 bg-border-subtle/30'
+                      : 'border-border hover:border-primary/40'
+                  )}
                 >
                   {/* Slot Header */}
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      <div className="flex items-center gap-1.5 text-xs text-muted">
                         {isMorning ? (
-                          <Sun className="w-3.5 h-3.5 text-amber-500" />
+                          <Sun className="w-3.5 h-3.5 text-warning" />
                         ) : (
-                          <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                          <Moon className="w-3.5 h-3.5 text-primary" />
                         )}
-                        <span>{isMorning ? 'Morning Session' : 'Evening Session'}</span>
+                        <span>{isMorning ? 'Morning Batch' : 'Evening Batch'}</span>
                       </div>
-                      <h5 className="text-base font-bold text-gray-900 dark:text-white mt-1">
+                      <h5 className="text-sm sm:text-base font-bold text-text mt-1">
                         {formatTime12h(slot.startTime)} – {formatTime12h(slot.endTime)}
                       </h5>
                     </div>
 
-                    <span className={`text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full border ${badgeColor}`}>
+                    <Badge
+                      tone={
+                        slot.isBookedByCurrentUser
+                          ? 'success'
+                          : !slot.isActive
+                          ? 'neutral'
+                          : slot.isPast
+                          ? 'neutral'
+                          : slot.isFull
+                          ? 'danger'
+                          : slot.occupancyPercentage >= 75
+                          ? 'warning'
+                          : 'primary'
+                      }
+                    >
                       {slot.isBookedByCurrentUser
                         ? 'Your Slot'
                         : !slot.isActive
@@ -370,82 +423,68 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                         : slot.isFull
                         ? 'Full'
                         : 'Available'}
-                    </span>
+                    </Badge>
                   </div>
 
-                  {/* Occupancy Progress Bar */}
+                  {/* Occupancy Progress */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                      <span className="text-muted flex items-center gap-1">
                         <Users className="w-3.5 h-3.5" />
-                        <span>Occupancy</span>
+                        <span>Capacity</span>
                       </span>
-                      <span className="font-semibold text-gray-900 dark:text-white">
+                      <span className="font-semibold text-text">
                         {slot.bookedCount} / {slot.capacity}
                       </span>
                     </div>
-
-                    <div className="w-full h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          slot.occupancyPercentage >= 95
-                            ? 'bg-red-500'
-                            : slot.occupancyPercentage >= 75
-                            ? 'bg-amber-500'
-                            : 'bg-emerald-500'
-                        }`}
-                        style={{ width: `${slot.occupancyPercentage}%` }}
-                      />
-                    </div>
+                    <ProgressBar value={slot.occupancyPercentage} />
                   </div>
 
-                  {/* Action & Admin Controls */}
-                  <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {slot.availableSpots} spots remaining
+                  {/* Actions & Admin Controls */}
+                  <div className="pt-2 border-t border-border flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted">
+                      {slot.availableSpots} spots open
                     </span>
 
                     <div className="flex items-center gap-1.5">
                       {slot.isBookedByCurrentUser ? (
-                        <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <span className="text-xs font-bold text-success flex items-center gap-1">
                           <BookmarkCheck className="w-4 h-4" /> Reserved
                         </span>
                       ) : canBook ? (
-                        <button
+                        <Button
+                          variant="primary"
+                          size="xs"
+                          loading={reservingSlotId === slot.id}
                           onClick={() => handleReserveSlot(slot.id)}
-                          disabled={reservingSlotId === slot.id}
-                          className="px-3 py-1.5 rounded-xl bg-rec-purple hover:bg-rec-purple-600 text-white font-semibold text-xs shadow-md shadow-rec-purple/20 transition-all disabled:opacity-50"
                         >
-                          {reservingSlotId === slot.id ? 'Reserving...' : 'Book Slot'}
-                        </button>
+                          Book Slot
+                        </Button>
                       ) : null}
 
                       {isAdmin && (
-                        <button
+                        <IconButton
+                          label="Admin Capacity Override"
+                          size="sm"
                           onClick={() => {
                             setEditSlot(slot);
                             setEditCapacity(slot.capacity);
                             setEditReason('');
                           }}
-                          className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors"
-                          title="Admin Capacity Override"
                         >
                           <Sliders className="w-3.5 h-3.5" />
-                        </button>
+                        </IconButton>
                       )}
 
                       {isAdmin && (
-                        <button
+                        <IconButton
+                          label={slot.isActive ? 'Close Slot' : 'Reopen Slot'}
+                          size="sm"
+                          variant={slot.isActive ? 'default' : 'danger'}
                           onClick={() => handleAdminToggleStatus(slot)}
-                          className={`p-1.5 rounded-lg border text-xs transition-colors ${
-                            slot.isActive
-                              ? 'border-gray-200 dark:border-gray-700 hover:bg-red-50 text-gray-500'
-                              : 'border-emerald-300 text-emerald-600 bg-emerald-50'
-                          }`}
-                          title={slot.isActive ? 'Emergency Close Slot' : 'Reopen Slot'}
                         >
                           <Lock className="w-3.5 h-3.5" />
-                        </button>
+                        </IconButton>
                       )}
                     </div>
                   </div>
@@ -457,75 +496,59 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
       )}
 
       {/* Admin Slot Edit Modal */}
-      {editSlot && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-sm bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-              <h4 className="font-bold text-sm text-gray-900 dark:text-white">
-                Admin Slot Override
-              </h4>
-              <button onClick={() => setEditSlot(null)} className="p-1 rounded-lg text-gray-400">
-                <X className="w-4 h-4" />
-              </button>
+      <Modal
+        open={Boolean(editSlot)}
+        title="Admin Slot Capacity Override"
+        onClose={() => setEditSlot(null)}
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setEditSlot(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={savingEdit}
+              onClick={handleAdminUpdateCapacity}
+            >
+              Save Override
+            </Button>
+          </>
+        }
+      >
+        {editSlot && (
+          <form onSubmit={handleAdminUpdateCapacity} className="space-y-4">
+            <div className="p-3 rounded-xl border border-border bg-border-subtle text-xs space-y-1">
+              <p className="text-muted">Selected Time Batch:</p>
+              <p className="font-bold text-text">
+                {editSlot.date} ({formatTime12h(editSlot.startTime)} - {formatTime12h(editSlot.endTime)})
+              </p>
             </div>
 
-            <form onSubmit={handleAdminUpdateCapacity} className="space-y-3 text-xs">
-              <div>
-                <p className="text-gray-500">Selected Slot:</p>
-                <p className="font-semibold text-gray-900 dark:text-white mt-0.5">
-                  {editSlot.date} ({formatTime12h(editSlot.startTime)} - {formatTime12h(editSlot.endTime)})
-                </p>
-              </div>
+            <Input
+              label="Adjust Capacity Threshold"
+              type="number"
+              min="1"
+              max="500"
+              required
+              value={editCapacity}
+              onChange={(e) => setEditCapacity(parseInt(e.target.value, 10))}
+              hint="Default safety threshold is 100 students per batch"
+            />
 
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">
-                  Adjust Capacity (Default: 100)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="500"
-                  required
-                  value={editCapacity}
-                  onChange={(e) => setEditCapacity(parseInt(e.target.value, 10))}
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">
-                  Audit Reason
-                </label>
-                <textarea
-                  required
-                  rows={2}
-                  value={editReason}
-                  onChange={(e) => setEditReason(e.target.value)}
-                  placeholder="e.g. Gym ventilation maintenance or special batch request"
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditSlot(null)}
-                  className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingEdit}
-                  className="px-4 py-1.5 rounded-xl bg-rec-purple text-white font-semibold disabled:opacity-50"
-                >
-                  {savingEdit ? 'Updating...' : 'Save Override'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+            <Textarea
+              label="Audit Justification"
+              required
+              rows={2}
+              value={editReason}
+              onChange={(e) => setEditReason(e.target.value)}
+              placeholder="e.g. Gym ventilation maintenance or tournament batch request"
+              hint="Required for immutable compliance audit trail"
+            />
+          </form>
+        )}
+      </Modal>
+    </Card>
   );
 };
+

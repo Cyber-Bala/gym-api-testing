@@ -4,13 +4,16 @@ import {
   ShieldAlert,
   ShieldCheck,
   RefreshCw,
-  X,
   CheckCircle2,
   Zap,
   Sparkles,
   Ban,
   Unlock,
 } from 'lucide-react';
+import { Card, Badge, Modal, Alert, EmptyState } from '../ui/primitives';
+import { Button, IconButton } from '../ui/Button';
+import { Input, Textarea } from '../ui/Input';
+import { cn } from '../lib/cn';
 
 interface ViolationDto {
   id: string;
@@ -176,123 +179,115 @@ export const ViolationManager: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 lg:p-8 space-y-4">
+      <Card className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-red-600 dark:text-red-400" />
-              <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+              <ShieldAlert className="w-5 h-5 text-danger" />
+              <h3 className="font-bold text-base sm:text-lg text-text">
                 Unified Violation & 3-Strike Ban Manager
               </h3>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              3-Strike Automated 3-Day Suspension Engine (ADR-010) • Administrative Forgiveness & Audit Logging
+            <p className="text-xs text-secondary mt-0.5">
+              3-Strike Automated 3-Day Suspension Engine • Administrative Forgiveness & Audit Logging
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleRunAutoUnban}
-              className="px-3 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-100 transition-colors flex items-center gap-1.5"
+              className="border-success/30 text-success hover:bg-success-muted"
             >
               <Zap className="w-3.5 h-3.5" />
               <span>Run Auto-Unban Worker</span>
-            </button>
+            </Button>
 
-            <button
+            <IconButton
+              label="Refresh violations"
+              size="sm"
               onClick={fetchFlagged}
               disabled={loading}
-              className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300"
-              title="Refresh violations"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            </IconButton>
           </div>
         </div>
 
         {notification && (
-          <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between">
+          <Alert tone="success" onDismiss={() => setNotification(null)}>
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
               <span>{notification}</span>
             </div>
-            <button onClick={() => setNotification(null)} className="text-emerald-700 hover:text-emerald-900">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+          </Alert>
         )}
 
         {/* Flagged Students List */}
         {flagged.length === 0 ? (
-          <div className="p-10 rounded-2xl bg-gray-50 dark:bg-[#202024] border border-dashed border-gray-200 dark:border-gray-800 text-center space-y-2">
-            <ShieldCheck className="w-8 h-8 text-emerald-500 mx-auto" />
-            <h4 className="font-bold text-sm text-gray-900 dark:text-white">All Students in Good Standing</h4>
-            <p className="text-xs text-gray-500 max-w-sm mx-auto">
-              Zero active strike violations or bans. The gym community is adhering cleanly to attendance and 2-hour notice policies.
-            </p>
-          </div>
+          <EmptyState
+            icon={<ShieldCheck className="w-8 h-8 text-success" />}
+            title="All Students in Good Standing"
+            description="Zero active strike violations or bans. The gym community is adhering cleanly to attendance and 2-hour notice policies."
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {flagged.map((st) => (
               <div
                 key={st.studentId}
-                className={`p-5 rounded-2xl border transition-all ${
+                className={cn(
+                  'p-5 rounded-2xl border bg-surface transition-colors',
                   st.isBanned
-                    ? 'border-red-300 dark:border-red-900/60 bg-red-50/30 dark:bg-red-950/20'
-                    : 'border-amber-300 dark:border-amber-900/50 bg-amber-50/30 dark:bg-amber-950/20'
-                }`}
+                    ? 'border-danger/40 bg-danger-muted/10'
+                    : 'border-warning/40 bg-warning-muted/10'
+                )}
               >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-base text-gray-900 dark:text-white">{st.name}</h4>
-                      <span
-                        className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${
-                          st.isBanned
-                            ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 border-red-300'
-                            : 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 border-amber-300'
-                        }`}
-                      >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-bold text-sm sm:text-base text-text truncate">{st.name}</h4>
+                      <Badge tone={st.isBanned ? 'danger' : 'warning'}>
                         {st.isBanned ? 'Suspended (3-Day Ban)' : `${st.violationCount} Active Strike(s)`}
-                      </span>
+                      </Badge>
                     </div>
-                    <p className="text-xs text-gray-500 font-mono mt-0.5">
+                    <p className="text-xs text-muted font-mono mt-0.5 truncate">
                       Roll: {st.rollNumber} • {st.department}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {st.isBanned ? (
-                      <button
+                      <Button
+                        variant="success"
+                        size="xs"
                         onClick={() => setUnbanningStudent(st)}
-                        className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1 shadow-sm"
-                        title="Reinstate Gym Access"
                       >
                         <Unlock className="w-3.5 h-3.5" />
                         <span>Unban</span>
-                      </button>
+                      </Button>
                     ) : (
-                      <button
+                      <Button
+                        variant="danger"
+                        size="xs"
                         onClick={() => setBanningStudent(st)}
-                        className="px-2.5 py-1 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex items-center gap-1 shadow-sm"
-                        title="Manual Suspension"
                       >
                         <Ban className="w-3.5 h-3.5" />
                         <span>Ban</span>
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
 
                 {st.isBanned && st.banExpiresAt && (
-                  <p className="text-xs text-red-700 dark:text-red-300 font-semibold mt-2">
+                  <p className="text-xs text-danger font-semibold mt-2">
                     Suspension active until: {new Date(st.banExpiresAt).toLocaleDateString()} {new Date(st.banExpiresAt).toLocaleTimeString()}
                   </p>
                 )}
 
                 {/* Violations List */}
-                <div className="mt-3 pt-3 border-t border-gray-200/60 dark:border-gray-800 space-y-2">
-                  <p className="text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <div className="mt-3 pt-3 border-t border-border space-y-2">
+                  <p className="text-xs font-bold text-muted uppercase tracking-wider">
                     Violation History ({st.violations.length})
                   </p>
 
@@ -300,28 +295,29 @@ export const ViolationManager: React.FC = () => {
                     {st.violations.map((v) => (
                       <div
                         key={v.id}
-                        className="p-2.5 rounded-xl bg-white dark:bg-[#18181B] border border-gray-200 dark:border-gray-700/80 flex items-center justify-between text-xs"
+                        className="p-2.5 rounded-xl bg-surface-elevated border border-border flex items-center justify-between text-xs"
                       >
-                        <div>
+                        <div className="min-w-0 pr-2">
                           <div className="flex items-center gap-1.5">
-                            <AlertOctagon className="w-3.5 h-3.5 text-red-500" />
-                            <span className="font-semibold capitalize text-gray-900 dark:text-white">
+                            <AlertOctagon className="w-3.5 h-3.5 text-danger shrink-0" />
+                            <span className="font-semibold capitalize text-text truncate">
                               {v.violationType.replace('_', ' ')}
                             </span>
                           </div>
-                          <p className="text-[11px] text-gray-500 mt-0.5">
+                          <p className="text-[11px] text-muted mt-0.5 truncate">
                             {v.description || 'No description recorded'} • {new Date(v.createdAt).toLocaleDateString()}
                           </p>
                         </div>
 
-                        <button
+                        <Button
+                          variant="outline"
+                          size="xs"
                           onClick={() => setForgivingViolation(v)}
-                          className="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold flex items-center gap-1 transition-colors"
-                          title="Forgive strike"
+                          className="shrink-0 text-success border-success/30 hover:bg-success-muted"
                         >
                           <Sparkles className="w-3 h-3" />
                           <span>Forgive</span>
-                        </button>
+                        </Button>
                       </div>
                     ))}
                   </div>
@@ -330,180 +326,134 @@ export const ViolationManager: React.FC = () => {
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Forgive Strike Modal */}
-      {forgivingViolation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-sm bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-              <h4 className="font-bold text-sm text-gray-900 dark:text-white">Forgive Violation Strike</h4>
-              <button onClick={() => setForgivingViolation(null)} className="p-1 text-gray-400">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <Modal
+        open={Boolean(forgivingViolation)}
+        title="Forgive Violation Strike"
+        onClose={() => setForgivingViolation(null)}
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setForgivingViolation(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="success"
+              size="sm"
+              loading={submitting}
+              onClick={handleForgive}
+            >
+              Confirm Forgiveness
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleForgive} className="space-y-4 text-xs">
+          <p className="text-secondary">
+            Forgiving this strike will decrement the student's violation counter and will be recorded in the audit log.
+          </p>
 
-            <form onSubmit={handleForgive} className="space-y-3 text-xs">
-              <p className="text-gray-600 dark:text-gray-300">
-                Forgiving this strike will decrement the student's violation counter and will be recorded in the audit log.
-              </p>
-
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">
-                  Reason for Forgiveness
-                </label>
-                <textarea
-                  required
-                  rows={2}
-                  value={forgiveReason}
-                  onChange={(e) => setForgiveReason(e.target.value)}
-                  placeholder="e.g. Valid medical emergency certificate provided"
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setForgivingViolation(null)}
-                  className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-50"
-                >
-                  {submitting ? 'Processing...' : 'Confirm Forgiveness'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+          <Textarea
+            label="Reason for Forgiveness"
+            required
+            rows={2}
+            value={forgiveReason}
+            onChange={(e) => setForgiveReason(e.target.value)}
+            placeholder="e.g. Valid medical emergency certificate provided"
+          />
+        </form>
+      </Modal>
 
       {/* Manual Ban Modal */}
-      {banningStudent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-sm bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-              <h4 className="font-bold text-sm text-red-600">Manual Gym Suspension</h4>
-              <button onClick={() => setBanningStudent(null)} className="p-1 text-gray-400">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <Modal
+        open={Boolean(banningStudent)}
+        title="Manual Gym Suspension"
+        onClose={() => setBanningStudent(null)}
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setBanningStudent(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              loading={submitting}
+              onClick={handleManualBan}
+            >
+              Suspend Student
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleManualBan} className="space-y-4 text-xs">
+          <Input
+            label="Suspension Duration (Days)"
+            type="number"
+            min={1}
+            max={365}
+            required
+            value={banDuration}
+            onChange={(e) => setBanDuration(parseInt(e.target.value, 10))}
+          />
 
-            <form onSubmit={handleManualBan} className="space-y-3 text-xs">
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">
-                  Suspension Duration (Days)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="365"
-                  required
-                  value={banDuration}
-                  onChange={(e) => setBanDuration(parseInt(e.target.value, 10))}
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">
-                  Audit Suspension Reason
-                </label>
-                <textarea
-                  required
-                  rows={2}
-                  value={banReason}
-                  onChange={(e) => setBanReason(e.target.value)}
-                  placeholder="e.g. Disciplinary equipment misuse or safety violation"
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setBanningStudent(null)}
-                  className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold disabled:opacity-50"
-                >
-                  {submitting ? 'Suspending...' : 'Suspend Student'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+          <Textarea
+            label="Audit Suspension Reason"
+            required
+            rows={2}
+            value={banReason}
+            onChange={(e) => setBanReason(e.target.value)}
+            placeholder="e.g. Disciplinary equipment misuse or safety violation"
+          />
+        </form>
+      </Modal>
 
       {/* Manual Unban Modal */}
-      {unbanningStudent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-sm bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-              <h4 className="font-bold text-sm text-emerald-600">Reinstate Gym Privileges</h4>
-              <button onClick={() => setUnbanningStudent(null)} className="p-1 text-gray-400">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <Modal
+        open={Boolean(unbanningStudent)}
+        title="Reinstate Gym Privileges"
+        onClose={() => setUnbanningStudent(null)}
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setUnbanningStudent(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="success"
+              size="sm"
+              loading={submitting}
+              onClick={handleManualUnban}
+            >
+              Reinstate Access
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleManualUnban} className="space-y-4 text-xs">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              id="resetStrikes"
+              checked={resetStrikesOnUnban}
+              onChange={(e) => setResetStrikesOnUnban(e.target.checked)}
+              className="rounded border-border text-primary focus:ring-primary w-4 h-4"
+            />
+            <span className="font-medium text-text">
+              Reset strike count to 0 (Clean slate)
+            </span>
+          </label>
 
-            <form onSubmit={handleManualUnban} className="space-y-3 text-xs">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="resetStrikes"
-                  checked={resetStrikesOnUnban}
-                  onChange={(e) => setResetStrikesOnUnban(e.target.checked)}
-                  className="rounded border-gray-300 text-rec-purple"
-                />
-                <label htmlFor="resetStrikes" className="font-medium text-gray-700 dark:text-gray-300">
-                  Reset strike count to 0 (Clean slate)
-                </label>
-              </div>
-
-              <div>
-                <label className="font-medium text-gray-700 dark:text-gray-300 block mb-1">
-                  Reinstatement Audit Reason
-                </label>
-                <textarea
-                  required
-                  rows={2}
-                  value={unbanReason}
-                  onChange={(e) => setUnbanReason(e.target.value)}
-                  placeholder="e.g. Disciplinary board cleared suspension"
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#202024] border border-gray-200 dark:border-gray-700 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setUnbanningStudent(null)}
-                  className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-50"
-                >
-                  {submitting ? 'Reinstating...' : 'Reinstate Access'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+          <Textarea
+            label="Reinstatement Audit Reason"
+            required
+            rows={2}
+            value={unbanReason}
+            onChange={(e) => setUnbanReason(e.target.value)}
+            placeholder="e.g. Disciplinary board cleared suspension"
+          />
+        </form>
+      </Modal>
     </div>
   );
 };
+

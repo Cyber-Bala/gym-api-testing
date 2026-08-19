@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CreditCard,
   CheckCircle2,
@@ -8,6 +8,9 @@ import {
   Zap,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { Card, Badge, Alert } from '../ui/primitives';
+import { Button, IconButton } from '../ui/Button';
+import { cn } from '../lib/cn';
 
 interface MembershipPlan {
   id: string;
@@ -92,7 +95,7 @@ export const MembershipStore: React.FC = () => {
 
       const { orderId } = orderData.data;
 
-      // 2. Verify payment (Razorpay / Instant Checkout Simulation)
+      // 2. Verify payment (Razorpay Simulation)
       const verifyRes = await fetch('/api/v1/payment/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -116,79 +119,85 @@ export const MembershipStore: React.FC = () => {
   };
 
   return (
-    <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 lg:p-8 space-y-6">
+    <Card className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-rec-purple dark:text-rec-gold" />
-            <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+            <CreditCard className="w-5 h-5 text-primary" />
+            <h3 className="font-bold text-base sm:text-lg text-text">
               Day Scholar Gym Membership Store
             </h3>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Razorpay Institutional Gateway • Multi-Tier Passes (1M / 3M / 1Y) • Free for Hostellers
+          <p className="text-xs text-secondary mt-0.5">
+            Razorpay Gateway • Multi-Tier Passes (1M / 3M / 1Y) • Free for Hostellers
           </p>
         </div>
 
-        <button
+        <IconButton
+          label="Refresh plans"
+          size="sm"
           onClick={fetchData}
           disabled={loading}
-          className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300"
-          title="Refresh plans"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+        </IconButton>
       </div>
 
       {successMessage && (
-        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span className="font-semibold">{successMessage}</span>
-        </div>
+        <Alert tone="success" onDismiss={() => setSuccessMessage(null)}>
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
+            <span className="font-semibold">{successMessage}</span>
+          </div>
+        </Alert>
       )}
 
       {/* Active Membership Status Card */}
       {myMembership ? (
-        <div className="p-6 rounded-2xl bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/60 space-y-2">
+        <div className="p-5 rounded-2xl border border-success/30 bg-success-muted/30 space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-xs uppercase font-bold text-emerald-800 dark:text-emerald-300">
+              <ShieldCheck className="w-5 h-5 text-success" />
+              <span className="text-xs uppercase font-bold text-success">
                 Active Membership Pass
               </span>
             </div>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+            <Badge tone="success">
               {myMembership.daysRemaining} Days Remaining
-            </span>
+            </Badge>
           </div>
 
-          <h4 className="font-bold text-lg text-gray-900 dark:text-white mt-1">
+          <h4 className="font-bold text-lg text-text mt-1">
             {myMembership.planName} (₹{myMembership.price})
           </h4>
-          <p className="text-xs text-gray-600 dark:text-gray-300">
-            Valid until {new Date(myMembership.endDate).toLocaleDateString()} • Full access to 10 daily slot batches & turnstile entry.
+          <p className="text-xs text-secondary">
+            Valid until {new Date(myMembership.endDate).toLocaleDateString()} • Full access to all 10 daily slot batches & biometric turnstile entry.
           </p>
         </div>
       ) : isDayScholar ? (
-        <div className="p-5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-200 text-xs flex items-start gap-3">
-          <Zap className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-bold text-sm">No Active Membership Pass Found</p>
-            <p className="mt-0.5 text-xs opacity-90">
-              As a Day Scholar, please activate a 1-Month, 3-Month, or 1-Year pass below to enable slot reservations and turnstile access.
-            </p>
+        <Alert tone="warning">
+          <div className="flex items-start gap-2.5">
+            <Zap className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">No Active Membership Pass Found</p>
+              <p className="mt-0.5 text-xs text-secondary">
+                As a Day Scholar, please activate a 1-Month, 3-Month, or 1-Year pass below to enable slot reservations and turnstile access.
+              </p>
+            </div>
           </div>
-        </div>
+        </Alert>
       ) : (
-        <div className="p-5 rounded-2xl bg-purple-50/40 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/40 text-xs flex items-start gap-3">
-          <Sparkles className="w-5 h-5 text-rec-purple dark:text-rec-gold shrink-0 mt-0.5" />
-          <div>
-            <p className="font-bold text-sm text-gray-900 dark:text-white">Hosteller Student Privilege</p>
-            <p className="mt-0.5 text-gray-600 dark:text-gray-400">
-              Hosteller residency includes complimentary gym access. You can book any open slot immediately without purchasing a pass!
-            </p>
+        <Alert tone="info">
+          <div className="flex items-start gap-2.5">
+            <Sparkles className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Hosteller Student Privilege</p>
+              <p className="mt-0.5 text-xs text-secondary">
+                Hosteller residency includes complimentary gym access. You can book any open slot immediately without purchasing a pass!
+              </p>
+            </div>
           </div>
-        </div>
+        </Alert>
       )}
 
       {/* Plans Grid */}
@@ -198,64 +207,64 @@ export const MembershipStore: React.FC = () => {
           return (
             <div
               key={p.id}
-              className={`p-6 rounded-2xl border flex flex-col justify-between space-y-6 transition-all ${
+              className={cn(
+                'p-6 rounded-2xl border bg-surface flex flex-col justify-between space-y-6 transition-colors',
                 isFeatured
-                  ? 'border-rec-purple dark:border-rec-gold bg-rec-purple-50/20 dark:bg-rec-purple-950/20 shadow-md relative'
-                  : 'border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-[#202024]/50'
-              }`}
+                  ? 'border-primary bg-primary-muted/20 relative'
+                  : 'border-border hover:border-primary/40'
+              )}
             >
               {isFeatured && (
-                <span className="absolute -top-2.5 right-4 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-rec-purple text-white">
-                  Most Popular
-                </span>
+                <div className="absolute -top-2.5 right-4">
+                  <Badge tone="primary">Most Popular</Badge>
+                </div>
               )}
 
               <div className="space-y-3">
                 <div>
-                  <h4 className="font-bold text-base text-gray-900 dark:text-white">{p.name}</h4>
-                  <p className="text-xs text-gray-500 font-mono mt-0.5">{p.durationDays} Days Duration</p>
+                  <h4 className="font-bold text-base text-text">{p.name}</h4>
+                  <p className="text-xs text-muted font-mono mt-0.5">{p.durationDays} Days Duration</p>
                 </div>
 
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-black text-gray-900 dark:text-white">₹{p.price}</span>
-                  <span className="text-xs text-gray-500 font-medium">/ session package</span>
+                  <span className="text-3xl font-black text-text">₹{p.price}</span>
+                  <span className="text-xs text-muted font-medium">/ package</span>
                 </div>
 
-                <ul className="space-y-2 pt-2 text-xs text-gray-600 dark:text-gray-300">
+                <ul className="space-y-2 pt-2 text-xs text-secondary">
                   <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
                     <span>10 Daily Workout Slots Access</span>
                   </li>
                   <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
                     <span>ZKBio Face Turnstile Check-In</span>
                   </li>
                   <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
                     <span>Free Locker Room & Showers</span>
                   </li>
                 </ul>
               </div>
 
-              <button
+              <Button
+                variant={isFeatured ? 'primary' : 'secondary'}
+                size="md"
+                className="w-full"
+                loading={purchasingPlanId === p.id}
                 onClick={() => handlePurchase(p)}
-                disabled={purchasingPlanId === p.id}
-                className={`w-full py-2.5 px-4 rounded-xl font-semibold text-xs transition-all shadow-md ${
-                  isFeatured
-                    ? 'bg-rec-purple hover:bg-rec-purple-600 text-white shadow-rec-purple/20'
-                    : 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90'
-                }`}
               >
                 {purchasingPlanId === p.id
                   ? 'Processing Razorpay...'
                   : myMembership?.isActive
                   ? 'Extend Pass'
                   : 'Activate Pass Now'}
-              </button>
+              </Button>
             </div>
           );
         })}
       </div>
-    </div>
+    </Card>
   );
 };
+

@@ -9,6 +9,9 @@ import {
   Download,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { Card, Alert, Stat } from '../ui/primitives';
+import { Button, IconButton } from '../ui/Button';
+import { cn } from '../lib/cn';
 
 interface WorkShift {
   id: string;
@@ -127,70 +130,74 @@ export const TrainerTimesheet: React.FC = () => {
     <div className="space-y-6">
       {/* Trainer Clock-In Widget */}
       {isTrainer && (
-        <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 lg:p-8 space-y-6">
+        <Card className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <Award className="w-5 h-5 text-rec-purple dark:text-rec-gold" />
-                <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+                <Award className="w-5 h-5 text-primary" />
+                <h3 className="font-bold text-base sm:text-lg text-text">
                   Student-Trainer Work Shifts & Payroll
                 </h3>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              <p className="text-xs text-secondary mt-0.5">
                 Stipend Rate: ₹{profile?.hourlyRate || '200.00'}/hour • Track work shifts & earn monthly stipend
               </p>
             </div>
 
-            <button
+            <IconButton
+              label="Refresh timesheet"
+              size="sm"
               onClick={fetchData}
               disabled={loading}
-              className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300"
-              title="Refresh timesheet"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            </IconButton>
           </div>
 
           {successMsg && (
-            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{successMsg}</span>
-            </div>
+            <Alert tone="success" onDismiss={() => setSuccessMsg(null)}>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
+                <span>{successMsg}</span>
+              </div>
+            </Alert>
           )}
 
           {/* Stats Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#202024] border border-gray-100 dark:border-gray-800">
-              <span className="text-[11px] text-gray-500">Hourly Stipend Rate</span>
-              <h4 className="font-bold text-xl text-gray-900 dark:text-white mt-1 flex items-baseline gap-1">
-                ₹{profile?.hourlyRate} <span className="text-xs font-normal text-gray-400">/hr</span>
-              </h4>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#202024] border border-gray-100 dark:border-gray-800">
-              <span className="text-[11px] text-gray-500">Hours Worked This Month</span>
-              <h4 className="font-bold text-xl text-gray-900 dark:text-white mt-1">
-                {profile?.totalHoursThisMonth || 0} hrs
-              </h4>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40">
-              <span className="text-[11px] text-emerald-700 dark:text-emerald-300 font-semibold">Total Stipend Earned</span>
-              <h4 className="font-bold text-xl text-emerald-900 dark:text-emerald-100 mt-1">
-                ₹{profile?.totalEarningsThisMonth || 0}
-              </h4>
-            </div>
+            <Stat
+              label="Hourly Stipend Rate"
+              value={`₹${profile?.hourlyRate || '200.00'}`}
+              hint="/ hour rate"
+              icon={<DollarSign className="w-4 h-4 text-primary" />}
+            />
+            <Stat
+              label="Hours Worked This Month"
+              value={`${profile?.totalHoursThisMonth || 0} hrs`}
+              hint="Approved gym shifts"
+              icon={<Award className="w-4 h-4 text-accent" />}
+            />
+            <Stat
+              label="Total Stipend Earned"
+              value={`₹${profile?.totalEarningsThisMonth || 0}`}
+              hint="Current monthly cycle"
+              className="border-success/30 bg-success-muted/20"
+              icon={<DollarSign className="w-4 h-4 text-success" />}
+            />
           </div>
 
           {/* Live Shift Control Card */}
-          <div className="p-6 rounded-2xl bg-rec-purple-50/30 dark:bg-rec-purple-950/20 border border-rec-purple-200 dark:border-rec-purple-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="p-5 rounded-2xl border border-primary/30 bg-primary-muted/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className={`w-3.5 h-3.5 rounded-full ${profile?.activeShift ? 'bg-emerald-500 animate-ping' : 'bg-gray-400'}`} />
+              <div className={cn(
+                'w-3.5 h-3.5 rounded-full',
+                profile?.activeShift ? 'bg-success animate-ping' : 'bg-muted'
+              )} />
               <div>
-                <h4 className="font-bold text-sm text-gray-900 dark:text-white">
+                <h4 className="font-bold text-sm text-text">
                   {profile?.activeShift ? 'Work Shift In Progress' : 'Currently Clocked Out'}
                 </h4>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-secondary">
                   {profile?.activeShift
                     ? `Clocked in at ${new Date(profile.activeShift.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                     : 'Clock in before supervising students on gym floor'}
@@ -200,23 +207,25 @@ export const TrainerTimesheet: React.FC = () => {
 
             <div>
               {profile?.activeShift ? (
-                <button
+                <Button
+                  variant="danger"
+                  size="md"
+                  loading={clocking}
                   onClick={handleClockOut}
-                  disabled={clocking}
-                  className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold text-xs flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
                 >
                   <Square className="w-4 h-4 fill-current" />
-                  <span>{clocking ? 'Clocking Out...' : 'Clock Out Shift'}</span>
-                </button>
+                  <span>Clock Out Shift</span>
+                </Button>
               ) : (
-                <button
+                <Button
+                  variant="success"
+                  size="md"
+                  loading={clocking}
                   onClick={handleClockIn}
-                  disabled={clocking}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
                 >
                   <Play className="w-4 h-4 fill-current" />
-                  <span>{clocking ? 'Clocking In...' : 'Clock In Now'}</span>
-                </button>
+                  <span>Clock In Now</span>
+                </Button>
               )}
             </div>
           </div>
@@ -224,29 +233,29 @@ export const TrainerTimesheet: React.FC = () => {
           {/* Recent Shifts Table */}
           {profile && profile.shifts.length > 0 && (
             <div className="space-y-3 pt-2">
-              <h4 className="font-bold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+              <h4 className="font-bold text-xs text-muted uppercase tracking-wider">
                 Recent Shift History
               </h4>
 
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-xl border border-border">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-gray-50 dark:bg-[#202024] text-gray-500">
+                  <thead className="bg-border-subtle/50 text-muted font-semibold">
                     <tr>
-                      <th className="p-3 rounded-l-xl">Date</th>
+                      <th className="p-3">Date</th>
                       <th className="p-3">Clock In</th>
                       <th className="p-3">Clock Out</th>
                       <th className="p-3">Duration</th>
-                      <th className="p-3 rounded-r-xl">Earned Stipend</th>
+                      <th className="p-3">Earned Stipend</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  <tbody className="divide-y divide-border text-text">
                     {profile.shifts.map((s) => (
-                      <tr key={s.id}>
+                      <tr key={s.id} className="hover:bg-border-subtle/30 transition-colors">
                         <td className="p-3 font-mono">{new Date(s.clockIn).toLocaleDateString()}</td>
                         <td className="p-3 font-mono">{new Date(s.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                        <td className="p-3 font-mono">{s.clockOut ? new Date(s.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'In Progress'}</td>
+                        <td className="p-3 font-mono text-muted">{s.clockOut ? new Date(s.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'In Progress'}</td>
                         <td className="p-3">{s.durationMinutes} min</td>
-                        <td className="p-3 font-semibold text-emerald-600 dark:text-emerald-400">
+                        <td className="p-3 font-bold text-success">
                           ₹{s.calculatedStipend}
                         </td>
                       </tr>
@@ -256,55 +265,56 @@ export const TrainerTimesheet: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {/* Admin Trainer Payroll Ledger View */}
       {isAdmin && (
-        <div className="bg-white dark:bg-[#18181B] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 lg:p-8 space-y-6">
+        <Card className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+                <DollarSign className="w-5 h-5 text-success" />
+                <h3 className="font-bold text-base sm:text-lg text-text">
                   Trainer Payroll & Monthly Ledger
                 </h3>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Automated Stipend Calculation (ADR-016) • Monthly College Accounts Disbursal Report
+              <p className="text-xs text-secondary mt-0.5">
+                Automated Stipend Calculation • Monthly College Accounts Disbursal Report
               </p>
             </div>
 
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => alert('Exporting monthly payroll ledger report...')}
-              className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-xs font-semibold flex items-center gap-1.5 text-gray-700 dark:text-gray-300"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export Excel Payroll</span>
-            </button>
+              <span>Export Payroll (.xlsx)</span>
+            </Button>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-xs text-left">
-              <thead className="bg-gray-50 dark:bg-[#202024] text-gray-500">
+              <thead className="bg-border-subtle/50 text-muted font-semibold">
                 <tr>
-                  <th className="p-3.5 rounded-l-xl">Trainer Name</th>
+                  <th className="p-3.5">Trainer Name</th>
                   <th className="p-3.5">Email</th>
                   <th className="p-3.5">Hourly Rate</th>
                   <th className="p-3.5">Completed Shifts</th>
                   <th className="p-3.5">Total Hours</th>
-                  <th className="p-3.5 rounded-r-xl">Total Stipend Owed</th>
+                  <th className="p-3.5">Total Stipend Owed</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="divide-y divide-border text-text">
                 {payroll.map((p) => (
-                  <tr key={p.trainerId}>
-                    <td className="p-3.5 font-bold text-gray-900 dark:text-white">{p.name}</td>
-                    <td className="p-3.5 font-mono text-gray-500">{p.email}</td>
+                  <tr key={p.trainerId} className="hover:bg-border-subtle/30 transition-colors">
+                    <td className="p-3.5 font-bold text-text">{p.name}</td>
+                    <td className="p-3.5 font-mono text-muted">{p.email}</td>
                     <td className="p-3.5 font-mono">₹{p.hourlyRate}/hr</td>
                     <td className="p-3.5">{p.totalShifts} shifts</td>
-                    <td className="p-3.5 font-semibold">{p.totalHours} hrs</td>
-                    <td className="p-3.5 font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                    <td className="p-3.5 font-semibold text-secondary">{p.totalHours} hrs</td>
+                    <td className="p-3.5 font-bold text-success text-sm">
                       ₹{p.totalStipend}
                     </td>
                   </tr>
@@ -312,8 +322,9 @@ export const TrainerTimesheet: React.FC = () => {
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
       )}
     </div>
   );
 };
+
