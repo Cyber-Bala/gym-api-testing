@@ -12,13 +12,17 @@ export interface SessionUser {
   status: string;
   permissions: string[];
   isProtectedSuperAdmin?: boolean;
-  studentDetails?: {
+studentDetails?: {
     rollNumber: string;
     department: string;
     joiningYear: number;
     residency: string;
     isBanned: boolean;
     violationCount: number;
+    phone?: string | null;
+    emergencyContact?: string | null;
+    address?: string | null;
+    healthConcerns?: string | null;
   };
   trainerDetails?: {
     hourlyRate: string;

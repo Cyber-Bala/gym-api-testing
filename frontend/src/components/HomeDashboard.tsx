@@ -5,6 +5,7 @@ import { Card, Badge, Stat, ProgressBar, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { api } from '../lib/api';
 import { cn } from '../lib/cn';
+import { StudentOnboardingCard } from './StudentOnboardingCard';
 import {
   Activity,
   AlertTriangle,
@@ -273,6 +274,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           </IconButton>
         </div>
       </div>
+
+      {/* Student Onboarding — self-fill contact/emergency/address/health */}
+      {isStudent && <StudentOnboardingCard />}
 
       {/* KPI Stats — Student */}
       {isStudent && (

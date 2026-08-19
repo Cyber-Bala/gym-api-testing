@@ -1,4 +1,4 @@
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError } from '../../shared/errors/index.js';
@@ -11,6 +11,7 @@ import {
   slots,
   entryExitLogs,
   auditLogs,
+  trainerProfiles,
 } from '../../db/schema/index.js';
 import { bookingService } from '../booking/booking.service.js';
 import { FloorStatusDto, LiveFloorOccupantDto, StaffWellnessItemDto } from './floor.types.js';
@@ -27,7 +28,10 @@ export class FloorService {
       })
       .from(accessSessions)
       .innerJoin(people, eq(accessSessions.personId, people.id))
-      .where(and(eq(accessSessions.status, 'inside'), eq(people.personType, 'student')))
+      .leftJoin(trainerProfiles, eq(trainerProfiles.personId, people.id))
+      .where(
+        and(eq(accessSessions.status, 'inside'), eq(people.personType, 'student'), isNull(trainerProfiles.personId))
+      )
       .orderBy(desc(accessSessions.entryTimestamp));
 
     const now = new Date();

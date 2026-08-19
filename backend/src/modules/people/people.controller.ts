@@ -1,7 +1,8 @@
 ﻿import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { peopleService } from './people.service.js';
-import { ValidationError, NotFoundError } from '../../shared/errors/index.js';
+import { ValidationError, NotFoundError, UnauthorizedError } from '../../shared/errors/index.js';
+import { studentSelfUpdateSchema, trainerBulkSchema } from './people.types.js';
 
 const uploadUrlSchema = z.object({
   fileName: z.string().min(1, 'fileName is required'),
@@ -14,6 +15,10 @@ const importRowsSchema = z.object({
 
 const revokeSchema = z.object({
   reason: z.string().min(3, 'Revocation reason is required'),
+});
+
+const trainerRoleSchema = z.object({
+  isTrainer: z.boolean(),
 });
 
 export const downloadTemplate = (req: Request, res: Response): void => {
@@ -118,6 +123,81 @@ export const listStudents = async (req: Request, res: Response, next: NextFuncti
       page,
       limit,
     });
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateMyStudentProfile = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new UnauthorizedError('Authentication required to update your profile');
+    }
+    const result = await peopleService.updateMyStudentProfile(req.user.personId, req.body);
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated',
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const setStudentTrainerRole = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const parseResult = trainerRoleSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      throw new ValidationError('isTrainer boolean is required', parseResult.error.format());
+    }
+
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    const result = await peopleService.setStudentTrainerRole(
+      req.params.id,
+      parseResult.data.isTrainer,
+      adminEmail
+    );
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const bulkSetTrainerRoles = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const parseResult = trainerBulkSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      throw new ValidationError('Invalid trainer bulk payload', parseResult.error.format());
+    }
+
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    const result = await peopleService.bulkSetTrainerRoles(
+      parseResult.data.rollNumbers,
+      parseResult.data.action,
+      adminEmail
+    );
 
     res.status(200).json({
       success: true,

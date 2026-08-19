@@ -8,6 +8,9 @@ import {
   listAuthorizedPersons,
   createAuthorizedPerson,
   revokeAuthorizedPerson,
+  updateMyStudentProfile,
+  setStudentTrainerRole,
+  bulkSetTrainerRoles,
 } from './people.controller.js';
 import { requireAuth, requireRole } from '../auth/auth.middleware.js';
 
@@ -19,8 +22,15 @@ peopleRouter.get('/template/:type', downloadTemplate);
 // Protected routes (Admin & Trainer)
 peopleRouter.use(requireAuth);
 
+// Student self-onboarding profile update
+peopleRouter.patch('/students/me', updateMyStudentProfile);
+
 // Student queries
 peopleRouter.get('/students', requireRole(['admin', 'super_admin', 'trainer']), listStudents);
+
+// Trainer role management (students who are trainers)
+peopleRouter.patch('/students/:id/trainer-role', requireRole(['admin', 'super_admin']), setStudentTrainerRole);
+peopleRouter.post('/trainers/bulk', requireRole(['admin', 'super_admin']), bulkSetTrainerRoles);
 
 // Ingestion & Presigned URL endpoints (Admin only)
 peopleRouter.post('/upload-url', requireRole(['admin', 'super_admin']), getUploadUrl);

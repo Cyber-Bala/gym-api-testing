@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, UserCheck, ShieldAlert, GraduationCap, CheckCircle2, AlertCircle, FileSpreadsheet } from 'lucide-react';
+import { RefreshCw, UserCheck, ShieldAlert, GraduationCap, CheckCircle2, AlertCircle, FileSpreadsheet, Award } from 'lucide-react';
 import { Card, Badge, Alert } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { SearchInput, Select } from '../ui/Input';
 import { ExcelImportModal } from './ExcelImportModal';
+import { api } from '../lib/api';
+import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
 interface StudentItem {
@@ -21,6 +23,7 @@ interface StudentItem {
   violationCount: number;
   status: string;
   createdAt: string;
+  isTrainer: boolean;
 }
 
 interface StudentDirectoryProps {
@@ -29,6 +32,7 @@ interface StudentDirectoryProps {
 
 
 export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport }) => {
+  const toast = useToast();
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +42,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [importOpen, setImportOpen] = useState<boolean>(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -75,6 +80,22 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
     e.preventDefault();
     setPage(1);
     fetchStudents();
+  };
+
+  const handleToggleTrainer = async (stu: StudentItem) => {
+    setTogglingId(stu.id);
+    try {
+      await api.patch(`/api/v1/people/students/${stu.id}/trainer-role`, {
+        isTrainer: !stu.isTrainer,
+      });
+      toast.success(stu.isTrainer ? `Removed trainer role from ${stu.rollNumber}` : `Marked ${stu.rollNumber} as trainer`);
+      fetchStudents();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Trainer Toggle Failed');
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   return (
@@ -156,6 +177,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
               <th className="py-3 px-4">Student Name</th>
               <th className="py-3 px-4">Department</th>
               <th className="py-3 px-4">Residency</th>
+              <th className="py-3 px-4">Trainer</th>
               <th className="py-3 px-4">Face Scan</th>
               <th className="py-3 px-4">Violations</th>
               <th className="py-3 px-4">Status</th>
@@ -164,7 +186,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
           <tbody className="divide-y divide-border text-text">
             {students.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-muted">
+                <td colSpan={8} className="py-8 text-center text-muted">
                   {loading ? 'Loading students...' : 'No student records found matching filters'}
                 </td>
               </tr>
@@ -183,6 +205,25 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                     <Badge tone={stu.residency === 'hosteller' ? 'success' : 'neutral'}>
                       {stu.residency.replace('_', ' ')}
                     </Badge>
+                  </td>
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-2">
+                      {stu.isTrainer ? (
+                        <Badge tone="accent">
+                          <Award className="w-3 h-3 mr-0.5 inline" /> Trainer
+                        </Badge>
+                      ) : (
+                        <span className="text-muted text-[11px]">Student</span>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        loading={togglingId === stu.id}
+                        onClick={() => handleToggleTrainer(stu)}
+                      >
+                        {stu.isTrainer ? 'Remove' : 'Make Trainer'}
+                      </Button>
+                    </div>
                   </td>
                   <td className="py-3 px-4">
                     {stu.faceEnrollmentStatus === 'enrolled' ? (

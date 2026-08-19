@@ -4,16 +4,30 @@ export const studentRowSchema = z.object({
   rollNumber: z.string().min(2, 'Roll number is required').trim(),
   name: z.string().min(2, 'Name is required').trim(),
   email: z.string().email('Invalid email address').trim().toLowerCase(),
-  phone: z.string().optional(),
   department: z.string().min(2, 'Department is required').trim(),
   joiningYear: z.coerce.number().int().min(2000).max(2050),
   residency: z.enum(['hosteller', 'day_scholar']).default('day_scholar'),
-  emergencyContact: z.string().optional(),
-  address: z.string().optional(),
-  healthConcerns: z.string().optional(),
 });
 
 export type StudentRowInput = z.infer<typeof studentRowSchema>;
+
+// Self-onboarding fields that students complete themselves (not admin import)
+export const studentSelfUpdateSchema = z.object({
+  phone: z.string().min(7, 'Enter a valid contact number').max(20).optional(),
+  emergencyContact: z.string().min(7, 'Enter a valid emergency contact').max(20).optional(),
+  address: z.string().min(3, 'Address is too short').max(500).optional(),
+  healthConcerns: z.string().max(1000).optional(),
+});
+
+export type StudentSelfUpdateInput = z.infer<typeof studentSelfUpdateSchema>;
+
+// Bulk trainer assignment by roll number
+export const trainerBulkSchema = z.object({
+  rollNumbers: z.array(z.string().trim().min(1)).min(1, 'At least one roll number is required'),
+  action: z.enum(['assign', 'remove']),
+});
+
+export type TrainerBulkInput = z.infer<typeof trainerBulkSchema>;
 
 export const staffRowSchema = z.object({
   staffId: z.string().min(2, 'Staff ID is required').trim(),
@@ -46,6 +60,7 @@ export interface RowValidationError {
 export interface IngestionResultReport {
   totalRows: number;
   successfulRows: number;
+  updatedRows: number;
   failedRows: number;
   errors: RowValidationError[];
   successfulIds: string[];

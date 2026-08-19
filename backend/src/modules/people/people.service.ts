@@ -1,6 +1,6 @@
 ﻿import * as XLSX from 'xlsx';
 import { v4 as uuidv4 } from 'uuid';
-import { eq, ilike, or, and, sql, desc, count } from 'drizzle-orm';
+import { eq, ilike, or, and, not, sql, desc, count } from 'drizzle-orm';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from '../../shared/database/index.js';
@@ -8,14 +8,24 @@ import { s3Client } from '../../shared/storage/index.js';
 import { config } from '../../config/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError, ValidationError, ConflictError } from '../../shared/errors/index.js';
-import { people, students, staff, authorizedPersons, accounts, auditLogs } from '../../db/schema/index.js';
+import {
+  people,
+  students,
+  staff,
+  authorizedPersons,
+  accounts,
+  auditLogs,
+  trainerProfiles,
+} from '../../db/schema/index.js';
 import {
   studentRowSchema,
   staffRowSchema,
   authorizedPersonSchema,
+  studentSelfUpdateSchema,
   StudentRowInput,
   StaffRowInput,
   AuthorizedPersonInput,
+  StudentSelfUpdateInput,
   IngestionResultReport,
   RowValidationError,
   StudentFilterQuery,
@@ -25,31 +35,23 @@ export class PeopleService {
   /**
    * Generate downloadable standard Excel template for student onboarding (FR-STU-002)
    */
-  public generateStudentTemplateBuffer(): Buffer {
+public generateStudentTemplateBuffer(): Buffer {
     const sampleData = [
       {
         'Roll Number': '2024CS001',
         'Full Name': 'Karthik Raja',
         'College Email': 'karthik.24cs@rajalakshmi.edu.in',
-        'Phone Number': '+919876543210',
         Department: 'Computer Science and Engineering',
         'Joining Year': 2024,
         'Residency (hosteller / day_scholar)': 'hosteller',
-        'Emergency Contact': '+919876500001',
-        Address: 'Hostel Block A, Room 302',
-        'Health Concerns': 'None',
       },
       {
         'Roll Number': '2024IT042',
         'Full Name': 'Priya Sharma',
         'College Email': 'priya.24it@rajalakshmi.edu.in',
-        'Phone Number': '+919876543211',
         Department: 'Information Technology',
         'Joining Year': 2024,
         'Residency (hosteller / day_scholar)': 'day_scholar',
-        'Emergency Contact': '+919876500002',
-        Address: 'Anna Nagar, Chennai',
-        'Health Concerns': 'Asthma (mild)',
       },
     ];
 
@@ -62,13 +64,9 @@ export class PeopleService {
       { wch: 15 },
       { wch: 22 },
       { wch: 32 },
-      { wch: 18 },
       { wch: 32 },
       { wch: 14 },
       { wch: 32 },
-      { wch: 20 },
-      { wch: 30 },
-      { wch: 25 },
     ];
 
     const buf = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
@@ -158,33 +156,32 @@ export class PeopleService {
       const cleanKey = key.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
       const strVal = typeof val === 'string' ? val.trim() : val;
 
-      if (cleanKey.includes('roll') || cleanKey.includes('regno')) normalized.rollNumber = strVal;
+if (cleanKey.includes('roll') || cleanKey.includes('regno')) normalized.rollNumber = strVal;
       else if (cleanKey.includes('name')) normalized.name = strVal;
       else if (cleanKey.includes('email')) normalized.email = strVal;
-      else if (cleanKey.includes('phone') || cleanKey.includes('mobile')) normalized.phone = strVal;
       else if (cleanKey.includes('dept') || cleanKey.includes('department')) normalized.department = strVal;
       else if (cleanKey.includes('year') || cleanKey.includes('batch')) normalized.joiningYear = strVal;
       else if (cleanKey.includes('residency') || cleanKey.includes('hostel') || cleanKey.includes('dayscholar')) {
         const resStr = String(strVal).toLowerCase();
         normalized.residency = resStr.includes('hostel') ? 'hosteller' : 'day_scholar';
-      } else if (cleanKey.includes('emergency')) normalized.emergencyContact = strVal;
-      else if (cleanKey.includes('address')) normalized.address = strVal;
-      else if (cleanKey.includes('health')) normalized.healthConcerns = strVal;
+      }
     }
 
     return normalized;
   }
 
-  /**
+/**
    * Process and provision student Excel records (FR-STU-001..004)
+   * Existing records are updated by roll number; self-fill fields are never overwritten.
    */
   public async processStudentRows(rawRows: Record<string, unknown>[]): Promise<IngestionResultReport> {
     const totalRows = rawRows.length;
     const errors: RowValidationError[] = [];
     const successfulIds: string[] = [];
+    let updatedRows = 0;
 
     if (totalRows === 0) {
-      return { totalRows: 0, successfulRows: 0, failedRows: 0, errors: [], successfulIds: [] };
+      return { totalRows: 0, successfulRows: 0, updatedRows: 0, failedRows: 0, errors: [], successfulIds: [] };
     }
 
     const seenRollNumbersInBatch = new Set<string>();
@@ -230,21 +227,66 @@ export class PeopleService {
       seenRollNumbersInBatch.add(rowData.rollNumber.toLowerCase());
       seenEmailsInBatch.add(rowData.email.toLowerCase());
 
-      // 3. Database existence check and transactional provisioning
+      // 3. Database existence check and provisioning
       try {
-        // Check existing student
+        // Check existing student by roll number
         const [existingStudent] = await db
-          .select({ id: students.id })
+          .select()
           .from(students)
           .where(eq(students.rollNumber, rowData.rollNumber))
           .limit(1);
 
         if (existingStudent) {
-          errors.push({
-            row: rowNum,
-            identifier: rowData.rollNumber,
-            reason: `Roll Number '${rowData.rollNumber}' is already registered in the system`,
-          });
+          // --- UPDATE path: refresh directory fields, keep student self-fill data intact ---
+          const [existingPerson] = await db
+            .select()
+            .from(people)
+            .where(eq(people.id, existingStudent.personId))
+            .limit(1);
+
+          if (!existingPerson) {
+            errors.push({
+              row: rowNum,
+              identifier: rowData.rollNumber,
+              reason: 'Student exists but linked person record is missing',
+            });
+            continue;
+          }
+
+          // Email conflict check (email belongs to another person)
+          if (rowData.email !== existingPerson.email) {
+            const [emailTaken] = await db
+              .select({ id: people.id })
+              .from(people)
+              .where(and(eq(people.email, rowData.email), not(eq(people.id, existingPerson.id))))
+              .limit(1);
+            if (emailTaken) {
+              errors.push({
+                row: rowNum,
+                identifier: rowData.email,
+                reason: `Email '${rowData.email}' is already registered with another user`,
+              });
+              continue;
+            }
+          }
+
+          await db
+            .update(people)
+            .set({ name: rowData.name, email: rowData.email, updatedAt: new Date() })
+            .where(eq(people.id, existingPerson.id));
+
+          await db
+            .update(students)
+            .set({
+              department: rowData.department,
+              joiningYear: rowData.joiningYear,
+              residency: rowData.residency,
+              updatedAt: new Date(),
+            })
+            .where(eq(students.id, existingStudent.id));
+
+          updatedRows++;
+          successfulIds.push(existingStudent.id);
           continue;
         }
 
@@ -280,7 +322,6 @@ export class PeopleService {
             accountId: newAccount.id,
             name: rowData.name,
             email: rowData.email,
-            phone: rowData.phone || null,
             personType: 'student',
             status: 'active',
           })
@@ -295,9 +336,6 @@ export class PeopleService {
             joiningYear: rowData.joiningYear,
             residency: rowData.residency,
             faceEnrollmentStatus: 'not_enrolled',
-            emergencyContact: rowData.emergencyContact || null,
-            address: rowData.address || null,
-            healthConcerns: rowData.healthConcerns || null,
           })
           .returning();
 
@@ -316,6 +354,7 @@ export class PeopleService {
     return {
       totalRows,
       successfulRows: successfulIds.length,
+      updatedRows,
       failedRows: errors.length,
       errors,
       successfulIds,
@@ -325,10 +364,11 @@ export class PeopleService {
   /**
    * Process and provision staff Excel records
    */
-  public async processStaffRows(rawRows: Record<string, unknown>[]): Promise<IngestionResultReport> {
+public async processStaffRows(rawRows: Record<string, unknown>[]): Promise<IngestionResultReport> {
     const totalRows = rawRows.length;
     const errors: RowValidationError[] = [];
     const successfulIds: string[] = [];
+    let updatedRows = 0;
 
     for (let index = 0; index < rawRows.length; index++) {
       const rowNum = index + 2;
@@ -362,16 +402,78 @@ export class PeopleService {
 
       try {
         const [existingStaff] = await db
-          .select({ id: staff.id })
+          .select()
           .from(staff)
           .where(eq(staff.staffId, rowData.staffId))
           .limit(1);
 
         if (existingStaff) {
+          // --- UPDATE path: refresh staff directory fields by Staff ID ---
+          const [existingPerson] = await db
+            .select()
+            .from(people)
+            .where(eq(people.id, existingStaff.personId))
+            .limit(1);
+
+          if (!existingPerson) {
+            errors.push({
+              row: rowNum,
+              identifier: rowData.staffId,
+              reason: 'Staff record exists but linked person record is missing',
+            });
+            continue;
+          }
+
+          if (rowData.email !== existingPerson.email) {
+            const [emailTaken] = await db
+              .select({ id: people.id })
+              .from(people)
+              .where(and(eq(people.email, rowData.email), not(eq(people.id, existingPerson.id))))
+              .limit(1);
+            if (emailTaken) {
+              errors.push({
+                row: rowNum,
+                identifier: rowData.email,
+                reason: `Email '${rowData.email}' is already registered with another user`,
+              });
+              continue;
+            }
+          }
+
+          await db
+            .update(people)
+            .set({
+              name: rowData.name,
+              email: rowData.email,
+              phone: rowData.phone || null,
+              updatedAt: new Date(),
+            })
+            .where(eq(people.id, existingPerson.id));
+
+          await db
+            .update(staff)
+            .set({
+              department: rowData.department,
+              designation: rowData.designation || null,
+            })
+            .where(eq(staff.id, existingStaff.id));
+
+          updatedRows++;
+          successfulIds.push(existingStaff.id);
+          continue;
+        }
+
+        // Email conflict check for new records
+        const [existingPerson] = await db
+          .select({ id: people.id })
+          .from(people)
+          .where(eq(people.email, rowData.email))
+          .limit(1);
+        if (existingPerson) {
           errors.push({
             row: rowNum,
-            identifier: rowData.staffId,
-            reason: `Staff ID '${rowData.staffId}' is already registered`,
+            identifier: rowData.email,
+            reason: `Email '${rowData.email}' is already registered with another user`,
           });
           continue;
         }
@@ -421,6 +523,7 @@ export class PeopleService {
     return {
       totalRows,
       successfulRows: successfulIds.length,
+      updatedRows,
       failedRows: errors.length,
       errors,
       successfulIds,
@@ -470,7 +573,7 @@ export class PeopleService {
 
     const total = Number(totalCountResult?.count || 0);
 
-    const items = await db
+const items = await db
       .select({
         id: students.id,
         personId: people.id,
@@ -486,16 +589,18 @@ export class PeopleService {
         violationCount: students.violationCount,
         status: people.status,
         createdAt: students.createdAt,
+        trainerProfileId: trainerProfiles.id,
       })
       .from(students)
       .innerJoin(people, eq(students.personId, people.id))
+      .leftJoin(trainerProfiles, eq(trainerProfiles.personId, people.id))
       .where(whereClause)
       .orderBy(desc(students.createdAt))
       .limit(limit)
       .offset(offset);
 
     return {
-      items,
+      items: items.map((row) => ({ ...row, isTrainer: Boolean(row.trainerProfileId) })),
       pagination: {
         page,
         limit,
@@ -621,7 +726,7 @@ export class PeopleService {
       .where(eq(authorizedPersons.id, id))
       .returning();
 
-    // Audit log
+// Audit log
     await db.insert(auditLogs).values({
       actorEmail: adminEmail,
       action: 'revoke',
@@ -631,6 +736,139 @@ export class PeopleService {
     });
 
     return updated;
+  }
+
+  /**
+   * Student self-onboarding: fill contact, emergency contact, address, health concerns (FR-STU-005)
+   */
+  public async updateMyStudentProfile(personId: string, input: StudentSelfUpdateInput) {
+    const parseResult = studentSelfUpdateSchema.safeParse(input);
+    if (!parseResult.success) {
+      throw new ValidationError('Invalid profile data', parseResult.error.format());
+    }
+    const data = parseResult.data;
+
+    const [person] = await db.select().from(people).where(eq(people.id, personId)).limit(1);
+    if (!person || person.personType !== 'student') {
+      throw new NotFoundError('Student profile not found');
+    }
+
+    const [stu] = await db.select().from(students).where(eq(students.personId, personId)).limit(1);
+    if (!stu) {
+      throw new NotFoundError('Student record not found');
+    }
+
+    if (data.phone !== undefined) {
+      await db.update(people).set({ phone: data.phone, updatedAt: new Date() }).where(eq(people.id, personId));
+    }
+
+    const studentUpdates: Record<string, unknown> = {};
+    if (data.emergencyContact !== undefined) studentUpdates.emergencyContact = data.emergencyContact;
+    if (data.address !== undefined) studentUpdates.address = data.address;
+    if (data.healthConcerns !== undefined) studentUpdates.healthConcerns = data.healthConcerns;
+    if (Object.keys(studentUpdates).length > 0) {
+      studentUpdates.updatedAt = new Date();
+      await db.update(students).set(studentUpdates).where(eq(students.id, stu.id));
+    }
+
+    return {
+      phone: data.phone ?? person.phone ?? null,
+      emergencyContact: data.emergencyContact ?? stu.emergencyContact ?? null,
+      address: data.address ?? stu.address ?? null,
+      healthConcerns: data.healthConcerns ?? stu.healthConcerns ?? null,
+    };
+  }
+
+  /**
+   * Toggle a student's trainer role. Trainers are students with a trainer profile (FR-TRN-000)
+   */
+  public async setStudentTrainerRole(studentId: string, isTrainer: boolean, adminEmail: string) {
+    const [stu] = await db.select().from(students).where(eq(students.id, studentId)).limit(1);
+    if (!stu) {
+      throw new NotFoundError(`Student '${studentId}' not found`);
+    }
+
+    const [person] = await db.select().from(people).where(eq(people.id, stu.personId)).limit(1);
+    if (!person) {
+      throw new NotFoundError('Linked person record not found');
+    }
+
+    const [existingProfile] = await db
+      .select({ id: trainerProfiles.id })
+      .from(trainerProfiles)
+      .where(eq(trainerProfiles.personId, stu.personId))
+      .limit(1);
+
+    if (isTrainer && !existingProfile) {
+      await db.insert(trainerProfiles).values({ personId: stu.personId });
+    } else if (!isTrainer && existingProfile) {
+      await db.delete(trainerProfiles).where(eq(trainerProfiles.id, existingProfile.id));
+    }
+
+    if (person.accountId) {
+      await db
+        .update(accounts)
+        .set({ role: isTrainer ? 'trainer' : 'student', updatedAt: new Date() })
+        .where(eq(accounts.id, person.accountId));
+    }
+
+    await db.insert(auditLogs).values({
+      actorEmail: adminEmail,
+      action: isTrainer ? 'assign_trainer_role' : 'remove_trainer_role',
+      entity: 'trainer_profile',
+      entityId: stu.personId,
+      previousValue: { isTrainer: Boolean(existingProfile) },
+      newValue: { isTrainer },
+      reason: isTrainer
+        ? `Marked student '${stu.rollNumber}' as trainer`
+        : `Removed trainer role from student '${stu.rollNumber}'`,
+    });
+
+    return {
+      studentId: stu.id,
+      rollNumber: stu.rollNumber,
+      name: person.name,
+      isTrainer,
+    };
+  }
+
+  /**
+   * Bulk assign/remove trainer role by roll numbers (bulk import)
+   */
+  public async bulkSetTrainerRoles(rollNumbers: string[], action: 'assign' | 'remove', adminEmail: string) {
+    const notFound: string[] = [];
+    const failed: { rollNumber: string; reason: string }[] = [];
+    let assigned = 0;
+    let removed = 0;
+
+    for (const roll of rollNumbers) {
+      const [stu] = await db
+        .select({ id: students.id, rollNumber: students.rollNumber })
+        .from(students)
+        .where(eq(students.rollNumber, roll))
+        .limit(1);
+
+      if (!stu) {
+        notFound.push(roll);
+        continue;
+      }
+
+      try {
+        await this.setStudentTrainerRole(stu.id, action === 'assign', adminEmail);
+        if (action === 'assign') assigned++;
+        else removed++;
+      } catch (err: unknown) {
+        failed.push({ rollNumber: roll, reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    return {
+      processed: rollNumbers.length,
+      assigned,
+      removed,
+      notFound,
+      failed,
+    };
   }
 }
 

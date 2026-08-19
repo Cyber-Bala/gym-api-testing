@@ -1,4 +1,4 @@
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import {
@@ -11,6 +11,7 @@ import {
   bookings,
   accessSessions,
   entryExitLogs,
+  trainerProfiles,
 } from '../../db/schema/index.js';
 import { bookingService } from '../booking/booking.service.js';
 import { ZkBioWebhookDto, AccessDecisionResult, LiveOccupancyStats, LiveGymOccupant } from './access.types.js';
@@ -432,7 +433,10 @@ export class AccessService {
       })
       .from(accessSessions)
       .innerJoin(people, eq(accessSessions.personId, people.id))
-      .where(and(eq(accessSessions.status, 'inside'), eq(people.personType, 'student')))
+      .leftJoin(trainerProfiles, eq(trainerProfiles.personId, people.id))
+      .where(
+        and(eq(accessSessions.status, 'inside'), eq(people.personType, 'student'), isNull(trainerProfiles.personId))
+      )
       .orderBy(desc(accessSessions.entryTimestamp));
 
     const now = new Date().getTime();
