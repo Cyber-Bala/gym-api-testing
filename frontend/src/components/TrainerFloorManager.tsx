@@ -112,7 +112,7 @@ export const TrainerFloorManager: React.FC = () => {
 
         {/* Overstayers Alert Section */}
         {status && status.overstayers.length > 0 && (
-          <div className="p-5 rounded-2xl border border-danger/30 bg-danger-muted/10 space-y-3 shadow-sm">
+          <div className="p-5 rounded-2xl bg-danger-muted/15 space-y-3 shadow-sm">
             <div className="flex items-center gap-2 text-danger">
               <AlertTriangle className="w-5 h-5 shrink-0" />
               <h4 className="font-bold text-sm">
@@ -124,7 +124,7 @@ export const TrainerFloorManager: React.FC = () => {
               {status.overstayers.map((o) => (
                 <div
                   key={o.sessionId}
-                  className="p-4 rounded-xl bg-surface border border-danger/30 flex items-center justify-between shadow-sm"
+                  className="p-4 rounded-xl bg-surface-elevated flex items-center justify-between shadow-sm"
                 >
                   <div className="space-y-0.5 min-w-0">
                     <h5 className="font-bold text-sm text-text truncate">{o.name}</h5>
@@ -155,8 +155,8 @@ export const TrainerFloorManager: React.FC = () => {
                 <div
                   key={occ.sessionId}
                   className={cn(
-                    'p-4 rounded-2xl border bg-surface space-y-2 transition-all shadow-sm',
-                    occ.isOverstayer ? 'border-danger/40 bg-danger-muted/10' : 'border-border/40 hover:border-primary/40'
+                    'p-4 rounded-2xl space-y-2 transition-all shadow-sm',
+                    occ.isOverstayer ? 'bg-danger-muted/15' : 'bg-surface-elevated hover:shadow-md'
                   )}
                 >
                   <div className="flex items-start justify-between">

@@ -15,17 +15,17 @@ const variants: Record<ButtonVariant, string> = {
   primary:
     'bg-primary text-white hover:bg-primary-hover shadow-sm disabled:opacity-50 font-semibold',
   secondary:
-    'bg-border-subtle text-text border border-border hover:bg-border/60 disabled:opacity-50',
+    'bg-surface-elevated text-text hover:opacity-90 shadow-sm disabled:opacity-50 font-medium',
   outline:
-    'bg-transparent text-text border border-border hover:bg-border-subtle disabled:opacity-50',
+    'bg-surface-elevated/70 text-text hover:bg-surface-elevated shadow-sm disabled:opacity-50 font-medium',
   ghost:
-    'bg-transparent text-secondary hover:bg-primary-muted hover:text-text disabled:opacity-50',
+    'bg-transparent text-secondary hover:bg-surface-elevated hover:text-text disabled:opacity-50',
   danger:
-    'bg-danger text-white hover:opacity-90 shadow-sm disabled:opacity-50',
+    'bg-danger text-white hover:opacity-90 shadow-sm disabled:opacity-50 font-semibold',
   accent:
     'bg-accent text-slate-950 font-bold hover:bg-accent-hover shadow-sm disabled:opacity-50',
   success:
-    'bg-success text-white hover:opacity-90 shadow-sm disabled:opacity-50',
+    'bg-success text-white hover:opacity-90 shadow-sm disabled:opacity-50 font-semibold',
 };
 
 const sizes: Record<ButtonSize, string> = {
@@ -82,9 +82,9 @@ export const IconButton: React.FC<IconButtonProps> = ({
   };
 
   const variantClasses = {
-    default: 'border border-border bg-surface text-secondary hover:bg-border-subtle hover:text-text',
-    ghost: 'bg-transparent text-secondary hover:bg-border-subtle hover:text-text border-0',
-    danger: 'border border-danger/30 bg-danger-muted text-danger hover:bg-danger/20',
+    default: 'bg-surface-elevated text-secondary hover:text-text shadow-sm',
+    ghost: 'bg-transparent text-secondary hover:bg-surface-elevated hover:text-text border-0',
+    danger: 'bg-danger-muted text-danger hover:bg-danger/20 shadow-sm',
   };
 
   return (

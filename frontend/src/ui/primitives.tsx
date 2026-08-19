@@ -21,9 +21,9 @@ export const Card: React.FC<CardProps> = ({
   <section
     onClick={onClick}
     className={cn(
-      'rounded-2xl bg-surface text-text shadow-sm border border-border/40 hover:shadow-md transition-all duration-200',
+      'rounded-2xl bg-surface text-text shadow-md transition-all duration-200',
       padded && 'p-5 sm:p-6',
-      interactive && 'cursor-pointer hover:border-primary/40 hover:bg-surface-elevated',
+      interactive && 'cursor-pointer hover:shadow-xl hover:bg-surface-elevated',
       className
     )}
   >
@@ -38,18 +38,18 @@ interface BadgeProps {
 }
 
 const badgeTone: Record<NonNullable<BadgeProps['tone']>, string> = {
-  neutral: 'bg-border-subtle text-secondary border-border',
-  primary: 'bg-primary-muted text-primary border-primary/20',
-  success: 'bg-success-muted text-success border-success/20',
-  warning: 'bg-warning-muted text-warning border-warning/20',
-  danger: 'bg-danger-muted text-danger border-danger/20',
-  accent: 'bg-accent-muted text-accent border-accent/20',
+  neutral: 'bg-surface-elevated text-secondary',
+  primary: 'bg-primary-muted text-primary',
+  success: 'bg-success-muted text-success',
+  warning: 'bg-warning-muted text-warning',
+  danger: 'bg-danger-muted text-danger',
+  accent: 'bg-accent-muted text-accent',
 };
 
 export const Badge: React.FC<BadgeProps> = ({ children, tone = 'neutral', className }) => (
   <span
     className={cn(
-      'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide',
+      'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide',
       badgeTone[tone],
       className
     )}
@@ -61,7 +61,7 @@ export const Badge: React.FC<BadgeProps> = ({ children, tone = 'neutral', classN
 export const Avatar: React.FC<{ name: string; className?: string }> = ({ name, className }) => (
   <div
     className={cn(
-      'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-accent border border-accent/30',
+      'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-white shadow-sm',
       className
     )}
     aria-hidden

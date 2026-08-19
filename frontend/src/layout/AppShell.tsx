@@ -202,7 +202,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
         {/* Desktop Main Content Area */}
         <div className="flex min-h-screen min-w-0 flex-col">
           {/* Desktop Top Header Bar */}
-          <header className="sticky top-0 z-30 hidden items-center justify-between border-b border-border bg-surface px-8 py-3 lg:flex">
+          <header className="sticky top-0 z-30 hidden items-center justify-between border-b border-white/5 bg-surface px-8 py-3 lg:flex shadow-sm">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-muted">Portal</span>
               <span className="text-muted">/</span>
@@ -214,7 +214,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
                 <button
                   type="button"
                   onClick={() => setImportModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-success/30 bg-success-muted text-success text-xs font-semibold hover:bg-success/20 transition-colors"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-success-muted text-success text-xs font-semibold hover:bg-success/20 transition-all shadow-sm"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   <span>Bulk Excel Import</span>
@@ -232,7 +232,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             {children}
           </main>
 
-          <footer className="hidden border-t border-border px-8 py-4 text-xs text-muted lg:block bg-surface">
+          <footer className="hidden border-t border-white/5 px-8 py-4 text-xs text-muted lg:block bg-surface">
             <div className="mx-auto flex max-w-wide items-center justify-between">
               <p>© 2026 Rajalakshmi Engineering College. All rights reserved.</p>
               <div className="flex items-center gap-3 font-mono text-[11px]">
@@ -249,7 +249,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
 
       {/* Mobile Bottom Navigation Bar */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/40 bg-surface shadow-lg pb-[var(--safe-bottom)] lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/5 bg-surface shadow-2xl pb-[var(--safe-bottom)] lg:hidden"
         aria-label="Primary Mobile Navigation"
       >
         <div className="flex h-14 items-center justify-around px-2 max-w-md mx-auto">

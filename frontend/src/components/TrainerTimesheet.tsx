@@ -127,7 +127,7 @@ export const TrainerTimesheet: React.FC = () => {
           </div>
 
           {/* Live Turnstile Status Notice */}
-          <div className="p-4 rounded-2xl border border-border/40 bg-surface-elevated/40 flex items-center gap-3">
+          <div className="p-4 rounded-2xl bg-surface-elevated flex items-center gap-3 shadow-sm">
             <div className={cn(
               'w-3 h-3 rounded-full shrink-0',
               profile?.activeShift ? 'bg-success animate-ping' : 'bg-muted'
@@ -151,9 +151,9 @@ export const TrainerTimesheet: React.FC = () => {
                 Turnstile Shift Logs
               </h4>
 
-              <div className="overflow-x-auto rounded-xl border border-border/40">
+              <div className="overflow-x-auto rounded-xl bg-surface-elevated shadow-sm">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-border-subtle/50 text-muted font-semibold">
+                  <thead className="text-muted font-semibold border-b border-white/5">
                     <tr>
                       <th className="p-3">Date</th>
                       <th className="p-3">Entry Time</th>
@@ -162,9 +162,9 @@ export const TrainerTimesheet: React.FC = () => {
                       <th className="p-3">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border/30 text-text">
+                  <tbody className="divide-y divide-white/5 text-text">
                     {profile.shifts.map((s) => (
-                      <tr key={s.id} className="hover:bg-border-subtle/30 transition-colors">
+                      <tr key={s.id} className="hover:bg-white/5 transition-colors">
                         <td className="p-3 font-mono">{new Date(s.clockIn).toLocaleDateString()}</td>
                         <td className="p-3 font-mono">{new Date(s.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                         <td className="p-3 font-mono text-muted">{s.clockOut ? new Date(s.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</td>

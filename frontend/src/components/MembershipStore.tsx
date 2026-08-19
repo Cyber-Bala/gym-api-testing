@@ -239,7 +239,7 @@ export const MembershipStore: React.FC = () => {
 
         {/* Active Membership Status Card */}
         {myMembership ? (
-          <div className="p-5 rounded-2xl border border-success/30 bg-success-muted/20 space-y-2 shadow-sm">
+          <div className="p-5 rounded-2xl bg-success-muted/20 space-y-2 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-success" />
@@ -281,10 +281,8 @@ export const MembershipStore: React.FC = () => {
               <div
                 key={p.id}
                 className={cn(
-                  'p-5 rounded-2xl border bg-surface flex flex-col justify-between space-y-4 shadow-sm transition-all hover:shadow-md',
-                  isFeatured
-                    ? 'border-primary/50 bg-primary-muted/10 relative'
-                    : 'border-border/40 hover:border-primary/40'
+                  'p-5 rounded-2xl bg-surface-elevated flex flex-col justify-between space-y-4 shadow-sm transition-all hover:shadow-md',
+                  isFeatured ? 'bg-primary-muted/25 relative' : ''
                 )}
               >
                 <div className="space-y-2">

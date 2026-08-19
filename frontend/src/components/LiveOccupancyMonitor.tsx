@@ -217,7 +217,7 @@ export const LiveOccupancyMonitor: React.FC = () => {
                 {stats.occupants.map((occ) => (
                   <div
                     key={occ.sessionId}
-                    className="p-4 rounded-2xl border border-border bg-surface flex flex-col justify-between space-y-3 shadow-sm hover:border-primary/40 transition-colors"
+                    className="p-4 rounded-2xl bg-surface-elevated flex flex-col justify-between space-y-3 shadow-sm transition-all hover:shadow-md"
                   >
                     <div className="flex items-start justify-between">
                       <div>
@@ -257,7 +257,7 @@ export const LiveOccupancyMonitor: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="pt-2 border-t border-border flex items-center justify-between text-xs text-muted">
+                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs text-muted">
                       <span className="flex items-center gap-1 text-secondary font-medium">
                         <Clock className="w-3.5 h-3.5 text-success" />
                         <span>Inside: {occ.minutesInside} min</span>
@@ -276,8 +276,8 @@ export const LiveOccupancyMonitor: React.FC = () => {
 
       {/* Hardware Biometric Turnstile Simulator — SUPER ADMIN ONLY */}
       {isSuperAdmin && (
-        <Card className="space-y-6 border-primary/30">
-          <div className="flex items-center justify-between gap-2 border-b border-border pb-4">
+        <Card className="space-y-6">
+          <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-4">
             <div className="flex items-center gap-2">
               <Scan className="w-5 h-5 text-primary" />
               <div>
@@ -304,7 +304,7 @@ export const LiveOccupancyMonitor: React.FC = () => {
               <Button
                 variant="outline"
                 size="sm"
-                className="justify-start text-xs border-success/30 hover:bg-success-muted text-text"
+                className="justify-start text-xs hover:bg-success-muted hover:text-success text-text"
                 loading={simulating}
                 onClick={() =>
                   handleSimulateScan({
@@ -321,7 +321,7 @@ export const LiveOccupancyMonitor: React.FC = () => {
               <Button
                 variant="outline"
                 size="sm"
-                className="justify-start text-xs border-accent/30 hover:bg-accent-muted text-text"
+                className="justify-start text-xs hover:bg-accent-muted hover:text-accent text-text"
                 loading={simulating}
                 onClick={() =>
                   handleSimulateScan({
@@ -338,7 +338,7 @@ export const LiveOccupancyMonitor: React.FC = () => {
               <Button
                 variant="outline"
                 size="sm"
-                className="justify-start text-xs border-warning/30 hover:bg-warning-muted text-text"
+                className="justify-start text-xs hover:bg-warning-muted hover:text-warning text-text"
                 loading={simulating}
                 onClick={() =>
                   handleSimulateScan({
@@ -355,7 +355,7 @@ export const LiveOccupancyMonitor: React.FC = () => {
               <Button
                 variant="outline"
                 size="sm"
-                className="justify-start text-xs border-primary/30 hover:bg-primary-muted text-text"
+                className="justify-start text-xs hover:bg-primary-muted hover:text-primary text-text"
                 loading={simulating}
                 onClick={() =>
                   handleSimulateScan({
@@ -372,7 +372,7 @@ export const LiveOccupancyMonitor: React.FC = () => {
           </div>
 
           {/* Custom Turnstile Trigger Form */}
-          <div className="p-4 rounded-2xl border border-border bg-surface-elevated/40 space-y-4">
+          <div className="p-4 rounded-2xl bg-surface-elevated space-y-4 shadow-sm">
             <p className="text-xs font-bold text-text">Custom Turnstile Event Dispatcher</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -419,10 +419,10 @@ export const LiveOccupancyMonitor: React.FC = () => {
           {scanResult && (
             <div
               className={cn(
-                'p-4 rounded-2xl border space-y-2 transition-all animate-in fade-in duration-200',
+                'p-4 rounded-2xl space-y-2 transition-all shadow-md animate-in fade-in duration-200',
                 scanResult.accessGranted
-                  ? 'border-success/40 bg-success-muted/30 text-success'
-                  : 'border-danger/40 bg-danger-muted/30 text-danger'
+                  ? 'bg-success-muted/30 text-success'
+                  : 'bg-danger-muted/30 text-danger'
               )}
             >
               <div className="flex items-center justify-between">

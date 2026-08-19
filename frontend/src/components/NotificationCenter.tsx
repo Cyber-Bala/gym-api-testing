@@ -132,7 +132,7 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
         type="button"
         onClick={handleToggle}
         className={cn(
-          'relative inline-flex items-center justify-center rounded-xl border border-border/40 bg-surface text-secondary hover:bg-border-subtle hover:text-text transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20',
+          'relative inline-flex items-center justify-center rounded-xl bg-surface-elevated text-secondary hover:text-text transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20',
           compact ? 'h-9 w-9' : 'h-10 w-10'
         )}
         aria-label="Notifications"
@@ -148,8 +148,8 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
 
       {/* Popover Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl border border-border/40 bg-surface shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="flex items-center justify-between pb-2.5 border-b border-border/40">
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-surface-elevated shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center justify-between pb-2.5 border-b border-white/5">
             <div className="flex items-center gap-2">
               <Bell className="w-4 h-4 text-primary" />
               <h4 className="font-bold text-sm text-text">Notifications</h4>
@@ -188,10 +188,10 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
                     key={n.id}
                     onClick={() => handleMarkAsRead(n.id)}
                     className={cn(
-                      'p-3 rounded-xl border transition-all flex items-start gap-3 text-left cursor-pointer',
+                      'p-3 rounded-xl transition-all flex items-start gap-3 text-left cursor-pointer shadow-sm',
                       isUnread
-                        ? 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10'
-                        : 'border-border/30 bg-surface-elevated/40 opacity-75 hover:opacity-100 hover:bg-border-subtle/60'
+                        ? 'bg-red-500/10 hover:bg-red-500/15'
+                        : 'bg-surface/50 opacity-75 hover:opacity-100 hover:bg-surface'
                     )}
                   >
                     <div className="mt-0.5 relative">
