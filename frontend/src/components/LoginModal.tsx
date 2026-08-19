@@ -69,7 +69,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   const mockUsers = [
-    { email: 'superadmin@rajalakshmi.edu.in', label: 'Super Administrator', role: 'Super Admin', color: 'border-danger/30 bg-danger-muted text-danger' },
+    { email: 'iiic@rajalakshmi.edu.in', label: 'Super Administrator (IIIC)', role: 'Super Admin', color: 'border-danger/30 bg-danger-muted text-danger' },
     { email: 'admin@rajalakshmi.edu.in', label: 'Gym Administrator', role: 'Admin', color: 'border-primary/30 bg-primary-muted text-primary' },
     { email: 'trainer@rajalakshmi.edu.in', label: 'Student Trainer (Vignesh)', role: 'Trainer', color: 'border-warning/30 bg-warning-muted text-warning' },
     { email: 'hosteller@rajalakshmi.edu.in', label: 'Hosteller Student (Karthik)', role: 'Student (Free)', color: 'border-success/30 bg-success-muted text-success' },

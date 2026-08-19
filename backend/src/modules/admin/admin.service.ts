@@ -13,9 +13,18 @@ import {
   bookings,
   gymCalendar,
   auditLogs,
+  accounts,
+  adminProfiles,
+  roles,
 } from '../../db/schema/index.js';
 import { bookingService } from '../booking/booking.service.js';
-import { ExecutiveAnalyticsDto, GymClosureDto, AuditLogEntryDto } from './admin.types.js';
+import {
+  ExecutiveAnalyticsDto,
+  GymClosureDto,
+  AuditLogEntryDto,
+  RoleItemDto,
+  AdminListItemDto,
+} from './admin.types.js';
 
 export class AdminService {
   /**
@@ -225,6 +234,244 @@ export class AdminService {
       reason: l.reason,
       createdAt: l.createdAt.toISOString(),
     }));
+  }
+
+  /**
+   * List all defined admin roles
+   */
+  public async getRoles(): Promise<RoleItemDto[]> {
+    const allRoles = await db.select().from(roles);
+    return allRoles.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      permissions: (r.permissions as string[]) || [],
+    }));
+  }
+
+  /**
+   * List all gym administrators
+   */
+  public async getAdmins(): Promise<AdminListItemDto[]> {
+    const profiles = await db
+      .select({
+        id: adminProfiles.id,
+        accountId: adminProfiles.accountId,
+        roleId: adminProfiles.roleId,
+        isProtectedSuperAdmin: adminProfiles.isProtectedSuperAdmin,
+        createdAt: adminProfiles.createdAt,
+        accountEmail: accounts.email,
+        accountLastLogin: accounts.lastLoginAt,
+        personId: people.id,
+        personName: people.name,
+        personPhone: people.phone,
+        personStatus: people.status,
+        roleName: roles.name,
+        rolePermissions: roles.permissions,
+      })
+      .from(adminProfiles)
+      .innerJoin(accounts, eq(adminProfiles.accountId, accounts.id))
+      .leftJoin(people, eq(people.accountId, accounts.id))
+      .leftJoin(roles, eq(adminProfiles.roleId, roles.id))
+      .orderBy(desc(adminProfiles.createdAt));
+
+    return profiles.map((p) => ({
+      id: p.id,
+      accountId: p.accountId,
+      personId: p.personId || p.accountId,
+      name: p.personName || p.accountEmail.split('@')[0],
+      email: p.accountEmail,
+      phone: p.personPhone,
+      roleName: p.isProtectedSuperAdmin === 'true' ? 'Super Administrator' : (p.roleName || 'Custom Admin'),
+      roleId: p.roleId,
+      permissions: p.isProtectedSuperAdmin === 'true' ? ['*'] : ((p.rolePermissions as string[]) || []),
+      isProtectedSuperAdmin: p.isProtectedSuperAdmin === 'true',
+      status: p.personStatus || 'active',
+      createdAt: p.createdAt.toISOString(),
+      lastLoginAt: p.accountLastLogin ? p.accountLastLogin.toISOString() : null,
+    }));
+  }
+
+  /**
+   * Create or promote a user to Administrator (Super Admin Only)
+   */
+  public async createAdmin(
+    data: { email: string; name: string; phone?: string; roleId?: string; permissions?: string[] },
+    actorEmail: string
+  ): Promise<AdminListItemDto> {
+    const normalizedEmail = data.email.toLowerCase().trim();
+
+    // 1. Ensure or find people record
+    let [person] = await db.select().from(people).where(eq(people.email, normalizedEmail)).limit(1);
+    if (!person) {
+      const [newPerson] = await db
+        .insert(people)
+        .values({
+          name: data.name.trim(),
+          email: normalizedEmail,
+          phone: data.phone?.trim(),
+          personType: 'admin',
+          status: 'active',
+        })
+        .returning();
+      person = newPerson;
+    } else {
+      await db
+        .update(people)
+        .set({ personType: 'admin', status: 'active', phone: data.phone?.trim() || person.phone })
+        .where(eq(people.id, person.id));
+    }
+
+    // 2. Ensure or find account record
+    let [account] = await db.select().from(accounts).where(eq(accounts.email, normalizedEmail)).limit(1);
+    if (!account) {
+      const [newAccount] = await db
+        .insert(accounts)
+        .values({
+          email: normalizedEmail,
+          role: 'admin',
+          isActive: true,
+        })
+        .returning();
+      account = newAccount;
+
+      await db
+        .update(people)
+        .set({ accountId: newAccount.id })
+        .where(eq(people.id, person.id));
+    } else {
+      await db
+        .update(accounts)
+        .set({ role: 'admin', isActive: true })
+        .where(eq(accounts.id, account.id));
+    }
+
+    // 3. Check if admin profile already exists
+    const [existingProfile] = await db
+      .select()
+      .from(adminProfiles)
+      .where(eq(adminProfiles.accountId, account.id))
+      .limit(1);
+
+    if (existingProfile) {
+      throw new ConflictError(`Admin profile already exists for email '${normalizedEmail}'`);
+    }
+
+    // 4. Insert admin profile
+    const [newProfile] = await db
+      .insert(adminProfiles)
+      .values({
+        accountId: account.id,
+        roleId: data.roleId || null,
+        isProtectedSuperAdmin: 'false',
+      })
+      .returning();
+
+    // 5. Audit Log
+    await db.insert(auditLogs).values({
+      actorEmail,
+      action: 'create_admin',
+      entity: 'admin_profile',
+      entityId: newProfile.id,
+      reason: `Provisioned administrator '${normalizedEmail}' with roleId '${data.roleId || 'custom'}'`,
+    });
+
+    let roleName = 'Custom Admin';
+    let rolePermissions: string[] = data.permissions || [];
+    if (data.roleId) {
+      const [roleRec] = await db.select().from(roles).where(eq(roles.id, data.roleId)).limit(1);
+      if (roleRec) {
+        roleName = roleRec.name;
+        rolePermissions = (roleRec.permissions as string[]) || [];
+      }
+    }
+
+    return {
+      id: newProfile.id,
+      accountId: account.id,
+      personId: person.id,
+      name: person.name,
+      email: account.email,
+      phone: person.phone,
+      roleName,
+      roleId: data.roleId || null,
+      permissions: rolePermissions,
+      isProtectedSuperAdmin: false,
+      status: person.status,
+      createdAt: newProfile.createdAt.toISOString(),
+      lastLoginAt: account.lastLoginAt ? account.lastLoginAt.toISOString() : null,
+    };
+  }
+
+  /**
+   * Update an administrator's role or status (Super Admin Only)
+   */
+  public async updateAdmin(
+    adminProfileId: string,
+    data: { roleId?: string; status?: 'active' | 'inactive' | 'suspended' },
+    actorEmail: string
+  ): Promise<void> {
+    const [profile] = await db.select().from(adminProfiles).where(eq(adminProfiles.id, adminProfileId)).limit(1);
+    if (!profile) {
+      throw new NotFoundError(`Admin profile with ID '${adminProfileId}' not found`);
+    }
+
+    if (profile.isProtectedSuperAdmin === 'true') {
+      throw new ConflictError('Cannot modify protected Super Administrator');
+    }
+
+    if (data.roleId !== undefined) {
+      await db
+        .update(adminProfiles)
+        .set({ roleId: data.roleId })
+        .where(eq(adminProfiles.id, adminProfileId));
+    }
+
+    if (data.status) {
+      const [acc] = await db.select().from(accounts).where(eq(accounts.id, profile.accountId)).limit(1);
+      if (acc) {
+        await db
+          .update(people)
+          .set({ status: data.status })
+          .where(eq(people.email, acc.email));
+        await db
+          .update(accounts)
+          .set({ isActive: data.status === 'active' })
+          .where(eq(accounts.id, acc.id));
+      }
+    }
+
+    await db.insert(auditLogs).values({
+      actorEmail,
+      action: 'update_admin',
+      entity: 'admin_profile',
+      entityId: adminProfileId,
+      reason: `Updated admin profile: roleId=${data.roleId}, status=${data.status}`,
+    });
+  }
+
+  /**
+   * Revoke administrator privileges (Super Admin Only)
+   */
+  public async deleteAdmin(adminProfileId: string, actorEmail: string): Promise<void> {
+    const [profile] = await db.select().from(adminProfiles).where(eq(adminProfiles.id, adminProfileId)).limit(1);
+    if (!profile) {
+      throw new NotFoundError(`Admin profile with ID '${adminProfileId}' not found`);
+    }
+
+    if (profile.isProtectedSuperAdmin === 'true') {
+      throw new ConflictError('Cannot revoke privileges from protected Super Administrator');
+    }
+
+    await db.delete(adminProfiles).where(eq(adminProfiles.id, adminProfileId));
+
+    await db.insert(auditLogs).values({
+      actorEmail,
+      action: 'revoke_admin',
+      entity: 'admin_profile',
+      entityId: adminProfileId,
+      reason: `Revoked administrator profile ID '${adminProfileId}'`,
+    });
   }
 }
 

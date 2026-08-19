@@ -1,4 +1,4 @@
-﻿import { eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db, pool } from '../shared/database/index.js';
 import { logger } from '../shared/logging/index.js';
 import { runMigrations } from './migrate.js';
@@ -107,8 +107,8 @@ export const seedDatabase = async () => {
 
     // 3. Super Admin
     const { account: superAdminAcc } = await ensureAccountAndPerson(
-      'superadmin@rajalakshmi.edu.in',
-      'Super Administrator (REC)',
+      'iiic@rajalakshmi.edu.in',
+      'Super Administrator (IIIC)',
       'super_admin',
       'admin'
     );

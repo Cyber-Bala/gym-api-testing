@@ -39,7 +39,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
       title: 'Directory & People',
       ids: ['students', 'authorized_persons', 'violations', 'conflicts'] as AppView[],
     },
-    { title: 'Administration & Insights', ids: ['reports', 'analytics', 'lifecycle', 'health', 'uat_demo'] as AppView[] },
+    { title: 'Administration & Insights', ids: ['reports', 'analytics', 'lifecycle', 'admin_management', 'uat_demo'] as AppView[] },
   ];
 
   const currentItem = items.find((i) => i.id === active) || items[0];

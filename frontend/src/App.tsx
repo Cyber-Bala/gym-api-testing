@@ -19,7 +19,7 @@ import { TrainerTimesheet } from './components/TrainerTimesheet';
 import { ReportsCenter } from './components/ReportsCenter';
 import { ExecutiveAnalyticsDashboard } from './components/ExecutiveAnalyticsDashboard';
 import { DataLifecycleManager } from './components/DataLifecycleManager';
-import { SystemHealth } from './components/SystemHealth';
+import { AdminManagement } from './components/AdminManagement';
 import { UatDemonstrationCenter } from './components/UatDemonstrationCenter';
 import { Loader2 } from 'lucide-react';
 
@@ -87,8 +87,8 @@ export const App: React.FC = () => {
         return <TrainerTimesheet />;
       case 'analytics':
         return <ExecutiveAnalyticsDashboard />;
-      case 'health':
-        return <SystemHealth />;
+      case 'admin_management':
+        return <AdminManagement />;
       case 'uat_demo':
         return <UatDemonstrationCenter />;
       default:

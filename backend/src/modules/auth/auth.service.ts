@@ -1,4 +1,4 @@
-﻿import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid';
 import { eq } from 'drizzle-orm';
 import { db } from '../../shared/database/index.js';
 import { redis } from '../../shared/redis/index.js';
@@ -78,6 +78,75 @@ export class AuthService {
   public async findAndSyncProvisionedUser(email: string, googleSub?: string): Promise<SessionUser> {
     const normalizedEmail = email.toLowerCase().trim();
 
+    // 0. Auto-provision IIIC Super Admin if signing in for the first time
+    if (normalizedEmail === 'iiic@rajalakshmi.edu.in') {
+      let [superPerson] = await db
+        .select()
+        .from(people)
+        .where(eq(people.email, normalizedEmail))
+        .limit(1);
+
+      if (!superPerson) {
+        const [newSuperPerson] = await db
+          .insert(people)
+          .values({
+            name: 'IIIC Super Administrator',
+            email: normalizedEmail,
+            personType: 'admin',
+            status: 'active',
+          })
+          .returning();
+        superPerson = newSuperPerson;
+      }
+
+      let [superAccount] = await db
+        .select()
+        .from(accounts)
+        .where(eq(accounts.email, normalizedEmail))
+        .limit(1);
+
+      if (!superAccount) {
+        const [newSuperAccount] = await db
+          .insert(accounts)
+          .values({
+            email: normalizedEmail,
+            role: 'super_admin',
+            isActive: true,
+            lastLoginAt: new Date(),
+          })
+          .returning();
+        superAccount = newSuperAccount;
+
+        await db
+          .update(people)
+          .set({ accountId: newSuperAccount.id, updatedAt: new Date() })
+          .where(eq(people.id, superPerson.id));
+      } else {
+        await db
+          .update(accounts)
+          .set({ role: 'super_admin', lastLoginAt: new Date(), updatedAt: new Date() })
+          .where(eq(accounts.id, superAccount.id));
+      }
+
+      const [superProfile] = await db
+        .select()
+        .from(adminProfiles)
+        .where(eq(adminProfiles.accountId, superAccount.id))
+        .limit(1);
+
+      if (!superProfile) {
+        await db.insert(adminProfiles).values({
+          accountId: superAccount.id,
+          isProtectedSuperAdmin: 'true',
+        });
+      } else if (superProfile.isProtectedSuperAdmin !== 'true') {
+        await db
+          .update(adminProfiles)
+          .set({ isProtectedSuperAdmin: 'true' })
+          .where(eq(adminProfiles.id, superProfile.id));
+      }
+    }
+
     // 1. Check if person is provisioned in people table
     const [personRecord] = await db
       .select()
@@ -87,7 +156,7 @@ export class AuthService {
 
     if (!personRecord) {
       throw new UnauthorizedError(
-        `Email '${normalizedEmail}' is not provisioned. Only students and staff registered by the college can sign in.`
+        `Email '${normalizedEmail}' is not provisioned. Only students, staff, and administrators registered by the college can sign in.`
       );
     }
 

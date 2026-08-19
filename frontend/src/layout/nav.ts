@@ -12,7 +12,7 @@ import {
   Archive,
   Award,
   TrendingUp,
-  HeartPulse,
+  ShieldCheck,
   Sparkles,
   LayoutGrid,
   DoorOpen,
@@ -35,7 +35,7 @@ export type AppView =
   | 'lifecycle'
   | 'trainer_shifts'
   | 'analytics'
-  | 'health'
+  | 'admin_management'
   | 'uat_demo';
 
 export interface NavItem {
@@ -147,11 +147,11 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['super_admin'],
   },
   {
-    id: 'health',
-    label: 'System status',
-    shortLabel: 'Status',
-    icon: HeartPulse,
-    roles: ['admin', 'super_admin'],
+    id: 'admin_management',
+    label: 'Admin Directory',
+    shortLabel: 'Admins',
+    icon: ShieldCheck,
+    roles: ['super_admin'],
   },
   {
     id: 'uat_demo',

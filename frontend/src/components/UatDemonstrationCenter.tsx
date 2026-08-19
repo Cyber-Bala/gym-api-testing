@@ -64,9 +64,9 @@ export const UatDemonstrationCenter: React.FC = () => {
     },
     {
       role: 'Super Admin',
-      email: 'superadmin@rajalakshmi.edu.in',
-      name: 'Principal',
-      desc: 'Institutional oversight & cold storage.',
+      email: 'iiic@rajalakshmi.edu.in',
+      name: 'IIIC Super Admin',
+      desc: 'Institutional oversight, admin provisioning & cold storage.',
     },
   ];
 
