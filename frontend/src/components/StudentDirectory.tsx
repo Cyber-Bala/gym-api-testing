@@ -3,6 +3,7 @@ import { RefreshCw, UserCheck, ShieldAlert, GraduationCap, CheckCircle2, AlertCi
 import { Card, Badge, Alert } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { SearchInput, Select } from '../ui/Input';
+import { ExcelImportModal } from './ExcelImportModal';
 import { cn } from '../lib/cn';
 
 interface StudentItem {
@@ -36,6 +37,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   const [page, setPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
+  const [importOpen, setImportOpen] = useState<boolean>(false);
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -102,7 +104,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
           <Button
             variant="primary"
             size="sm"
-            onClick={onOpenImport}
+            onClick={() => (onOpenImport ? onOpenImport() : setImportOpen(true))}
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-accent" />
             <span>Bulk Import Excel</span>
@@ -238,6 +240,15 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
           </div>
         </div>
       )}
+
+      <ExcelImportModal
+        isOpen={importOpen}
+        onClose={() => setImportOpen(false)}
+        onSuccess={() => {
+          setImportOpen(false);
+          fetchStudents();
+        }}
+      />
     </Card>
   );
 };

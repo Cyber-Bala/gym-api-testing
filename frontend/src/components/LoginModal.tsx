@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, ShieldAlert, KeyRound, UserCheck, Sparkles } from 'lucide-react';
+import { X, ShieldAlert, UserCheck, Sparkles } from 'lucide-react';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -123,16 +123,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4 animate-in fade-in duration-150" role="dialog" aria-modal="true">
       <button type="button" className="absolute inset-0 bg-[var(--color-overlay)] backdrop-blur-sm" aria-label="Close" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-border bg-surface shadow-2xl p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
+      <div className="relative z-10 w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-surface-elevated shadow-2xl p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-border">
+        <div className="flex items-center justify-between pb-4 border-b border-white/5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary-muted text-primary flex items-center justify-center border border-primary/20 shrink-0">
-              <KeyRound className="w-5 h-5" />
-            </div>
+            <img
+              src="/icons/desktop-icon-256x256.png"
+              alt="REC Gym Logo"
+              className="w-10 h-10 rounded-xl object-contain shadow-sm shrink-0"
+            />
             <div>
               <h3 className="font-bold text-base sm:text-lg text-text">Sign In to REC Gym</h3>
-              <p className="text-xs text-muted">Google OAuth & Institutional Identity</p>
+              <p className="text-xs text-muted">Rajalakshmi Engineering College</p>
             </div>
           </div>
           <button

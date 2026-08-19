@@ -123,20 +123,6 @@ export const LiveOccupancyMonitor: React.FC = () => {
     }
   };
 
-  const handleManualCheckout = async (occ: LiveGymOccupant) => {
-    try {
-      await api.post('/api/v1/floor/checkout', {
-        personId: occ.personId,
-        notes: 'Manual floor supervisor checkout',
-      });
-      toast.success(`Checked out ${occ.name} from gym floor.`);
-      fetchLiveOccupancy();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'Checkout Failed');
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Top Header & Occupancy Summary */}
@@ -208,8 +194,7 @@ export const LiveOccupancyMonitor: React.FC = () => {
                   >
                     <div className="flex items-start justify-between">
                       <div>
-                        <Badge tone="primary">{occ.role}</Badge>
-                        <h5 className="font-bold text-sm text-text mt-1.5">
+                        <h5 className="font-bold text-sm text-text">
                           {occ.name}
                         </h5>
                         <p className="text-xs text-muted font-mono mt-0.5">
@@ -217,7 +202,7 @@ export const LiveOccupancyMonitor: React.FC = () => {
                         </p>
                       </div>
 
-                      {isSuperAdmin ? (
+                      {isSuperAdmin && (
                         <IconButton
                           label="Simulate Exit"
                           size="sm"
@@ -232,15 +217,6 @@ export const LiveOccupancyMonitor: React.FC = () => {
                         >
                           <LogOut className="w-3.5 h-3.5" />
                         </IconButton>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={() => handleManualCheckout(occ)}
-                          className="text-danger hover:bg-danger-muted text-[11px]"
-                        >
-                          <span>Checkout</span>
-                        </Button>
                       )}
                     </div>
 

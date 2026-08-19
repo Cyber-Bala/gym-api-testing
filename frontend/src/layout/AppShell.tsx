@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Dumbbell, Menu, MoreHorizontal, X, FileSpreadsheet } from 'lucide-react';
+import { Menu, MoreHorizontal, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { UserProfileBadge } from '../components/UserProfileBadge';
 import { NotificationCenter } from '../components/NotificationCenter';
-import { ExcelImportModal } from '../components/ExcelImportModal';
 import { cn } from '../lib/cn';
 import { AppView, NavItem, visibleNav, getMobilePrimary } from './nav';
 
@@ -17,7 +16,6 @@ interface AppShellProps {
 export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children }) => {
   const { user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [importModalOpen, setImportModalOpen] = useState(false);
   const items = useMemo(() => visibleNav(user), [user]);
 
   const primaryIds = useMemo(() => getMobilePrimary(user), [user]);
@@ -45,7 +43,6 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
   ];
 
   const currentItem = items.find((i) => i.id === active) || items[0];
-  const isAdminOrTrainer = user && ['admin', 'super_admin', 'trainer'].includes(user.role);
 
   const NavButton = ({ item, dense }: { item: NavItem; dense?: boolean }) => {
     const Icon = item.icon;
@@ -93,9 +90,11 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
           </button>
 
           <div className="flex min-w-0 items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-accent border border-accent/30 shrink-0">
-              <Dumbbell className="h-4 w-4" />
-            </div>
+            <img
+              src="/icons/desktop-icon-256x256.png"
+              alt="REC Gym Logo"
+              className="h-8 w-8 rounded-lg object-contain shadow-sm shrink-0"
+            />
             <span className="truncate text-xs font-bold text-text">
               {currentItem ? currentItem.label : 'REC Gym'}
             </span>
@@ -121,9 +120,11 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
           <aside className="relative flex h-full w-[min(20rem,86vw)] flex-col border-r border-border bg-surface pt-[var(--safe-top)] shadow-2xl animate-in slide-in-from-left duration-200">
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white shadow-sm">
-                  <Dumbbell className="h-4 w-4" />
-                </div>
+                <img
+                  src="/icons/desktop-icon-256x256.png"
+                  alt="REC Gym Logo"
+                  className="h-8 w-8 rounded-lg object-contain shadow-sm shrink-0"
+                />
                 <div>
                   <p className="font-bold text-xs text-text">REC College Gym</p>
                   <p className="text-[10px] text-muted">Rajalakshmi</p>
@@ -168,9 +169,11 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
         {/* Desktop Sidebar Navigation */}
         <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-surface pt-[var(--safe-top)] lg:flex">
           <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shadow-sm shrink-0">
-              <Dumbbell className="h-5 w-5" />
-            </div>
+            <img
+              src="/icons/desktop-icon-256x256.png"
+              alt="REC Gym Logo"
+              className="h-9 w-9 rounded-xl object-contain shadow-sm shrink-0"
+            />
             <div className="min-w-0">
               <p className="truncate font-bold text-sm text-text leading-tight">REC College Gym</p>
               <p className="truncate text-[11px] text-muted">Rajalakshmi Engineering</p>
@@ -210,16 +213,6 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             </div>
 
             <div className="flex items-center gap-3">
-              {isAdminOrTrainer && (
-                <button
-                  type="button"
-                  onClick={() => setImportModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-success-muted text-success text-xs font-semibold hover:bg-success/20 transition-all shadow-sm"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>Bulk Excel Import</span>
-                </button>
-              )}
               <NotificationCenter />
               <UserProfileBadge />
             </div>
@@ -231,19 +224,6 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
           >
             {children}
           </main>
-
-          <footer className="hidden border-t border-border px-8 py-4 text-xs text-muted lg:block bg-surface">
-            <div className="mx-auto flex max-w-wide items-center justify-between">
-              <p>© 2026 Rajalakshmi Engineering College. All rights reserved.</p>
-              <div className="flex items-center gap-3 font-mono text-[11px]">
-                <span>3-Day Rolling Window</span>
-                <span>•</span>
-                <span>ZKBio Biometric</span>
-                <span>•</span>
-                <span>100 Cap/Slot</span>
-              </div>
-            </div>
-          </footer>
         </div>
       </div>
 
@@ -286,12 +266,6 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
           )}
         </div>
       </nav>
-
-      {/* Bulk Excel Import Modal */}
-      <ExcelImportModal
-        isOpen={importModalOpen}
-        onClose={() => setImportModalOpen(false)}
-      />
     </div>
   );
 };

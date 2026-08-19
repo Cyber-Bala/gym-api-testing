@@ -1,9 +1,9 @@
-﻿import { eq, and, desc, sql, lte, gt } from 'drizzle-orm';
+﻿import { eq, and, desc, asc, sql, lte, gt } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError, ValidationError } from '../../shared/errors/index.js';
-import { membershipPlans, memberships, students, people } from '../../db/schema/index.js';
-import { MembershipPlanDto, UserMembershipDto } from './membership.types.js';
+import { membershipPlans, memberships, students, people, auditLogs } from '../../db/schema/index.js';
+import { MembershipPlanDto, UserMembershipDto, createPlanSchema, updatePlanSchema } from './membership.types.js';
 
 export class MembershipService {
   /**
@@ -164,11 +164,154 @@ export class MembershipService {
       expiredCount++;
     }
 
-    if (expiredCount > 0) {
+if (expiredCount > 0) {
       logger.info({ expiredCount }, 'Membership expiry worker transitioned passes to expired');
     }
 
     return { expiredCount };
+  }
+
+  /**
+   * Admin: List all plans including inactive ones
+   */
+  public async getAllPlansForAdmin(): Promise<MembershipPlanDto[]> {
+    const plans = await db
+      .select()
+      .from(membershipPlans)
+      .orderBy(asc(membershipPlans.durationDays));
+
+    return plans.map((p) => ({
+      id: p.id,
+      name: p.name,
+      durationDays: p.durationDays,
+      price: p.price,
+      isActive: p.isActive,
+    }));
+  }
+
+  /**
+   * Admin: Create a new membership plan
+   */
+  public async createPlan(
+    data: { name: string; durationDays: number; price: number; isActive?: string },
+    actorEmail: string
+  ): Promise<MembershipPlanDto> {
+    const [created] = await db
+      .insert(membershipPlans)
+      .values({
+        name: data.name,
+        durationDays: data.durationDays,
+        price: String(data.price),
+        isActive: data.isActive || 'active',
+      })
+      .returning();
+
+    await db.insert(auditLogs).values({
+      actorEmail,
+      action: 'create_membership_plan',
+      entity: 'membership_plan',
+      entityId: created.id,
+      newValue: { name: created.name, durationDays: created.durationDays, price: created.price },
+      reason: 'Admin created membership plan',
+    });
+
+    return {
+      id: created.id,
+      name: created.name,
+      durationDays: created.durationDays,
+      price: created.price,
+      isActive: created.isActive,
+    };
+  }
+
+  /**
+   * Admin: Update an existing membership plan
+   */
+  public async updatePlan(
+    planId: string,
+    data: { name?: string; durationDays?: number; price?: number; isActive?: string },
+    actorEmail: string
+  ): Promise<MembershipPlanDto> {
+    const [existing] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, planId)).limit(1);
+    if (!existing) {
+      throw new NotFoundError(`Membership plan '${planId}' not found`);
+    }
+
+    const [updated] = await db
+      .update(membershipPlans)
+      .set({
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.durationDays !== undefined && { durationDays: data.durationDays }),
+        ...(data.price !== undefined && { price: String(data.price) }),
+        ...(data.isActive !== undefined && { isActive: data.isActive }),
+        updatedAt: new Date(),
+      })
+      .where(eq(membershipPlans.id, planId))
+      .returning();
+
+    await db.insert(auditLogs).values({
+      actorEmail,
+      action: 'update_membership_plan',
+      entity: 'membership_plan',
+      entityId: planId,
+      previousValue: {
+        name: existing.name,
+        durationDays: existing.durationDays,
+        price: existing.price,
+        isActive: existing.isActive,
+      },
+      newValue: {
+        name: updated.name,
+        durationDays: updated.durationDays,
+        price: updated.price,
+        isActive: updated.isActive,
+      },
+      reason: 'Admin updated membership plan',
+    });
+
+    return {
+      id: updated.id,
+      name: updated.name,
+      durationDays: updated.durationDays,
+      price: updated.price,
+      isActive: updated.isActive,
+    };
+  }
+
+  /**
+   * Admin: Activate or deactivate a membership plan
+   */
+  public async setPlanActive(planId: string, isActive: boolean, actorEmail: string): Promise<MembershipPlanDto> {
+    const [existing] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, planId)).limit(1);
+    if (!existing) {
+      throw new NotFoundError(`Membership plan '${planId}' not found`);
+    }
+
+    const statusValue = isActive ? 'active' : 'inactive';
+
+    const [updated] = await db
+      .update(membershipPlans)
+      .set({ isActive: statusValue, updatedAt: new Date() })
+      .where(eq(membershipPlans.id, planId))
+      .returning();
+
+    await db.insert(auditLogs).values({
+      actorEmail,
+      action: isActive ? 'activate_membership_plan' : 'deactivate_membership_plan',
+      entity: 'membership_plan',
+      entityId: planId,
+      previousValue: { isActive: existing.isActive },
+      newValue: { isActive: statusValue },
+      reason: isActive ? 'Admin activated membership plan' : 'Admin deactivated membership plan',
+    });
+
+    return {
+      id: updated.id,
+      name: updated.name,
+      durationDays: updated.durationDays,
+      price: updated.price,
+      isActive: updated.isActive,
+    };
   }
 }
 

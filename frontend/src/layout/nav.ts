@@ -67,7 +67,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'My Entry & Exit',
     shortLabel: 'Access',
     icon: DoorOpen,
-    roles: ['student'],
+    roles: ['student', 'staff'],
   },
   {
     id: 'floor_management',
@@ -194,7 +194,7 @@ export function visibleNav(user?: SessionUser | null): NavItem[] {
 export const MOBILE_PRIMARY: Record<string, AppView[]> = {
   student: ['home', 'book', 'memberships'],
   trainer: ['home', 'floor_management', 'trainer_shifts', 'live_attendance'],
-  staff: ['home', 'book'],
+  staff: ['home', 'book', 'my_access'],
   authorized_person: ['home'],
   admin: ['home', 'live_attendance', 'floor_management', 'students'],
   super_admin: ['home', 'live_attendance', 'floor_management', 'analytics'],

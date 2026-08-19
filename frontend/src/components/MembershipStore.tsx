@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Card, Badge, Alert, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
+import { MembershipPlanManager } from './MembershipPlanManager';
 import { cn } from '../lib/cn';
 
 interface MembershipPlan {
@@ -58,6 +59,7 @@ export const MembershipStore: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const isDayScholar = user?.studentDetails?.residency === 'day_scholar';
+  const isAdmin = user && ['admin', 'super_admin'].includes(user.role);
 
   // Load Razorpay Checkout Script
   useEffect(() => {
@@ -109,6 +111,10 @@ export const MembershipStore: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [user]);
+
+  if (isAdmin) {
+    return <MembershipPlanManager />;
+  }
 
   const handlePurchase = async (plan: MembershipPlan) => {
     if (!user) {
@@ -270,48 +276,39 @@ export const MembershipStore: React.FC = () => {
 
         {/* Plans Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {plans.map((p) => {
-            const isFeatured = p.durationDays === 90;
-            return (
-              <div
-                key={p.id}
-                className={cn(
-                  'p-5 rounded-2xl bg-surface-elevated flex flex-col justify-between space-y-4 shadow-sm transition-all hover:shadow-md',
-                  isFeatured ? 'bg-primary-muted/25 relative' : ''
-                )}
-              >
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h4 className="font-bold text-base text-text">{p.name}</h4>
-                      <p className="text-xs text-muted font-mono mt-0.5">{p.durationDays} Days Duration</p>
-                    </div>
-                    {isFeatured && (
-                      <Badge tone="primary">Popular</Badge>
-                    )}
-                  </div>
-
-                  <div className="pt-2">
-                    <span className="text-2xl font-black text-text">₹{p.price}</span>
+          {plans.map((p) => (
+            <div
+              key={p.id}
+              className="p-5 rounded-2xl bg-surface-elevated flex flex-col justify-between space-y-4 shadow-sm transition-all hover:shadow-md"
+            >
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h4 className="font-bold text-base text-text">{p.name}</h4>
+                    <p className="text-xs text-muted font-mono mt-0.5">{p.durationDays} Days Duration</p>
                   </div>
                 </div>
 
-                <Button
-                  variant={isFeatured ? 'primary' : 'secondary'}
-                  size="md"
-                  className="w-full"
-                  loading={purchasingPlanId === p.id}
-                  onClick={() => handlePurchase(p)}
-                >
-                  {purchasingPlanId === p.id
-                    ? 'Processing...'
-                    : myMembership?.isActive
-                    ? 'Extend Pass'
-                    : 'Activate Pass'}
-                </Button>
+                <div className="pt-2">
+                  <span className="text-2xl font-black text-text">₹{p.price}</span>
+                </div>
               </div>
-            );
-          })}
+
+              <Button
+                variant="primary"
+                size="md"
+                className="w-full"
+                loading={purchasingPlanId === p.id}
+                onClick={() => handlePurchase(p)}
+              >
+                {purchasingPlanId === p.id
+                  ? 'Processing...'
+                  : myMembership?.isActive
+                  ? 'Extend Pass'
+                  : 'Activate Pass'}
+              </Button>
+            </div>
+          ))}
         </div>
       </Card>
 

@@ -27,7 +27,7 @@ export class FloorService {
       })
       .from(accessSessions)
       .innerJoin(people, eq(accessSessions.personId, people.id))
-      .where(eq(accessSessions.status, 'inside'))
+      .where(and(eq(accessSessions.status, 'inside'), eq(people.personType, 'student')))
       .orderBy(desc(accessSessions.entryTimestamp));
 
     const now = new Date();

@@ -21,7 +21,7 @@ import { ExecutiveAnalyticsDashboard } from './components/ExecutiveAnalyticsDash
 import { DataLifecycleManager } from './components/DataLifecycleManager';
 import { SystemHealth } from './components/SystemHealth';
 import { UatDemonstrationCenter } from './components/UatDemonstrationCenter';
-import { Dumbbell, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   const { user, loading } = useAuth();
@@ -30,9 +30,11 @@ export const App: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 space-y-4">
-        <div className="w-12 h-12 rounded-2xl bg-primary text-accent flex items-center justify-center border border-accent/30 shadow-md animate-pulse">
-          <Dumbbell className="w-6 h-6" />
-        </div>
+        <img
+          src="/icons/desktop-icon-256x256.png"
+          alt="REC Gym Logo"
+          className="w-14 h-14 rounded-2xl object-contain shadow-md animate-pulse"
+        />
         <div className="flex items-center gap-2 text-xs font-semibold text-muted">
           <Loader2 className="w-4 h-4 animate-spin text-primary" />
           <span>Verifying institutional session...</span>

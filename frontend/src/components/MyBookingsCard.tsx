@@ -102,9 +102,6 @@ export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged
             <h4 className="font-bold text-sm text-text">
               My Active Gym Reservations
             </h4>
-            <p className="text-xs text-muted">
-              {activeBookings.length} upcoming confirmed session{activeBookings.length === 1 ? '' : 's'}
-            </p>
           </div>
         </div>
 
@@ -150,7 +147,7 @@ export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-success/20 flex items-center justify-between">
+              <div className="flex items-center justify-between pt-1">
                 <span className="text-[11px] text-muted">
                   {b.hoursUntilStart > 0 ? `${b.hoursUntilStart}h until start` : 'In Session'}
                 </span>

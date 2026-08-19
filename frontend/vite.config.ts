@@ -7,7 +7,18 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+      includeAssets: [
+        'favicon.ico',
+        'favicon.png',
+        'apple-touch-icon.png',
+        'pwa-192x192.png',
+        'pwa-512x512.png',
+        'icons/android-chrome-192x192.png',
+        'icons/android-chrome-512x512.png',
+        'icons/android-chrome-maskable-512x512.png',
+        'icons/apple-touch-icon-180x180.png',
+        'icons/desktop-icon-256x256.png',
+      ],
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: true,
@@ -18,27 +29,28 @@ export default defineConfig({
         short_name: 'REC Gym',
         description: 'Gym slot booking, membership, and automated turnstile access for Rajalakshmi Engineering College',
         theme_color: '#4A154B',
-        background_color: '#121212',
+        background_color: '#09090B',
         display: 'standalone',
         orientation: 'portrait-primary',
         icons: [
           {
-            src: 'favicon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-          },
-          {
-            src: 'pwa-192x192.png',
+            src: '/icons/android-chrome-192x192.png',
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: 'pwa-512x512.png',
+            src: '/icons/android-chrome-512x512.png',
             sizes: '512x512',
             type: 'image/png',
           },
           {
-            src: 'apple-touch-icon.png',
+            src: '/icons/android-chrome-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+          {
+            src: '/icons/apple-touch-icon-180x180.png',
             sizes: '180x180',
             type: 'image/png',
           },
