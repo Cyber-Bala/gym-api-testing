@@ -15,11 +15,13 @@ export const cleanDatabase = async () => {
     logger.info('Truncating transactional and log tables...');
     await client.query(`
       TRUNCATE TABLE 
+        booking.violations,
         booking.bookings,
         access.access_sessions,
+        access.entry_exit_logs,
         membership.memberships,
         payment.payment_orders,
-        violations.violations,
+        trainer.work_shifts,
         admin.gym_calendar,
         audit.audit_logs,
         identity.sessions
@@ -33,8 +35,7 @@ export const cleanDatabase = async () => {
         people.students,
         people.staff,
         people.authorized_persons,
-        trainer.trainer_profiles,
-        trainer.trainer_shifts
+        trainer.trainer_profiles
       CASCADE;
     `);
 
