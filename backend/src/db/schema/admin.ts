@@ -15,6 +15,7 @@ export const adminProfiles = adminSchema.table('admin_profiles', {
   id: uuid('id').primaryKey().defaultRandom(),
   accountId: uuid('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }).unique(),
   roleId: uuid('role_id').references(() => roles.id),
+  customPermissions: jsonb('custom_permissions'), // optional custom/override permissions array
   isProtectedSuperAdmin: varchar('is_protected_super_admin', { length: 10 }).notNull().default('false'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

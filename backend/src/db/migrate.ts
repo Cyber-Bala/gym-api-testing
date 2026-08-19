@@ -1,4 +1,4 @@
-﻿import { pool } from '../shared/database/index.js';
+import { pool } from '../shared/database/index.js';
 import { logger } from '../shared/logging/index.js';
 
 export const runMigrations = async (): Promise<void> => {
@@ -110,9 +110,11 @@ export const runMigrations = async (): Promise<void> => {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       account_id UUID NOT NULL REFERENCES identity.accounts(id) ON DELETE CASCADE UNIQUE,
       role_id UUID REFERENCES admin.roles(id),
+      custom_permissions JSONB,
       is_protected_super_admin VARCHAR(10) NOT NULL DEFAULT 'false',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE admin.admin_profiles ADD COLUMN IF NOT EXISTS custom_permissions JSONB;
 
     CREATE TABLE IF NOT EXISTS admin.gym_calendar (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

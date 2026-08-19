@@ -15,6 +15,9 @@ import {
   Lock,
   Loader2,
   RefreshCw,
+  CheckSquare,
+  Square,
+  Sliders,
 } from 'lucide-react';
 import { Card, Badge, Alert } from '../ui/primitives';
 import { Button } from '../ui/Button';
@@ -42,6 +45,27 @@ interface AdminItem {
   lastLoginAt: string | null;
 }
 
+interface PermissionDef {
+  id: string;
+  label: string;
+  description: string;
+  category: 'Students' | 'Memberships' | 'Bookings' | 'Trainers' | 'Operations' | 'Reports';
+}
+
+const AVAILABLE_PERMISSIONS: PermissionDef[] = [
+  { id: 'students.read', label: 'View Students', description: 'Access student directory and profiles', category: 'Students' },
+  { id: 'students.write', label: 'Manage Students', description: 'Create/edit student records and biometric enrollment', category: 'Students' },
+  { id: 'memberships.manage', label: 'Manage Passes', description: 'Issue, renew, and manage day scholar passes', category: 'Memberships' },
+  { id: 'slots.manage', label: 'Manage Slots & Caps', description: 'Set slot capacities, manual bookings, and closures', category: 'Bookings' },
+  { id: 'trainers.read', label: 'View Trainers', description: 'View trainer roster and attendance logs', category: 'Trainers' },
+  { id: 'trainers.manage', label: 'Manage Trainers', description: 'Assign shifts, pay rates, and approve timesheets', category: 'Trainers' },
+  { id: 'biometrics.manage', label: 'Turnstile Biometrics', description: 'Monitor turnstile gates and sync status', category: 'Operations' },
+  { id: 'violations.manage', label: 'Manage Violations', description: 'Audit overstaying, 3-strike rules, and penalty overrides', category: 'Operations' },
+  { id: 'conflicts.manage', label: 'Resolve Conflicts', description: 'Check-in desk conflict resolution & gate overrides', category: 'Operations' },
+  { id: 'reports.export', label: 'Export Reports', description: 'Export institutional attendance and financial sheets', category: 'Reports' },
+  { id: 'analytics.read', label: 'Executive Analytics', description: 'Access real-time occupancy and executive charts', category: 'Reports' },
+];
+
 export const AdminManagement: React.FC = () => {
   const [admins, setAdmins] = useState<AdminItem[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
@@ -57,10 +81,12 @@ export const AdminManagement: React.FC = () => {
   const [formEmail, setFormEmail] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formRoleId, setFormRoleId] = useState('');
+  const [formPermissions, setFormPermissions] = useState<string[]>([]);
 
   // Edit Modal state
   const [editAdmin, setEditAdmin] = useState<AdminItem | null>(null);
   const [editRoleId, setEditRoleId] = useState('');
+  const [editPermissions, setEditPermissions] = useState<string[]>([]);
   const [editStatus, setEditStatus] = useState<'active' | 'inactive' | 'suspended'>('active');
   const [updating, setUpdating] = useState(false);
 
@@ -87,6 +113,7 @@ export const AdminManagement: React.FC = () => {
         setRoles(rolesJson.data || []);
         if (rolesJson.data?.length && !formRoleId) {
           setFormRoleId(rolesJson.data[0].id);
+          setFormPermissions(rolesJson.data[0].permissions || []);
         }
       }
     } catch (err) {
@@ -99,6 +126,29 @@ export const AdminManagement: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Handle role template change in create modal
+  const handleRoleChange = (roleId: string) => {
+    setFormRoleId(roleId);
+    const selected = roles.find((r) => r.id === roleId);
+    if (selected) {
+      setFormPermissions(selected.permissions || []);
+    }
+  };
+
+  // Toggle single permission in create modal
+  const toggleFormPermission = (permId: string) => {
+    setFormPermissions((prev) =>
+      prev.includes(permId) ? prev.filter((p) => p !== permId) : [...prev, permId]
+    );
+  };
+
+  // Toggle single permission in edit modal
+  const toggleEditPermission = (permId: string) => {
+    setEditPermissions((prev) =>
+      prev.includes(permId) ? prev.filter((p) => p !== permId) : [...prev, permId]
+    );
+  };
 
   const handleCreateAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +168,7 @@ export const AdminManagement: React.FC = () => {
           email: formEmail.trim().toLowerCase(),
           phone: formPhone.trim() || undefined,
           roleId: formRoleId || undefined,
+          permissions: formPermissions,
         }),
       });
 
@@ -151,6 +202,7 @@ export const AdminManagement: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           roleId: editRoleId || undefined,
+          permissions: editPermissions,
           status: editStatus,
         }),
       });
@@ -211,9 +263,6 @@ export const AdminManagement: React.FC = () => {
     );
   });
 
-  const selectedRole = roles.find((r) => r.id === formRoleId);
-  const editSelectedRole = roles.find((r) => r.id === editRoleId);
-
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       {/* Top Header Card */}
@@ -229,7 +278,7 @@ export const AdminManagement: React.FC = () => {
                 <Badge tone="danger">Super Admin Console</Badge>
               </div>
               <p className="text-xs text-muted mt-0.5">
-                Provision new gym administrators, designate role capabilities, and configure granular system permissions.
+                Provision gym administrators, assign role templates, and configure granular system permissions.
               </p>
             </div>
           </div>
@@ -298,11 +347,11 @@ export const AdminManagement: React.FC = () => {
         {loading ? (
           <div className="col-span-full py-16 text-center space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-            <p className="text-xs text-muted font-medium">Loading administrative staff...</p>
+            <p className="text-xs text-muted font-medium">Loading administrators...</p>
           </div>
         ) : filteredAdmins.length === 0 ? (
           <div className="col-span-full py-12 text-center text-muted text-xs">
-            No administrators match your search query.
+            No administrators found.
           </div>
         ) : (
           filteredAdmins.map((admin) => (
@@ -339,9 +388,17 @@ export const AdminManagement: React.FC = () => {
 
                 {/* Permissions Breakdown */}
                 <div className="space-y-1.5 pt-2 border-t border-white/5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted">
-                    Assigned Capabilities:
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted">
+                      Configured Permissions:
+                    </p>
+                    {!admin.isProtectedSuperAdmin && (
+                      <span className="text-[10px] text-primary font-semibold">
+                        {admin.permissions.length} active
+                      </span>
+                    )}
+                  </div>
+
                   <div className="flex flex-wrap gap-1">
                     {admin.isProtectedSuperAdmin ? (
                       <span className="px-2 py-0.5 rounded-md bg-danger-muted/30 text-danger text-[10px] font-semibold">
@@ -357,7 +414,7 @@ export const AdminManagement: React.FC = () => {
                         </span>
                       ))
                     ) : (
-                      <span className="text-[10px] text-muted italic">Standard Management</span>
+                      <span className="text-[10px] text-muted italic">No active permissions</span>
                     )}
                   </div>
                 </div>
@@ -390,12 +447,13 @@ export const AdminManagement: React.FC = () => {
                       onClick={() => {
                         setEditAdmin(admin);
                         setEditRoleId(admin.roleId || '');
+                        setEditPermissions(admin.permissions || []);
                         setEditStatus(admin.status as 'active' | 'inactive' | 'suspended');
                       }}
                       className="gap-1 text-xs"
                     >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      <span>Edit Access</span>
+                      <Sliders className="w-3.5 h-3.5" />
+                      <span>Configure Permissions</span>
                     </Button>
                     <Button
                       variant="danger"
@@ -418,7 +476,7 @@ export const AdminManagement: React.FC = () => {
       {/* Provision Admin Modal */}
       {createModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg rounded-3xl bg-surface-elevated shadow-2xl p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
+          <div className="relative w-full max-w-xl rounded-3xl bg-surface-elevated shadow-2xl p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-white/5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shadow-sm shrink-0">
@@ -426,7 +484,7 @@ export const AdminManagement: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-bold text-base text-text">Provision New Administrator</h3>
-                  <p className="text-xs text-muted">Assign institutional access & privileges</p>
+                  <p className="text-xs text-muted">Configure access credentials and granular permissions</p>
                 </div>
               </div>
               <button
@@ -439,31 +497,30 @@ export const AdminManagement: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateAdmin} className="space-y-4 text-xs">
-              <div className="space-y-1">
-                <label className="font-medium text-text block">Administrator Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="e.g. Dr. Rajesh K (Sports Director)"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
-                />
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-medium text-text block">Administrator Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="e.g. Dr. Rajesh K"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                  />
+                </div>
 
-              <div className="space-y-1">
-                <label className="font-medium text-text block">Institutional Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={formEmail}
-                  onChange={(e) => setFormEmail(e.target.value)}
-                  placeholder="e.g. rajesh.k@rajalakshmi.edu.in"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
-                />
-                <p className="text-[11px] text-muted">
-                  Must be an official REC email address for Google OAuth verification.
-                </p>
+                <div className="space-y-1">
+                  <label className="font-medium text-text block">Institutional Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={formEmail}
+                    onChange={(e) => setFormEmail(e.target.value)}
+                    placeholder="e.g. rajesh.k@rajalakshmi.edu.in"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -478,39 +535,79 @@ export const AdminManagement: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="font-medium text-text block">Role & Permission Template</label>
+                <label className="font-medium text-text block">Role Preset Template</label>
                 <select
                   value={formRoleId}
-                  onChange={(e) => setFormRoleId(e.target.value)}
+                  onChange={(e) => handleRoleChange(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
                 >
                   {roles.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.name} {r.description ? `— ${r.description}` : ''}
+                      {r.name}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {selectedRole && (
-                <div className="p-3 rounded-2xl bg-surface space-y-2">
+              {/* Granular Permissions Configurator */}
+              <div className="space-y-2 pt-2 border-t border-white/5">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-text flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-primary" />
+                    <span>Configurable System Permissions</span>
+                  </label>
                   <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-primary" />
-                    <span className="font-bold text-text text-xs">{selectedRole.name}</span>
-                  </div>
-                  <p className="text-[11px] text-muted">{selectedRole.description}</p>
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {selectedRole.permissions.map((p) => (
-                      <span
-                        key={p}
-                        className="px-2 py-0.5 rounded-md bg-surface-elevated text-text text-[10px] font-mono"
-                      >
-                        {p}
-                      </span>
-                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setFormPermissions(AVAILABLE_PERMISSIONS.map((p) => p.id))}
+                      className="text-[11px] text-primary hover:underline font-semibold"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-muted">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setFormPermissions([])}
+                      className="text-[11px] text-muted hover:text-text"
+                    >
+                      Clear All
+                    </button>
                   </div>
                 </div>
-              )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1">
+                  {AVAILABLE_PERMISSIONS.map((perm) => {
+                    const isChecked = formPermissions.includes(perm.id);
+                    return (
+                      <div
+                        key={perm.id}
+                        onClick={() => toggleFormPermission(perm.id)}
+                        className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-start gap-2.5 ${
+                          isChecked
+                            ? 'border-primary/40 bg-primary-muted/20 text-text'
+                            : 'border-white/5 bg-surface hover:bg-surface-elevated text-muted'
+                        }`}
+                      >
+                        <div className="mt-0.5 text-primary shrink-0">
+                          {isChecked ? (
+                            <CheckSquare className="w-4 h-4" />
+                          ) : (
+                            <Square className="w-4 h-4 opacity-40" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`font-semibold text-xs ${isChecked ? 'text-text' : 'text-muted'}`}>
+                            {perm.label}
+                          </p>
+                          <p className="text-[10px] text-muted leading-tight mt-0.5">
+                            {perm.description}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
               <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-white/5">
                 <Button
@@ -540,14 +637,14 @@ export const AdminManagement: React.FC = () => {
       {/* Edit Admin Modal */}
       {editAdmin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg rounded-3xl bg-surface-elevated shadow-2xl p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
+          <div className="relative w-full max-w-xl rounded-3xl bg-surface-elevated shadow-2xl p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-white/5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shadow-sm shrink-0">
                   <Edit2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-text">Edit Administrator Access</h3>
+                  <h3 className="font-bold text-base text-text">Configure Administrator Permissions</h3>
                   <p className="text-xs text-muted">{editAdmin.name} ({editAdmin.email})</p>
                 </div>
               </div>
@@ -561,48 +658,98 @@ export const AdminManagement: React.FC = () => {
             </div>
 
             <form onSubmit={handleUpdateAdmin} className="space-y-4 text-xs">
-              <div className="space-y-1">
-                <label className="font-medium text-text block">Assigned Role</label>
-                <select
-                  value={editRoleId}
-                  onChange={(e) => setEditRoleId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
-                >
-                  {roles.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-medium text-text block">Role Preset</label>
+                  <select
+                    value={editRoleId}
+                    onChange={(e) => {
+                      setEditRoleId(e.target.value);
+                      const r = roles.find((ro) => ro.id === e.target.value);
+                      if (r) setEditPermissions(r.permissions || []);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                  >
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-medium text-text block">Account Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as 'active' | 'inactive' | 'suspended')}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                  >
+                    <option value="active">Active (Access Granted)</option>
+                    <option value="suspended">Suspended (Access Denied)</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
               </div>
 
-              {editSelectedRole && (
-                <div className="p-3 rounded-2xl bg-surface space-y-2">
-                  <p className="text-[11px] text-muted">{editSelectedRole.description}</p>
-                  <div className="flex flex-wrap gap-1">
-                    {editSelectedRole.permissions.map((p) => (
-                      <span
-                        key={p}
-                        className="px-2 py-0.5 rounded-md bg-surface-elevated text-text text-[10px] font-mono"
-                      >
-                        {p}
-                      </span>
-                    ))}
+              {/* Granular Permissions Configurator for Edit */}
+              <div className="space-y-2 pt-2 border-t border-white/5">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-text flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-primary" />
+                    <span>Active System Permissions</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditPermissions(AVAILABLE_PERMISSIONS.map((p) => p.id))}
+                      className="text-[11px] text-primary hover:underline font-semibold"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-muted">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setEditPermissions([])}
+                      className="text-[11px] text-muted hover:text-text"
+                    >
+                      Clear All
+                    </button>
                   </div>
                 </div>
-              )}
 
-              <div className="space-y-1">
-                <label className="font-medium text-text block">Account Status</label>
-                <select
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value as 'active' | 'inactive' | 'suspended')}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
-                >
-                  <option value="active">Active (Access Granted)</option>
-                  <option value="suspended">Suspended (Access Revoked)</option>
-                  <option value="inactive">Inactive</option>
-                </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1">
+                  {AVAILABLE_PERMISSIONS.map((perm) => {
+                    const isChecked = editPermissions.includes(perm.id);
+                    return (
+                      <div
+                        key={perm.id}
+                        onClick={() => toggleEditPermission(perm.id)}
+                        className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-start gap-2.5 ${
+                          isChecked
+                            ? 'border-primary/40 bg-primary-muted/20 text-text'
+                            : 'border-white/5 bg-surface hover:bg-surface-elevated text-muted'
+                        }`}
+                      >
+                        <div className="mt-0.5 text-primary shrink-0">
+                          {isChecked ? (
+                            <CheckSquare className="w-4 h-4" />
+                          ) : (
+                            <Square className="w-4 h-4 opacity-40" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`font-semibold text-xs ${isChecked ? 'text-text' : 'text-muted'}`}>
+                            {perm.label}
+                          </p>
+                          <p className="text-[10px] text-muted leading-tight mt-0.5">
+                            {perm.description}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-white/5">
@@ -619,8 +766,10 @@ export const AdminManagement: React.FC = () => {
                   variant="primary"
                   size="md"
                   loading={updating}
+                  className="gap-1.5"
                 >
-                  Save Changes
+                  <Shield className="w-4 h-4" />
+                  <span>Save Permissions</span>
                 </Button>
               </div>
             </form>

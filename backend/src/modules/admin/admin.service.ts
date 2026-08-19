@@ -258,6 +258,7 @@ export class AdminService {
         id: adminProfiles.id,
         accountId: adminProfiles.accountId,
         roleId: adminProfiles.roleId,
+        customPermissions: adminProfiles.customPermissions,
         isProtectedSuperAdmin: adminProfiles.isProtectedSuperAdmin,
         createdAt: adminProfiles.createdAt,
         accountEmail: accounts.email,
@@ -275,21 +276,30 @@ export class AdminService {
       .leftJoin(roles, eq(adminProfiles.roleId, roles.id))
       .orderBy(desc(adminProfiles.createdAt));
 
-    return profiles.map((p) => ({
-      id: p.id,
-      accountId: p.accountId,
-      personId: p.personId || p.accountId,
-      name: p.personName || p.accountEmail.split('@')[0],
-      email: p.accountEmail,
-      phone: p.personPhone,
-      roleName: p.isProtectedSuperAdmin === 'true' ? 'Super Administrator' : (p.roleName || 'Custom Admin'),
-      roleId: p.roleId,
-      permissions: p.isProtectedSuperAdmin === 'true' ? ['*'] : ((p.rolePermissions as string[]) || []),
-      isProtectedSuperAdmin: p.isProtectedSuperAdmin === 'true',
-      status: p.personStatus || 'active',
-      createdAt: p.createdAt.toISOString(),
-      lastLoginAt: p.accountLastLogin ? p.accountLastLogin.toISOString() : null,
-    }));
+    return profiles.map((p) => {
+      const activePermissions =
+        p.isProtectedSuperAdmin === 'true'
+          ? ['*']
+          : Array.isArray(p.customPermissions) && p.customPermissions.length > 0
+          ? (p.customPermissions as string[])
+          : ((p.rolePermissions as string[]) || []);
+
+      return {
+        id: p.id,
+        accountId: p.accountId,
+        personId: p.personId || p.accountId,
+        name: p.personName || p.accountEmail.split('@')[0],
+        email: p.accountEmail,
+        phone: p.personPhone,
+        roleName: p.isProtectedSuperAdmin === 'true' ? 'Super Administrator' : (p.roleName || 'Custom Admin'),
+        roleId: p.roleId,
+        permissions: activePermissions,
+        isProtectedSuperAdmin: p.isProtectedSuperAdmin === 'true',
+        status: p.personStatus || 'active',
+        createdAt: p.createdAt.toISOString(),
+        lastLoginAt: p.accountLastLogin ? p.accountLastLogin.toISOString() : null,
+      };
+    });
   }
 
   /**
@@ -357,12 +367,13 @@ export class AdminService {
       throw new ConflictError(`Admin profile already exists for email '${normalizedEmail}'`);
     }
 
-    // 4. Insert admin profile
+    // 4. Insert admin profile with custom permissions
     const [newProfile] = await db
       .insert(adminProfiles)
       .values({
         accountId: account.id,
         roleId: data.roleId || null,
+        customPermissions: data.permissions && data.permissions.length > 0 ? data.permissions : null,
         isProtectedSuperAdmin: 'false',
       })
       .returning();
@@ -373,7 +384,7 @@ export class AdminService {
       action: 'create_admin',
       entity: 'admin_profile',
       entityId: newProfile.id,
-      reason: `Provisioned administrator '${normalizedEmail}' with roleId '${data.roleId || 'custom'}'`,
+      reason: `Provisioned administrator '${normalizedEmail}' with roleId '${data.roleId || 'custom'}' and ${data.permissions?.length || 0} permissions`,
     });
 
     let roleName = 'Custom Admin';
@@ -382,7 +393,9 @@ export class AdminService {
       const [roleRec] = await db.select().from(roles).where(eq(roles.id, data.roleId)).limit(1);
       if (roleRec) {
         roleName = roleRec.name;
-        rolePermissions = (roleRec.permissions as string[]) || [];
+        if (!data.permissions || data.permissions.length === 0) {
+          rolePermissions = (roleRec.permissions as string[]) || [];
+        }
       }
     }
 
@@ -408,7 +421,7 @@ export class AdminService {
    */
   public async updateAdmin(
     adminProfileId: string,
-    data: { roleId?: string; status?: 'active' | 'inactive' | 'suspended' },
+    data: { roleId?: string; permissions?: string[]; status?: 'active' | 'inactive' | 'suspended' },
     actorEmail: string
   ): Promise<void> {
     const [profile] = await db.select().from(adminProfiles).where(eq(adminProfiles.id, adminProfileId)).limit(1);
@@ -420,10 +433,18 @@ export class AdminService {
       throw new ConflictError('Cannot modify protected Super Administrator');
     }
 
+    const updates: Partial<typeof adminProfiles.$inferInsert> = {};
     if (data.roleId !== undefined) {
+      updates.roleId = data.roleId;
+    }
+    if (data.permissions !== undefined) {
+      updates.customPermissions = data.permissions;
+    }
+
+    if (Object.keys(updates).length > 0) {
       await db
         .update(adminProfiles)
-        .set({ roleId: data.roleId })
+        .set(updates)
         .where(eq(adminProfiles.id, adminProfileId));
     }
 
@@ -446,7 +467,7 @@ export class AdminService {
       action: 'update_admin',
       entity: 'admin_profile',
       entityId: adminProfileId,
-      reason: `Updated admin profile: roleId=${data.roleId}, status=${data.status}`,
+      reason: `Updated admin profile: roleId=${data.roleId}, permissions=${data.permissions?.length || 'default'}, status=${data.status}`,
     });
   }
 

@@ -240,6 +240,8 @@ export class AuthService {
       if (isProtectedSuperAdmin) {
         userRole = 'super_admin';
         permissions = ['*']; // All capabilities
+      } else if (Array.isArray(adminProfile.customPermissions) && adminProfile.customPermissions.length > 0) {
+        permissions = adminProfile.customPermissions as string[];
       } else if (adminProfile.roleId) {
         const [roleRecord] = await db
           .select()
