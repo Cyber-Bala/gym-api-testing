@@ -16,7 +16,7 @@ import {
   Sparkles,
   LayoutGrid,
 } from 'lucide-react';
-import type { UserRole } from '../context/AuthContext';
+import type { SessionUser, UserRole } from '../context/AuthContext';
 
 export type AppView =
   | 'home'
@@ -153,14 +153,23 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-export function canSee(item: NavItem, role?: UserRole | null): boolean {
+export function canSee(item: NavItem, user?: SessionUser | null): boolean {
+  if (!user) {
+    return item.roles === 'all';
+  }
+
+  // Hosteller students have inclusive gym access and do not require passes
+  if (item.id === 'memberships' && user.studentDetails?.residency === 'hosteller') {
+    return false;
+  }
+
   if (item.roles === 'all') return true;
-  if (item.roles === 'signed-in') return Boolean(role);
-  return Boolean(role && item.roles.includes(role));
+  if (item.roles === 'signed-in') return Boolean(user);
+  return Boolean(user.role && item.roles.includes(user.role));
 }
 
-export function visibleNav(role?: UserRole | null): NavItem[] {
-  return NAV_ITEMS.filter((item) => canSee(item, role));
+export function visibleNav(user?: SessionUser | null): NavItem[] {
+  return NAV_ITEMS.filter((item) => canSee(item, user));
 }
 
 export const MOBILE_PRIMARY: Record<string, AppView[]> = {
@@ -172,4 +181,15 @@ export const MOBILE_PRIMARY: Record<string, AppView[]> = {
   super_admin: ['home', 'live_attendance', 'floor_management', 'analytics'],
   guest: ['home'],
 };
+
+export function getMobilePrimary(user?: SessionUser | null): AppView[] {
+  if (!user) return ['home'];
+  if (user.role === 'student') {
+    if (user.studentDetails?.residency === 'hosteller') {
+      return ['home', 'book'];
+    }
+    return ['home', 'book', 'memberships'];
+  }
+  return MOBILE_PRIMARY[user.role] ?? ['home'];
+}
 

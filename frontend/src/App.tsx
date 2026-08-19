@@ -56,6 +56,9 @@ export const App: React.FC = () => {
           </div>
         );
       case 'memberships':
+        if (user.studentDetails?.residency === 'hosteller') {
+          return <HomeDashboard onNavigate={setActiveView} />;
+        }
         return <MembershipStore />;
       case 'students':
         return <StudentDirectory />;

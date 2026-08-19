@@ -5,7 +5,7 @@ import { ThemeToggle } from '../components/ThemeToggle';
 import { UserProfileBadge } from '../components/UserProfileBadge';
 import { ExcelImportModal } from '../components/ExcelImportModal';
 import { cn } from '../lib/cn';
-import { AppView, MOBILE_PRIMARY, NavItem, visibleNav } from './nav';
+import { AppView, NavItem, visibleNav, getMobilePrimary } from './nav';
 
 interface AppShellProps {
   active: AppView;
@@ -17,10 +17,9 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
   const { user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const items = useMemo(() => visibleNav(user?.role), [user?.role]);
+  const items = useMemo(() => visibleNav(user), [user]);
 
-  const roleKey = user?.role ?? 'guest';
-  const primaryIds = MOBILE_PRIMARY[roleKey] ?? MOBILE_PRIMARY.guest;
+  const primaryIds = useMemo(() => getMobilePrimary(user), [user]);
   const primary = primaryIds
     .map((id) => items.find((i) => i.id === id))
     .filter(Boolean) as NavItem[];
