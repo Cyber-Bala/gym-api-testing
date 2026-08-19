@@ -64,8 +64,8 @@ export const LoginPage: React.FC = () => {
           g.accounts.id.renderButton(btnContainer, {
             theme: 'outline',
             size: 'large',
-            width: '300',
-            text: 'signin_with',
+            width: '280',
+            text: 'continue_with',
             shape: 'pill',
           });
         }
@@ -86,15 +86,15 @@ export const LoginPage: React.FC = () => {
   }, [loginWithGoogle]);
 
   return (
-    <div className="min-h-screen bg-background text-text flex flex-col justify-between p-4 sm:p-6 relative">
-      {/* Top Bar with Theme Toggle */}
-      <div className="max-w-md mx-auto w-full flex justify-end py-2">
+    <div className="min-h-screen bg-background text-text flex items-center justify-center p-4 relative">
+      {/* Top Right Theme Toggle */}
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
         <ThemeToggle compact />
       </div>
 
       {/* Centered Sign In Card */}
-      <main className="max-w-sm mx-auto w-full py-6">
-        <Card className="p-8 space-y-6 shadow-xl text-center flex flex-col items-center">
+      <main className="w-full max-w-sm flex items-center justify-center">
+        <Card className="w-full p-8 sm:p-9 space-y-6 shadow-xl text-center flex flex-col items-center justify-center">
           <img
             src="/icons/desktop-icon-256x256.png"
             alt="REC Gym Logo"
@@ -106,9 +106,12 @@ export const LoginPage: React.FC = () => {
             <p className="text-xs text-muted">Rajalakshmi Engineering College</p>
           </div>
 
-          {/* Google Sign In Button */}
-          <div className="w-full pt-2 flex flex-col items-center space-y-3">
-            <div id="google-signin-btn-main" className="flex justify-center min-h-[44px]"></div>
+          {/* Centered Google Sign In Button */}
+          <div className="w-full pt-1 flex flex-col items-center justify-center space-y-3">
+            <div
+              id="google-signin-btn-main"
+              className="w-full flex items-center justify-center min-h-[44px]"
+            ></div>
 
             {loading && (
               <div className="flex items-center justify-center gap-2 text-xs font-medium text-muted">

@@ -20,7 +20,6 @@ import { ReportsCenter } from './components/ReportsCenter';
 import { ExecutiveAnalyticsDashboard } from './components/ExecutiveAnalyticsDashboard';
 import { DataLifecycleManager } from './components/DataLifecycleManager';
 import { AdminManagement } from './components/AdminManagement';
-import { UatDemonstrationCenter } from './components/UatDemonstrationCenter';
 import { Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -89,8 +88,6 @@ export const App: React.FC = () => {
         return <ExecutiveAnalyticsDashboard />;
       case 'admin_management':
         return <AdminManagement />;
-      case 'uat_demo':
-        return <UatDemonstrationCenter />;
       default:
         return <HomeDashboard onNavigate={setActiveView} />;
     }

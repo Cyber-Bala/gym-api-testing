@@ -13,7 +13,6 @@ import {
   Award,
   TrendingUp,
   ShieldCheck,
-  Sparkles,
   LayoutGrid,
   DoorOpen,
 } from 'lucide-react';
@@ -35,8 +34,7 @@ export type AppView =
   | 'lifecycle'
   | 'trainer_shifts'
   | 'analytics'
-  | 'admin_management'
-  | 'uat_demo';
+  | 'admin_management';
 
 export interface NavItem {
   id: AppView;
@@ -151,13 +149,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Admin Directory',
     shortLabel: 'Admins',
     icon: ShieldCheck,
-    roles: ['super_admin'],
-  },
-  {
-    id: 'uat_demo',
-    label: 'Demo console',
-    shortLabel: 'Demo',
-    icon: Sparkles,
     roles: ['super_admin'],
   },
 ];
