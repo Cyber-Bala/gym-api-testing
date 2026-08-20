@@ -259,7 +259,9 @@ export class BookingService {
       cfg.bufferMinutes
     );
 
-    const targetStartTimesHHmm = new Set(generatedIntervals.map((i) => i.startTime));
+    const targetIntervalKeys = new Set(
+      generatedIntervals.map((i) => `${i.startTime.slice(0, 5)}|${i.endTime.slice(0, 5)}`)
+    );
 
     for (const dateStr of dates) {
       const isLocked = lockedMap.has(dateStr);
@@ -278,45 +280,50 @@ export class BookingService {
         continue;
       }
 
-      // 1. Deduplicate any multiple slots with the exact same startTime
-      const seenTimes = new Map<string, typeof slots.$inferSelect>();
-      const duplicateIdsToDelete: string[] = [];
+      // 1. Group by interval key and identify duplicates or obsolete unbooked slots
+      const seenIntervals = new Map<string, typeof slots.$inferSelect>();
+      const slotsToDelete: string[] = [];
 
       for (const s of existing) {
-        const timeKey = s.startTime.slice(0, 5);
-        if (!seenTimes.has(timeKey)) {
-          seenTimes.set(timeKey, s);
-        } else {
-          const prev = seenTimes.get(timeKey)!;
+        const intervalKey = `${s.startTime.slice(0, 5)}|${s.endTime.slice(0, 5)}`;
+        const isTarget = targetIntervalKeys.has(intervalKey);
+
+        // If unbooked and not in target schedule, delete it
+        if ((s.bookedCount || 0) === 0 && !isTarget) {
+          slotsToDelete.push(s.id);
+          continue;
+        }
+
+        // If already seen this exact interval, delete unbooked duplicate
+        if (seenIntervals.has(intervalKey)) {
+          const prev = seenIntervals.get(intervalKey)!;
           if ((s.bookedCount || 0) > 0 && (prev.bookedCount || 0) === 0) {
-            duplicateIdsToDelete.push(prev.id);
-            seenTimes.set(timeKey, s);
+            slotsToDelete.push(prev.id);
+            seenIntervals.set(intervalKey, s);
           } else if ((s.bookedCount || 0) === 0) {
-            duplicateIdsToDelete.push(s.id);
+            slotsToDelete.push(s.id);
           }
+        } else {
+          seenIntervals.set(intervalKey, s);
         }
       }
 
-      // 2. Remove obsolete unbooked slots that do not match the current schedule
-      for (const s of existing) {
-        const timeKey = s.startTime.slice(0, 5);
-        if ((s.bookedCount || 0) === 0 && !targetStartTimesHHmm.has(timeKey)) {
-          if (!duplicateIdsToDelete.includes(s.id)) {
-            duplicateIdsToDelete.push(s.id);
-          }
-        }
+      if (slotsToDelete.length > 0) {
+        await db.delete(slots).where(inArray(slots.id, slotsToDelete));
       }
 
-      if (duplicateIdsToDelete.length > 0) {
-        await db.delete(slots).where(inArray(slots.id, duplicateIdsToDelete));
-      }
-
-      // 3. Find missing intervals from the active generated schedule
-      const remainingSlots = existing.filter((s) => !duplicateIdsToDelete.includes(s.id));
-      const remainingTimes = new Set(remainingSlots.map((s) => s.startTime.slice(0, 5)));
+      // 2. Determine which target intervals are missing
+      const remainingIntervals = new Set(
+        existing
+          .filter((s) => !slotsToDelete.includes(s.id))
+          .map((s) => `${s.startTime.slice(0, 5)}|${s.endTime.slice(0, 5)}`)
+      );
 
       const missingIntervals = generatedIntervals.filter(
-        (schedule) => !remainingTimes.has(schedule.startTime)
+        (schedule) =>
+          !remainingIntervals.has(
+            `${schedule.startTime.slice(0, 5)}|${schedule.endTime.slice(0, 5)}`
+          )
       );
 
       if (missingIntervals.length > 0) {
