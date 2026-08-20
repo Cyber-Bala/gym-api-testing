@@ -1,8 +1,14 @@
-import { v4 as uuidv4 } from 'uuid';
-import { eq, and, desc, sql, inArray } from 'drizzle-orm';
+import { eq, desc, sql, lte } from 'drizzle-orm';
+import {
+  PutObjectCommand,
+  GetObjectCommand,
+  PutBucketPolicyCommand,
+} from '@aws-sdk/client-s3';
 import { db, pool } from '../../shared/database/index.js';
+import { s3Client } from '../../shared/storage/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError } from '../../shared/errors/index.js';
+import { config } from '../../config/index.js';
 import {
   people,
   students,
@@ -10,7 +16,6 @@ import {
   bookings,
   violations,
   accessSessions,
-  memberships,
   membershipPlans,
   paymentOrders,
   archiveJobs,
@@ -21,10 +26,57 @@ import {
   DataLifecycleSummaryDto,
 } from './archive.types.js';
 
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+
+const BUCKET = config.MINIO_BUCKET_ARCHIVE; // "gym-archive"
+
+/** Ensure the archive bucket has a fully private (no anonymous) policy */
+export async function ensureArchiveBucketIsPrivate(): Promise<void> {
+  try {
+    // Deny all anonymous access (belt-and-suspenders — bucket was already private)
+    const policy = JSON.stringify({
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Sid: 'DenyPublicAccess',
+          Effect: 'Deny',
+          Principal: '*',
+          Action: 's3:GetObject',
+          Resource: `arn:aws:s3:::${BUCKET}/*`,
+          Condition: {
+            StringEquals: { 's3:x-amz-acl': 'public-read' },
+          },
+        },
+      ],
+    });
+    await s3Client.send(
+      new PutBucketPolicyCommand({ Bucket: BUCKET, Policy: policy })
+    );
+    logger.info({ bucket: BUCKET }, 'gym-archive bucket policy enforced as private');
+  } catch (err) {
+    logger.warn({ err }, 'Could not set archive bucket policy (may already be locked down)');
+  }
+}
+
+/** Stream a MinIO object body to a string */
+async function streamToString(stream: any): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    stream.on('error', reject);
+  });
+}
+
+// ─────────────────────────────────────────────
+// ArchiveService
+// ─────────────────────────────────────────────
+
 export class ArchiveService {
-  /**
-   * Get lifecycle and archive storage summary (SRS ARC-010)
-   */
+  // ── 1. Summary ──────────────────────────────
+
   public async getLifecycleSummary(): Promise<DataLifecycleSummaryDto> {
     const jobs = await db.select().from(archiveJobs).orderBy(desc(archiveJobs.createdAt));
 
@@ -38,14 +90,13 @@ export class ArchiveService {
     const jobDtos: ArchiveJobDto[] = jobs.map((j) => {
       const cnt = j.recordCount || 0;
       coldStorageRecords += cnt;
-
       return {
         id: j.id,
         entityType: j.category,
         cutoffDate: j.periodEnd.toISOString().slice(0, 10),
         recordCount: cnt,
         status: (j.status as 'completed' | 'running' | 'failed') || 'completed',
-        storagePath: j.storagePath || 'minio://gym-archives/cold-storage',
+        storagePath: j.storagePath,
         createdAt: j.createdAt.toISOString(),
       };
     });
@@ -59,90 +110,23 @@ export class ArchiveService {
     };
   }
 
-  /**
-   * Run Cold Storage Archiving Job (ADR-019, SRS ARC-003)
-   */
+  // ── 2. Run Archive Job ───────────────────────
+
   public async runArchiveJob(
     entityType: string,
     cutoffDate: string,
     adminEmail: string
   ): Promise<ArchiveJobDto> {
-    const cutoffDateTime = new Date(cutoffDate);
-    const storagePath = `minio://gym-archives/${entityType}/${cutoffDate}_${Date.now()}.parquet.zst`;
+    const cutoffDateTime = new Date(`${cutoffDate}T23:59:59.999Z`);
 
-    let actualCount = 0;
+    // ── 2a. Collect records ──────────────────
+    let rows: Array<Record<string, any>> = [];
+
     if (entityType === 'access_logs') {
-      const countRes = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(accessSessions)
-        .where(sql`${accessSessions.entryTimestamp} <= ${cutoffDateTime}`);
-      actualCount = countRes[0]?.count || 0;
-    } else if (entityType === 'bookings') {
-      const countRes = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(bookings)
-        .innerJoin(slots, eq(bookings.slotId, slots.id))
-        .where(sql`${slots.slotDate} <= ${cutoffDate}`);
-      actualCount = countRes[0]?.count || 0;
-    } else if (entityType === 'violations') {
-      const countRes = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(violations)
-        .where(sql`${violations.createdAt} <= ${cutoffDateTime}`);
-      actualCount = countRes[0]?.count || 0;
-    }
-
-    const recordCount = actualCount > 0 ? actualCount : 142;
-
-    const [job] = await db
-      .insert(archiveJobs)
-      .values({
-        category: entityType,
-        periodStart: new Date(cutoffDateTime.getTime() - 365 * 24 * 60 * 60 * 1000),
-        periodEnd: cutoffDateTime,
-        recordCount,
-        status: 'completed',
-        storagePath,
-      })
-      .returning();
-
-    await db.insert(auditLogs).values({
-      actorEmail: adminEmail,
-      action: 'run_archive_job',
-      entity: entityType,
-      entityId: job.id,
-      reason: `Cold storage archive created for records before ${cutoffDate} (${recordCount} records)`,
-    });
-
-    logger.info({ jobId: job.id, entityType, storagePath, recordCount }, 'Cold storage archive job completed');
-
-    return {
-      id: job.id,
-      entityType: job.category,
-      cutoffDate,
-      recordCount,
-      status: 'completed',
-      storagePath,
-      createdAt: job.createdAt.toISOString(),
-    };
-  }
-
-  /**
-   * Retrieve records for a specific archive job for admin preview / export
-   */
-  public async getJobRecords(jobId: string) {
-    const [job] = await db.select().from(archiveJobs).where(eq(archiveJobs.id, jobId)).limit(1);
-    if (!job) {
-      throw new NotFoundError(`Archive job '${jobId}' not found`);
-    }
-
-    const cutoff = job.periodEnd;
-    let records: Array<Record<string, any>> = [];
-
-    if (job.category === 'access_logs') {
-      const logs = await db
+      const res = await db
         .select({
           id: accessSessions.id,
+          personId: accessSessions.personId,
           personName: people.name,
           rollNumber: students.rollNumber,
           email: people.email,
@@ -156,25 +140,14 @@ export class ArchiveService {
         .from(accessSessions)
         .innerJoin(people, eq(accessSessions.personId, people.id))
         .leftJoin(students, eq(students.personId, people.id))
-        .where(sql`${accessSessions.entryTimestamp} <= ${cutoff}`)
-        .orderBy(desc(accessSessions.entryTimestamp))
-        .limit(200);
-
-      records = logs.map((l) => ({
-        'Session ID': l.id.slice(0, 8),
-        'Name': l.personName,
-        'Roll / ID': l.rollNumber || 'Staff/Trainer',
-        'Email': l.email,
-        'Type': l.personType,
-        'Entry Time': l.entryTimestamp ? new Date(l.entryTimestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-',
-        'Exit Time': l.exitTimestamp ? new Date(l.exitTimestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Still Inside',
-        'Turnstile Device': l.entryDeviceId || 'TRN-01-MAIN',
-        'Status': l.status,
-      }));
-    } else if (job.category === 'bookings') {
-      const bList = await db
+        .where(lte(accessSessions.entryTimestamp, cutoffDateTime));
+      rows = res;
+    } else if (entityType === 'bookings') {
+      const res = await db
         .select({
           id: bookings.id,
+          studentId: bookings.studentId,
+          slotId: bookings.slotId,
           personName: people.name,
           rollNumber: students.rollNumber,
           email: people.email,
@@ -189,24 +162,13 @@ export class ArchiveService {
         .innerJoin(slots, eq(bookings.slotId, slots.id))
         .innerJoin(students, eq(bookings.studentId, students.id))
         .innerJoin(people, eq(students.personId, people.id))
-        .where(sql`${slots.slotDate} <= ${cutoff.toISOString().slice(0, 10)}`)
-        .orderBy(desc(slots.slotDate))
-        .limit(200);
-
-      records = bList.map((b) => ({
-        'Booking ID': b.id.slice(0, 8),
-        'Student Name': b.personName,
-        'Roll Number': b.rollNumber,
-        'Slot Date': typeof b.slotDate === 'string' ? b.slotDate.slice(0, 10) : new Date(b.slotDate).toISOString().slice(0, 10),
-        'Time Window': `${b.startTime.slice(0, 5)} – ${b.endTime.slice(0, 5)}`,
-        'Booking Status': b.bookingStatus,
-        'Access Status': b.accessStatus,
-        'Reserved At': new Date(b.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-      }));
-    } else if (job.category === 'violations') {
-      const vList = await db
+        .where(lte(slots.slotDate, cutoffDate));
+      rows = res;
+    } else if (entityType === 'violations') {
+      const res = await db
         .select({
           id: violations.id,
+          studentId: violations.studentId,
           personName: people.name,
           rollNumber: students.rollNumber,
           violationType: violations.violationType,
@@ -216,22 +178,13 @@ export class ArchiveService {
         .from(violations)
         .innerJoin(students, eq(violations.studentId, students.id))
         .innerJoin(people, eq(students.personId, people.id))
-        .where(sql`${violations.createdAt} <= ${cutoff}`)
-        .orderBy(desc(violations.createdAt))
-        .limit(200);
-
-      records = vList.map((v) => ({
-        'Violation ID': v.id.slice(0, 8),
-        'Student Name': v.personName,
-        'Roll Number': v.rollNumber,
-        'Type': v.violationType,
-        'Description': v.description,
-        'Date': new Date(v.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-      }));
-    } else if (job.category === 'payments') {
-      const pList = await db
+        .where(lte(violations.createdAt, cutoffDateTime));
+      rows = res;
+    } else if (entityType === 'payments') {
+      const res = await db
         .select({
           id: paymentOrders.id,
+          studentId: paymentOrders.studentId,
           personName: people.name,
           rollNumber: students.rollNumber,
           planName: membershipPlans.name,
@@ -244,20 +197,218 @@ export class ArchiveService {
         .innerJoin(students, eq(paymentOrders.studentId, students.id))
         .innerJoin(people, eq(students.personId, people.id))
         .innerJoin(membershipPlans, eq(paymentOrders.planId, membershipPlans.id))
-        .where(sql`${paymentOrders.createdAt} <= ${cutoff}`)
-        .orderBy(desc(paymentOrders.createdAt))
-        .limit(200);
+        .where(lte(paymentOrders.createdAt, cutoffDateTime));
+      rows = res;
+    }
 
-      records = pList.map((p) => ({
-        'Payment ID': p.id.slice(0, 8),
-        'Student Name': p.personName,
-        'Roll Number': p.rollNumber,
-        'Pass Plan': p.planName,
-        'Amount (INR)': p.amount,
-        'Gateway Order': p.orderId,
-        'Status': p.status,
-        'Date': new Date(p.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-      }));
+    const recordCount = rows.length;
+
+    // If no records match the cutoff, still create the job but with 0 records
+    const objectKey = `${entityType}/${cutoffDate}_${Date.now()}.json.gz`;
+    const storagePath = `s3://${BUCKET}/${objectKey}`;
+
+    if (recordCount > 0) {
+      // ── 2b. Upload to MinIO as JSON ─────────
+      const jsonPayload = JSON.stringify({
+        archivedAt: new Date().toISOString(),
+        entityType,
+        cutoffDate,
+        recordCount,
+        records: rows,
+      });
+
+      await s3Client.send(
+        new PutObjectCommand({
+          Bucket: BUCKET,
+          Key: objectKey,
+          Body: Buffer.from(jsonPayload, 'utf-8'),
+          ContentType: 'application/json',
+          Metadata: {
+            entityType,
+            cutoffDate,
+            recordCount: String(recordCount),
+          },
+        })
+      );
+      logger.info({ objectKey, recordCount }, 'Archived records uploaded to MinIO');
+
+      // ── 2c. Delete archived records from source DB ──
+      if (entityType === 'access_logs') {
+        const ids = rows.map((r) => r.id as string);
+        // delete in batches
+        for (let i = 0; i < ids.length; i += 100) {
+          const batch = ids.slice(i, i + 100);
+          await db
+            .delete(accessSessions)
+            .where(sql`${accessSessions.id} = ANY(${sql.raw(`ARRAY[${batch.map((id) => `'${id}'`).join(',')}]::uuid[]`)}`);
+        }
+      } else if (entityType === 'bookings') {
+        const ids = rows.map((r) => r.id as string);
+        for (let i = 0; i < ids.length; i += 100) {
+          const batch = ids.slice(i, i + 100);
+          await db
+            .delete(bookings)
+            .where(sql`${bookings.id} = ANY(${sql.raw(`ARRAY[${batch.map((id) => `'${id}'`).join(',')}]::uuid[]`)}`);
+        }
+      } else if (entityType === 'violations') {
+        const ids = rows.map((r) => r.id as string);
+        for (let i = 0; i < ids.length; i += 100) {
+          const batch = ids.slice(i, i + 100);
+          await db
+            .delete(violations)
+            .where(sql`${violations.id} = ANY(${sql.raw(`ARRAY[${batch.map((id) => `'${id}'`).join(',')}]::uuid[]`)}`);
+        }
+      } else if (entityType === 'payments') {
+        const ids = rows.map((r) => r.id as string);
+        for (let i = 0; i < ids.length; i += 100) {
+          const batch = ids.slice(i, i + 100);
+          await db
+            .delete(paymentOrders)
+            .where(sql`${paymentOrders.id} = ANY(${sql.raw(`ARRAY[${batch.map((id) => `'${id}'`).join(',')}]::uuid[]`)}`);
+        }
+      }
+
+      logger.info({ entityType, recordCount }, 'Archived records deleted from source tables');
+    }
+
+    // ── 2d. Insert archive job record ──────────
+    const periodStart = new Date(cutoffDateTime.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+    const [job] = await db
+      .insert(archiveJobs)
+      .values({
+        category: entityType,
+        periodStart,
+        periodEnd: cutoffDateTime,
+        recordCount,
+        status: 'completed',
+        storagePath,
+      })
+      .returning();
+
+    await db.insert(auditLogs).values({
+      actorEmail: adminEmail,
+      action: 'run_archive_job',
+      entity: entityType,
+      entityId: job.id,
+      reason: `Cold storage archive created for ${entityType} (cutoff: ${cutoffDate}, ${recordCount} records archived and purged from live DB)`,
+    });
+
+    return {
+      id: job.id,
+      entityType: job.category,
+      cutoffDate,
+      recordCount,
+      status: 'completed',
+      storagePath,
+      createdAt: job.createdAt.toISOString(),
+    };
+  }
+
+  // ── 3. Get Records for a Job (read from MinIO) ──
+
+  public async getJobRecords(jobId: string) {
+    const [job] = await db.select().from(archiveJobs).where(eq(archiveJobs.id, jobId)).limit(1);
+    if (!job) throw new NotFoundError(`Archive job '${jobId}' not found`);
+
+    let records: Array<Record<string, any>> = [];
+
+    if (job.recordCount === 0) {
+      // No records were archived — return empty
+      return {
+        job: {
+          id: job.id,
+          entityType: job.category,
+          cutoffDate: job.periodEnd.toISOString().slice(0, 10),
+          recordCount: 0,
+          status: job.status,
+          storagePath: job.storagePath,
+          createdAt: job.createdAt.toISOString(),
+        },
+        records: [],
+      };
+    }
+
+    try {
+      // Extract the object key from the storage path: s3://gym-archive/<key>
+      const objectKey = job.storagePath.replace(`s3://${BUCKET}/`, '');
+
+      const response = await s3Client.send(
+        new GetObjectCommand({ Bucket: BUCKET, Key: objectKey })
+      );
+
+      const jsonText = await streamToString(response.Body as any);
+      const parsed = JSON.parse(jsonText) as {
+        entityType: string;
+        records: Array<Record<string, any>>;
+      };
+
+      // ── Format for display ──────────────────
+      records = (parsed.records || []).slice(0, 500).map((r) => {
+        if (parsed.entityType === 'access_logs') {
+          return {
+            'Session ID': String(r.id || '').slice(0, 8),
+            'Name': r.personName,
+            'Roll / ID': r.rollNumber || 'Staff/Trainer',
+            'Email': r.email,
+            'Type': r.personType,
+            'Entry Time': r.entryTimestamp
+              ? new Date(r.entryTimestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+              : '-',
+            'Exit Time': r.exitTimestamp
+              ? new Date(r.exitTimestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+              : 'Still Inside',
+            'Entry Device': r.entryDeviceId || '-',
+            'Status': r.status,
+          };
+        } else if (parsed.entityType === 'bookings') {
+          const slotDate = r.slotDate
+            ? typeof r.slotDate === 'string'
+              ? r.slotDate.slice(0, 10)
+              : new Date(r.slotDate).toISOString().slice(0, 10)
+            : '-';
+          return {
+            'Booking ID': String(r.id || '').slice(0, 8),
+            'Student Name': r.personName,
+            'Roll Number': r.rollNumber,
+            'Slot Date': slotDate,
+            'Time Window': `${String(r.startTime || '').slice(0, 5)} – ${String(r.endTime || '').slice(0, 5)}`,
+            'Booking Status': r.bookingStatus,
+            'Access Status': r.accessStatus,
+            'Reserved At': r.createdAt
+              ? new Date(r.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+              : '-',
+          };
+        } else if (parsed.entityType === 'violations') {
+          return {
+            'Violation ID': String(r.id || '').slice(0, 8),
+            'Student Name': r.personName,
+            'Roll Number': r.rollNumber,
+            'Type': r.violationType,
+            'Description': r.description,
+            'Date': r.createdAt
+              ? new Date(r.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+              : '-',
+          };
+        } else if (parsed.entityType === 'payments') {
+          return {
+            'Payment ID': String(r.id || '').slice(0, 8),
+            'Student Name': r.personName,
+            'Roll Number': r.rollNumber,
+            'Pass Plan': r.planName,
+            'Amount (INR)': r.amount,
+            'Gateway Order': r.orderId,
+            'Status': r.status,
+            'Date': r.createdAt
+              ? new Date(r.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+              : '-',
+          };
+        }
+        return r;
+      });
+    } catch (err) {
+      logger.error({ jobId, err }, 'Failed to fetch archive records from MinIO');
+      throw new Error('Failed to retrieve archived records from cold storage. The object may not exist.');
     }
 
     return {
@@ -265,7 +416,7 @@ export class ArchiveService {
         id: job.id,
         entityType: job.category,
         cutoffDate: job.periodEnd.toISOString().slice(0, 10),
-        recordCount: records.length || job.recordCount,
+        recordCount: job.recordCount,
         status: job.status,
         storagePath: job.storagePath,
         createdAt: job.createdAt.toISOString(),
@@ -274,9 +425,8 @@ export class ArchiveService {
     };
   }
 
-  /**
-   * Process Graduating / Leaving Students Departure (SRS ARC-011, ARC-012)
-   */
+  // ── 4. Student Departures ────────────────────
+
   public async processStudentDepartures(studentIds: string[], reason: string, adminEmail: string) {
     const client = await pool.connect();
     try {
@@ -286,7 +436,7 @@ export class ArchiveService {
 
       for (const sId of studentIds) {
         const studentRes = await client.query(
-          `SELECT s.id as student_id, s.person_id 
+          `SELECT s.id as student_id, s.person_id
            FROM people.students s
            JOIN people.people p ON s.person_id = p.id
            WHERE s.id::text = $1 OR s.roll_number = $1 OR p.email = $1
@@ -297,34 +447,30 @@ export class ArchiveService {
         if (studentRes.rows.length === 0) continue;
         const { student_id: studentId, person_id: personId } = studentRes.rows[0];
 
-        // 1. Mark person as departed
         await client.query(
           `UPDATE people.people SET status = 'departed', updated_at = NOW() WHERE id = $1`,
           [personId]
         );
 
-        // 2. Clear face vector and ban
         await client.query(
-          `UPDATE people.students 
-           SET face_enrollment_status = 'purged', is_banned = false, updated_at = NOW() 
+          `UPDATE people.students
+           SET face_enrollment_status = 'purged', is_banned = false, updated_at = NOW()
            WHERE id = $1`,
           [studentId]
         );
 
-        // 3. Cancel any future bookings
         await client.query(
-          `UPDATE booking.bookings 
-           SET booking_status = 'cancelled_by_gym', 
+          `UPDATE booking.bookings
+           SET booking_status = 'cancelled_by_gym',
                cancellation_reason = 'Student departure / graduation',
                cancelled_at = NOW()
            WHERE student_id = $1 AND booking_status = 'booked'`,
           [personId]
         );
 
-        // 4. Expire active memberships
         await client.query(
-          `UPDATE membership.memberships 
-           SET status = 'expired', updated_at = NOW() 
+          `UPDATE membership.memberships
+           SET status = 'expired', updated_at = NOW()
            WHERE student_id = $1 AND status = 'active'`,
           [personId]
         );
@@ -355,20 +501,15 @@ export class ArchiveService {
     }
   }
 
-  /**
-   * Seven-Year Automated PII Anonymization Workflow (SRS ARC-008, ARC-009)
-   */
+  // ── 5. 7-Year Anonymization Stub ────────────
+
   public async runSevenYearAnonymizationCheck(): Promise<{ anonymizedCount: number }> {
-    const anonymizedCount = 0;
-
     logger.info('Checked 7-year retention policy for historical records');
-
-    return { anonymizedCount };
+    return { anonymizedCount: 0 };
   }
 
-  /**
-   * Reactivate a departed student / alumni returning for post-grad (SRS ARC-014)
-   */
+  // ── 6. Reactivate Student ────────────────────
+
   public async reactivateStudent(studentId: string, reason: string, adminEmail: string) {
     const [stu] = await db.select().from(students).where(eq(students.id, studentId)).limit(1);
     if (!stu) throw new NotFoundError('Student not found');

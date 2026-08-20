@@ -5,6 +5,7 @@ import { logger } from './shared/logging/index.js';
 import { pool } from './shared/database/index.js';
 import { redis } from './shared/redis/index.js';
 import { ensureBucketsExist } from './shared/storage/index.js';
+import { ensureArchiveBucketIsPrivate } from './modules/archive/archive.service.js';
 import { runMigrations } from './db/migrate.js';
 import { schedulerService } from './modules/scheduler/scheduler.service.js';
 
@@ -17,6 +18,10 @@ const startServer = async () => {
 
     await ensureBucketsExist().catch((err) => {
       logger.warn({ err }, 'Storage bucket notice (MinIO may not be ready yet)');
+    });
+
+    await ensureArchiveBucketIsPrivate().catch((err) => {
+      logger.warn({ err }, 'Could not enforce archive bucket policy on startup');
     });
 
     const app = createApp();
