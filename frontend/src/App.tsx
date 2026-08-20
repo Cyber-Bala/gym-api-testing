@@ -20,6 +20,7 @@ import { ReportsCenter } from './components/ReportsCenter';
 import { ExecutiveAnalyticsDashboard } from './components/ExecutiveAnalyticsDashboard';
 import { DataLifecycleManager } from './components/DataLifecycleManager';
 import { AdminManagement } from './components/AdminManagement';
+import { UserProfileView } from './components/UserProfileView';
 import { Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -50,6 +51,8 @@ export const App: React.FC = () => {
     switch (activeView) {
       case 'home':
         return <HomeDashboard onNavigate={setActiveView} />;
+      case 'profile':
+        return <UserProfileView />;
       case 'book':
         return (
           <div className="space-y-6">

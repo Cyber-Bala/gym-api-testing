@@ -15,11 +15,13 @@ import {
   ShieldCheck,
   LayoutGrid,
   DoorOpen,
+  UserRound,
 } from 'lucide-react';
 import type { SessionUser, UserRole } from '../context/AuthContext';
 
 export type AppView =
   | 'home'
+  | 'profile'
   | 'book'
   | 'memberships'
   | 'my_access'
@@ -46,6 +48,13 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Home', shortLabel: 'Home', icon: LayoutGrid, roles: 'all' },
+  {
+    id: 'profile',
+    label: 'My Profile',
+    shortLabel: 'Profile',
+    icon: UserRound,
+    roles: 'signed-in',
+  },
   {
     id: 'book',
     label: 'Book a slot',
@@ -183,10 +192,10 @@ export function visibleNav(user?: SessionUser | null): NavItem[] {
 }
 
 export const MOBILE_PRIMARY: Record<string, AppView[]> = {
-  student: ['home', 'book', 'memberships'],
-  trainer: ['home', 'floor_management', 'trainer_shifts', 'live_attendance'],
-  staff: ['home', 'book', 'my_access'],
-  authorized_person: ['home'],
+  student: ['home', 'profile', 'book', 'memberships'],
+  trainer: ['home', 'profile', 'floor_management', 'trainer_shifts'],
+  staff: ['home', 'profile', 'book', 'my_access'],
+  authorized_person: ['home', 'profile'],
   admin: ['home', 'live_attendance', 'floor_management', 'students'],
   super_admin: ['home', 'live_attendance', 'floor_management', 'analytics'],
   guest: ['home'],
@@ -196,9 +205,9 @@ export function getMobilePrimary(user?: SessionUser | null): AppView[] {
   if (!user) return ['home'];
   if (user.role === 'student') {
     if (user.studentDetails?.residency === 'hosteller') {
-      return ['home', 'book', 'my_access'];
+      return ['home', 'profile', 'book', 'my_access'];
     }
-    return ['home', 'book', 'memberships', 'my_access'];
+    return ['home', 'profile', 'book', 'memberships'];
   }
   return MOBILE_PRIMARY[user.role] ?? ['home'];
 }

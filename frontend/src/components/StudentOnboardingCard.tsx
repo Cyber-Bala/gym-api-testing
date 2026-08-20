@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { UserRound } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { UserRound, CheckCircle2 } from 'lucide-react';
 import { Card } from '../ui/primitives';
 import { Button } from '../ui/Button';
 import { Input, Textarea } from '../ui/Input';
@@ -17,8 +17,18 @@ export const StudentOnboardingCard: React.FC = () => {
   const [address, setAddress] = useState(details?.address || '');
   const [healthConcerns, setHealthConcerns] = useState(details?.healthConcerns || '');
   const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
 
-  const incomplete = !details?.phone || !details?.emergencyContact;
+  useEffect(() => {
+    if (details) {
+      if (details.phone) setPhone(details.phone);
+      if (details.emergencyContact) setEmergencyContact(details.emergencyContact);
+      if (details.address) setAddress(details.address);
+      if (details.healthConcerns) setHealthConcerns(details.healthConcerns);
+    }
+  }, [details]);
+
+  const incomplete = (!details?.phone || !details?.emergencyContact) && !justSaved;
   if (!incomplete) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -26,12 +36,13 @@ export const StudentOnboardingCard: React.FC = () => {
     setSaving(true);
     try {
       await api.patch('/api/v1/people/students/me', {
-        phone,
-        emergencyContact,
-        address,
-        healthConcerns,
+        phone: phone.trim(),
+        emergencyContact: emergencyContact.trim(),
+        address: address.trim(),
+        healthConcerns: healthConcerns.trim(),
       });
-      toast.success('Profile saved');
+      setJustSaved(true);
+      toast.success('Your profile details have been saved successfully!');
       await refreshSession();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -42,10 +53,19 @@ export const StudentOnboardingCard: React.FC = () => {
   };
 
   return (
-    <Card className="space-y-4">
-      <div className="flex items-center gap-2">
-        <UserRound className="w-5 h-5 text-primary" />
-        <h3 className="font-bold text-sm sm:text-base text-text">Complete Your Profile</h3>
+    <Card className="space-y-4 border-accent/30 bg-surface-elevated/80 shadow-md">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-primary-muted text-primary">
+            <UserRound className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm sm:text-base text-text">Complete Your Profile</h3>
+            <p className="text-xs text-secondary">
+              Please provide your emergency contact & phone number for gym safety & access compliance
+            </p>
+          </div>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -69,22 +89,25 @@ export const StudentOnboardingCard: React.FC = () => {
         </div>
 
         <Textarea
-          label="Address"
+          label="Address (Hostel / Residence)"
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           placeholder="Hostel block, room no / home address"
         />
 
         <Textarea
-          label="Health Concerns"
+          label="Health Concerns & Medical Conditions"
           value={healthConcerns}
           onChange={(e) => setHealthConcerns(e.target.value)}
-          placeholder="e.g. Asthma, knee injury — leave empty if none"
+          placeholder="e.g. Asthma, cardiac history, knee injury — leave empty if none"
         />
 
-        <Button variant="primary" size="md" loading={saving} type="submit">
-          Save Profile
-        </Button>
+        <div className="flex justify-end pt-1">
+          <Button variant="primary" size="md" loading={saving} type="submit">
+            <CheckCircle2 className="w-4 h-4 mr-1.5" />
+            <span>Save & Complete Profile</span>
+          </Button>
+        </div>
       </form>
     </Card>
   );

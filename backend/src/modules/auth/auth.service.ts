@@ -370,6 +370,27 @@ if (studentRec) {
   }
 
   /**
+   * Update cached session user in Redis
+   */
+  public async updateSessionUser(sessionId: string, user: SessionUser): Promise<void> {
+    if (!sessionId) return;
+    const sessionKey = `session:${sessionId}`;
+    const raw = await redis.get(sessionKey);
+    if (!raw) return;
+
+    try {
+      const sessionData = JSON.parse(raw) as SessionData;
+      sessionData.user = user;
+      const ttl = await redis.ttl(sessionKey);
+      if (ttl > 0) {
+        await redis.set(sessionKey, JSON.stringify(sessionData), 'EX', ttl);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
    * Invalidate a single session
    */
   public async destroySession(sessionId: string): Promise<void> {

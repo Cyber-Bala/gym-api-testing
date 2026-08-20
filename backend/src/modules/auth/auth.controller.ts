@@ -96,13 +96,27 @@ export const devLogin = async (req: Request, res: Response, next: NextFunction):
   }
 };
 
-export const getMe = async (req: Request, res: Response): Promise<void> => {
-  res.status(200).json({
-    success: true,
-    data: {
-      user: req.user,
-    },
-  });
+export const getMe = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new UnauthorizedError('Authentication required');
+    }
+
+    // Refresh user state from database so changes to profile, emergency contact, phone, etc. are immediately live
+    const freshUser = await authService.findAndSyncProvisionedUser(req.user.email);
+    if (req.sessionId) {
+      await authService.updateSessionUser(req.sessionId, freshUser);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        user: freshUser,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 export const logout = async (req: Request, res: Response, next: NextFunction): Promise<void> => {

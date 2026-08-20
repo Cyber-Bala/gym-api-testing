@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { peopleService } from './people.service.js';
+import { authService } from '../auth/auth.service.js';
 import { ValidationError, NotFoundError, UnauthorizedError } from '../../shared/errors/index.js';
 import { studentSelfUpdateSchema, trainerBulkSchema, studentRowSchema } from './people.types.js';
 
@@ -144,10 +145,18 @@ export const updateMyStudentProfile = async (
     }
     const result = await peopleService.updateMyStudentProfile(req.user.personId, req.body);
 
+    const freshUser = await authService.findAndSyncProvisionedUser(req.user.email);
+    if (req.sessionId) {
+      await authService.updateSessionUser(req.sessionId, freshUser);
+    }
+
     res.status(200).json({
       success: true,
       message: 'Profile updated',
-      data: result,
+      data: {
+        ...result,
+        user: freshUser,
+      },
     });
   } catch (err) {
     next(err);
