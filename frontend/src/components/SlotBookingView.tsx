@@ -58,6 +58,7 @@ interface SlotItem {
   isActive: boolean;
   isPast: boolean;
   isBookedByCurrentUser: boolean;
+  isPassCovered?: boolean;
 }
 
 interface DaySlots {
@@ -73,6 +74,8 @@ interface DaySlots {
   userBookedSlotIds?: string[];
   totalCapacity: number;
   totalBooked: number;
+  isPassValidOnDate?: boolean;
+  passExpiryDate?: string;
   slots: SlotItem[];
 }
 
@@ -93,9 +96,10 @@ interface CalendarClosureItem {
 
 interface SlotBookingViewProps {
   onBookingSuccess?: () => void;
+  onNavigate?: (view: any) => void;
 }
 
-export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSuccess }) => {
+export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSuccess, onNavigate }) => {
   const { user } = useAuth();
   const toast = useToast();
   const [data, setData] = useState<RollingWindowData | null>(null);
@@ -556,11 +560,37 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
       {/* Day Scholar Pass Reminder (Students Only) */}
       {isStudent && user?.studentDetails?.residency === 'day_scholar' && (
         <Alert tone="info">
-          <div className="flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-primary shrink-0" />
-            <span className="text-xs text-secondary">
-              Day Scholar Account: Booking requires an active gym pass.
-            </span>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-primary shrink-0" />
+              <span className="text-xs text-secondary">
+                Day Scholar Account: Workout slot reservations require an active gym pass.
+              </span>
+            </div>
+            {onNavigate && (
+              <Button variant="outline" size="xs" onClick={() => onNavigate('memberships')}>
+                Gym Passes
+              </Button>
+            )}
+          </div>
+        </Alert>
+      )}
+
+      {/* Day Scholar Pass Expired on Date Notice */}
+      {isStudent && user?.studentDetails?.residency === 'day_scholar' && !currentDay?.isLocked && currentDay?.isPassValidOnDate === false && (
+        <Alert tone="warning">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-warning shrink-0" />
+              <span className="text-xs text-secondary">
+                Your gym pass expires before {currentDay.dayLabel} ({currentDay.date}). To book slots on this date, please extend or renew your pass.
+              </span>
+            </div>
+            {onNavigate && (
+              <Button variant="accent" size="xs" onClick={() => onNavigate('memberships')}>
+                Extend Pass
+              </Button>
+            )}
           </div>
         </Alert>
       )}
@@ -620,6 +650,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
               const isMorning = parseInt(slot.startTime.split(':')[0], 10) < 12;
               const isDayLimitReached = (currentDay.userBookedCountOnDate || 0) >= 3;
               const isWindowLimitReached = (data?.totalUserBookingsInWindow || 0) >= 3;
+              const isPassValid = slot.isPassCovered !== false && currentDay.isPassValidOnDate !== false;
               const canBook =
                 isStudent &&
                 !slot.isPast &&
@@ -627,7 +658,8 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                 !slot.isFull &&
                 !slot.isBookedByCurrentUser &&
                 !isDayLimitReached &&
-                !isWindowLimitReached;
+                !isWindowLimitReached &&
+                isPassValid;
 
               return (
                 <div
@@ -636,7 +668,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                     'p-5 rounded-2xl bg-surface-elevated flex flex-col justify-between space-y-4 shadow-sm transition-all hover:shadow-md',
                     isStudent && slot.isBookedByCurrentUser
                       ? 'bg-success-muted/25'
-                      : !slot.isActive || slot.isPast
+                      : !slot.isActive || slot.isPast || (isStudent && !isPassValid)
                       ? 'opacity-60 bg-surface-elevated/40'
                       : ''
                   )}
@@ -665,6 +697,8 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                           ? 'neutral'
                           : slot.isPast
                           ? 'neutral'
+                          : isStudent && !isPassValid
+                          ? 'warning'
                           : slot.isFull
                           ? 'danger'
                           : slot.occupancyPercentage >= 75
@@ -678,6 +712,8 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                         ? 'Closed'
                         : slot.isPast
                         ? 'Past'
+                        : isStudent && !isPassValid
+                        ? 'Pass Expired'
                         : slot.isFull
                         ? 'Full'
                         : !isStudent
@@ -720,6 +756,18 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                         >
                           Book Slot
                         </Button>
+                      ) : isStudent && !isPassValid ? (
+                        onNavigate ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => onNavigate('memberships')}
+                          >
+                            Extend Pass
+                          </Button>
+                        ) : (
+                          <span className="text-[11px] font-medium text-warning">Pass Expired</span>
+                        )
                       ) : isTrainer ? (
                         <span className="text-[11px] font-medium text-secondary">
                           Floor Supervision

@@ -1,4 +1,4 @@
-import { eq, and, or, inArray, asc, desc } from 'drizzle-orm';
+import { eq, and, or, inArray, asc, desc, gt } from 'drizzle-orm';
 import { db } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { ValidationError, NotFoundError } from '../../shared/errors/index.js';
@@ -6,6 +6,7 @@ import {
   slots,
   bookings,
   students,
+  memberships,
   auditLogs,
   gymCalendar,
   slotConfigs,
@@ -394,31 +395,65 @@ export class BookingService {
     const isToday = dateStr === todayStr;
     const currentISTTime = this.getISTCurrentTime();
 
-    // Check all active bookings the student has on this date
+    // Check all active bookings and membership coverage the student has on this date
     const userBookedSlotIds: string[] = [];
-    if (studentId && dbSlots.length > 0) {
-      const slotIds = dbSlots.map((s) => s.id);
+    let isPassValidOnDate = true;
+    let passExpiryDate: string | undefined = undefined;
 
+    if (studentId) {
       const [studentRec] = await db
-        .select({ id: students.id })
+        .select({ id: students.id, residency: students.residency })
         .from(students)
         .where(or(eq(students.personId, studentId), eq(students.id, studentId)))
         .limit(1);
 
       const resolvedStudentId = studentRec?.id || studentId;
 
-      const userBookings = await db
-        .select({ slotId: bookings.slotId })
-        .from(bookings)
-        .where(
-          and(
-            eq(bookings.studentId, resolvedStudentId),
-            inArray(bookings.slotId, slotIds),
-            eq(bookings.bookingStatus, 'booked')
-          )
-        );
+      if (dbSlots.length > 0) {
+        const slotIds = dbSlots.map((s) => s.id);
+        const userBookings = await db
+          .select({ slotId: bookings.slotId })
+          .from(bookings)
+          .where(
+            and(
+              eq(bookings.studentId, resolvedStudentId),
+              inArray(bookings.slotId, slotIds),
+              eq(bookings.bookingStatus, 'booked')
+            )
+          );
 
-      userBookedSlotIds.push(...userBookings.map((b) => b.slotId));
+        userBookedSlotIds.push(...userBookings.map((b) => b.slotId));
+      }
+
+      // Day Scholar membership coverage check across active & queued passes
+      if (studentRec && studentRec.residency === 'day_scholar') {
+        const userMemberships = await db
+          .select({
+            id: memberships.id,
+            startDate: memberships.startDate,
+            endDate: memberships.endDate,
+            status: memberships.status,
+          })
+          .from(memberships)
+          .where(
+            and(
+              or(eq(memberships.studentId, resolvedStudentId), eq(memberships.studentId, studentId)),
+              inArray(memberships.status, ['active', 'queued']),
+              gt(memberships.endDate, new Date())
+            )
+          )
+          .orderBy(desc(memberships.endDate));
+
+        if (userMemberships.length === 0) {
+          isPassValidOnDate = false;
+        } else {
+          const maxExpiry = userMemberships[0].endDate;
+          passExpiryDate = maxExpiry.toISOString();
+          // Check if slot date in IST is covered by active or queued membership
+          const slotDayStart = new Date(`${dateStr}T00:00:00+05:30`);
+          isPassValidOnDate = maxExpiry >= slotDayStart;
+        }
+      }
     }
 
     const userBookedSet = new Set(userBookedSlotIds);
@@ -445,6 +480,7 @@ export class BookingService {
         isActive: !isLocked && slot.status === 'open',
         isPast,
         isBookedByCurrentUser: userBookedSet.has(slot.id),
+        isPassCovered: isPassValidOnDate,
       };
     });
 
@@ -474,6 +510,8 @@ export class BookingService {
       userBookedSlotIds,
       totalCapacity,
       totalBooked,
+      isPassValidOnDate,
+      passExpiryDate,
       slots: isLocked ? [] : slotDtos,
     };
   }

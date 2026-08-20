@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { eq, and, or, desc, sql, gt } from 'drizzle-orm';
+import { eq, and, or, inArray, desc, sql, gt } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { redis } from '../../shared/redis/index.js';
 import { logger } from '../../shared/logging/index.js';
@@ -103,34 +103,11 @@ export class ReservationService {
       );
     }
 
-    // 3. Pre-validation: Day Scholar membership pass check (FR-MEM-001)
-    const residency = studentRecord.residency || user.studentDetails?.residency;
-    if (residency === 'day_scholar') {
-      const now = new Date();
-      const activeMemberships = await db
-        .select()
-        .from(memberships)
-        .where(
-          and(
-            or(eq(memberships.studentId, studentTableId), eq(memberships.studentId, user.personId)),
-            eq(memberships.status, 'active'),
-            gt(memberships.endDate, now)
-          )
-        )
-        .limit(1);
-
-      if (activeMemberships.length === 0) {
-        throw new ForbiddenError(
-          'Day Scholar students require an active gym membership pass to book slots. Please purchase or activate a membership pass.'
-        );
-      }
-    }
-
-    // 4. Acquire Tier 1 Redis Lock
+    // 3. Acquire Tier 1 Redis Lock
     const lockValue = await this.acquireSlotLock(slotId, 5000);
 
     try {
-      // 5. Tier 2 PostgreSQL ACID Transaction with row-level lock
+      // 4. Tier 2 PostgreSQL ACID Transaction with row-level lock
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -171,6 +148,54 @@ export class ReservationService {
         const hoursRemaining = this.getHoursUntilSlotStart(slotDateStr, slot.start_time);
         if (hoursRemaining < 0) {
           throw new ValidationError('Cannot reserve a time slot that has already started or passed');
+        }
+
+        // 5. Day Scholar membership pass coverage check for the target slot date
+        const residency = studentRecord.residency || user.studentDetails?.residency;
+        if (residency === 'day_scholar') {
+          const now = new Date();
+          const userMemberships = await db
+            .select({
+              id: memberships.id,
+              startDate: memberships.startDate,
+              endDate: memberships.endDate,
+              status: memberships.status,
+            })
+            .from(memberships)
+            .where(
+              and(
+                or(eq(memberships.studentId, studentTableId), eq(memberships.studentId, user.personId)),
+                inArray(memberships.status, ['active', 'queued']),
+                gt(memberships.endDate, now)
+              )
+            )
+            .orderBy(desc(memberships.endDate));
+
+          if (userMemberships.length === 0) {
+            throw new ForbiddenError(
+              'Day Scholar students require an active gym membership pass to book slots. Please purchase or activate a membership pass.'
+            );
+          }
+
+          // Slot date start in IST
+          const slotDayStart = new Date(`${slotDateStr}T00:00:00+05:30`);
+          const maxExpiryDate = userMemberships[0].endDate;
+
+          // Check if slot date is covered by active or queued passes
+          const isCovered = maxExpiryDate >= slotDayStart;
+
+          if (!isCovered) {
+            const expiryFormatted = new Intl.DateTimeFormat('en-IN', {
+              timeZone: 'Asia/Kolkata',
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+            }).format(maxExpiryDate);
+
+            throw new ForbiddenError(
+              `Your gym membership pass expires on ${expiryFormatted}. You cannot book slots on ${slotDateStr} unless you extend or renew your pass.`
+            );
+          }
         }
 
         // 1. Exact slot duplicate check

@@ -63,6 +63,7 @@ export interface SlotDto {
   isActive: boolean;
   isPast: boolean;
   isBookedByCurrentUser: boolean;
+  isPassCovered?: boolean;
 }
 
 export interface DaySlotsDto {
@@ -78,6 +79,8 @@ export interface DaySlotsDto {
   userBookedSlotIds?: string[];
   totalCapacity: number;
   totalBooked: number;
+  isPassValidOnDate?: boolean;
+  passExpiryDate?: string;
   slots: SlotDto[];
 }
 

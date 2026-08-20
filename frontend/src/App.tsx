@@ -57,7 +57,7 @@ export const App: React.FC = () => {
         return (
           <div className="space-y-6">
             <MyBookingsCard />
-            <SlotBookingView />
+            <SlotBookingView onNavigate={setActiveView} />
           </div>
         );
       case 'memberships':
