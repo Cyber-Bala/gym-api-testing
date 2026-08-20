@@ -1,18 +1,37 @@
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, or } from 'drizzle-orm';
 import { db } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError, ValidationError } from '../../shared/errors/index.js';
-import { paymentOrders, membershipPlans } from '../../db/schema/index.js';
+import { paymentOrders, membershipPlans, students } from '../../db/schema/index.js';
 import { membershipService } from '../membership/membership.service.js';
 import { PaymentOrderDto } from './payment.types.js';
 
 export class PaymentService {
   /**
+   * Helper: Resolve student record ID from students table whether students.id or people.id (personId) was passed
+   */
+  private async resolveStudentId(studentOrPersonId: string): Promise<string> {
+    const [stu] = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(or(eq(students.id, studentOrPersonId), eq(students.personId, studentOrPersonId)))
+      .limit(1);
+
+    if (!stu) {
+      throw new NotFoundError(`Student record not found for '${studentOrPersonId}'`);
+    }
+
+    return stu.id;
+  }
+
+  /**
    * Create Razorpay Order (FR-PAY-001)
    */
-  public async createOrder(studentId: string, planId: string): Promise<PaymentOrderDto> {
+  public async createOrder(studentOrPersonId: string, planId: string): Promise<PaymentOrderDto> {
+    const studentId = await this.resolveStudentId(studentOrPersonId);
+
     const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, planId)).limit(1);
 
     if (!plan) {
@@ -51,7 +70,9 @@ export class PaymentService {
   /**
    * Verify Razorpay Payment Signature and activate membership (FR-PAY-002)
    */
-  public async verifyPayment(orderId: string, paymentId: string, signature: string, studentId: string) {
+  public async verifyPayment(orderId: string, paymentId: string, signature: string, studentOrPersonId: string) {
+    const studentId = await this.resolveStudentId(studentOrPersonId);
+
     const [order] = await db
       .select()
       .from(paymentOrders)
@@ -172,7 +193,9 @@ export class PaymentService {
   /**
    * Get payment transactions history for a student
    */
-  public async getPaymentHistory(studentId: string) {
+  public async getPaymentHistory(studentOrPersonId: string) {
+    const studentId = await this.resolveStudentId(studentOrPersonId);
+
     const orders = await db
       .select({
         id: paymentOrders.id,

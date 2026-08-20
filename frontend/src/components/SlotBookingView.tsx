@@ -534,7 +534,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
           <div className="flex items-center gap-2">
             <CreditCard className="w-4 h-4 text-primary shrink-0" />
             <span className="text-xs text-secondary">
-              Day Scholar Account: Booking requires an active gym pass tier (1M, 3M, 1Y).
+              Day Scholar Account: Booking requires an active gym pass.
             </span>
           </div>
         </Alert>

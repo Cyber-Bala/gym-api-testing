@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, sql, lte, gt } from 'drizzle-orm';
+import { eq, and, desc, asc, sql, lte, gt, or } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError, ValidationError } from '../../shared/errors/index.js';
@@ -6,6 +6,19 @@ import { membershipPlans, memberships, students, people, auditLogs } from '../..
 import { MembershipPlanDto, UserMembershipDto, createPlanSchema, updatePlanSchema } from './membership.types.js';
 
 export class MembershipService {
+  /**
+   * Helper: Resolve student record ID from students table whether students.id or people.id (personId) was passed
+   */
+  private async resolveStudentId(studentOrPersonId: string): Promise<string> {
+    const [stu] = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(or(eq(students.id, studentOrPersonId), eq(students.personId, studentOrPersonId)))
+      .limit(1);
+
+    return stu?.id || studentOrPersonId;
+  }
+
   /**
    * Get all active membership plans
    */
@@ -28,10 +41,12 @@ export class MembershipService {
   /**
    * Get student's current active membership and history
    */
-  public async getMyMembership(studentId: string): Promise<{
+  public async getMyMembership(studentOrPersonId: string): Promise<{
     activeMembership: UserMembershipDto | null;
     history: UserMembershipDto[];
   }> {
+    const studentId = await this.resolveStudentId(studentOrPersonId);
+
     const records = await db
       .select({
         membership: memberships,
@@ -78,7 +93,9 @@ export class MembershipService {
   /**
    * Activate or extend a membership pass for a student (FR-MEM-002)
    */
-  public async activateMembership(studentId: string, planId: string, paymentId?: string): Promise<UserMembershipDto> {
+  public async activateMembership(studentOrPersonId: string, planId: string, paymentId?: string): Promise<UserMembershipDto> {
+    const studentId = await this.resolveStudentId(studentOrPersonId);
+
     const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, planId)).limit(1);
 
     if (!plan) {
