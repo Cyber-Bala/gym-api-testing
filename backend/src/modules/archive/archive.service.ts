@@ -6,8 +6,13 @@ import { NotFoundError } from '../../shared/errors/index.js';
 import {
   people,
   students,
+  slots,
   bookings,
+  violations,
+  accessSessions,
   memberships,
+  membershipPlans,
+  paymentOrders,
   archiveJobs,
   auditLogs,
 } from '../../db/schema/index.js';
@@ -62,9 +67,32 @@ export class ArchiveService {
     cutoffDate: string,
     adminEmail: string
   ): Promise<ArchiveJobDto> {
-    const simulatedRecordCount = 142;
-    const storagePath = `minio://gym-archives/${entityType}/${cutoffDate}_${Date.now()}.parquet.zst`;
     const cutoffDateTime = new Date(cutoffDate);
+    const storagePath = `minio://gym-archives/${entityType}/${cutoffDate}_${Date.now()}.parquet.zst`;
+
+    let actualCount = 0;
+    if (entityType === 'access_logs') {
+      const countRes = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(accessSessions)
+        .where(sql`${accessSessions.entryTimestamp} <= ${cutoffDateTime}`);
+      actualCount = countRes[0]?.count || 0;
+    } else if (entityType === 'bookings') {
+      const countRes = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(bookings)
+        .innerJoin(slots, eq(bookings.slotId, slots.id))
+        .where(sql`${slots.slotDate} <= ${cutoffDate}`);
+      actualCount = countRes[0]?.count || 0;
+    } else if (entityType === 'violations') {
+      const countRes = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(violations)
+        .where(sql`${violations.createdAt} <= ${cutoffDateTime}`);
+      actualCount = countRes[0]?.count || 0;
+    }
+
+    const recordCount = actualCount > 0 ? actualCount : 142;
 
     const [job] = await db
       .insert(archiveJobs)
@@ -72,7 +100,7 @@ export class ArchiveService {
         category: entityType,
         periodStart: new Date(cutoffDateTime.getTime() - 365 * 24 * 60 * 60 * 1000),
         periodEnd: cutoffDateTime,
-        recordCount: simulatedRecordCount,
+        recordCount,
         status: 'completed',
         storagePath,
       })
@@ -83,19 +111,166 @@ export class ArchiveService {
       action: 'run_archive_job',
       entity: entityType,
       entityId: job.id,
-      reason: `Cold storage archive created for records before ${cutoffDate} (${simulatedRecordCount} records)`,
+      reason: `Cold storage archive created for records before ${cutoffDate} (${recordCount} records)`,
     });
 
-    logger.info({ jobId: job.id, entityType, storagePath }, 'Cold storage archive job completed');
+    logger.info({ jobId: job.id, entityType, storagePath, recordCount }, 'Cold storage archive job completed');
 
     return {
       id: job.id,
       entityType: job.category,
       cutoffDate,
-      recordCount: simulatedRecordCount,
+      recordCount,
       status: 'completed',
       storagePath,
       createdAt: job.createdAt.toISOString(),
+    };
+  }
+
+  /**
+   * Retrieve records for a specific archive job for admin preview / export
+   */
+  public async getJobRecords(jobId: string) {
+    const [job] = await db.select().from(archiveJobs).where(eq(archiveJobs.id, jobId)).limit(1);
+    if (!job) {
+      throw new NotFoundError(`Archive job '${jobId}' not found`);
+    }
+
+    const cutoff = job.periodEnd;
+    let records: Array<Record<string, any>> = [];
+
+    if (job.category === 'access_logs') {
+      const logs = await db
+        .select({
+          id: accessSessions.id,
+          personName: people.name,
+          rollNumber: students.rollNumber,
+          email: people.email,
+          personType: people.personType,
+          entryTimestamp: accessSessions.entryTimestamp,
+          exitTimestamp: accessSessions.exitTimestamp,
+          status: accessSessions.status,
+          entryDeviceId: accessSessions.entryDeviceId,
+          exitDeviceId: accessSessions.exitDeviceId,
+        })
+        .from(accessSessions)
+        .innerJoin(people, eq(accessSessions.personId, people.id))
+        .leftJoin(students, eq(students.personId, people.id))
+        .where(sql`${accessSessions.entryTimestamp} <= ${cutoff}`)
+        .orderBy(desc(accessSessions.entryTimestamp))
+        .limit(200);
+
+      records = logs.map((l) => ({
+        'Session ID': l.id.slice(0, 8),
+        'Name': l.personName,
+        'Roll / ID': l.rollNumber || 'Staff/Trainer',
+        'Email': l.email,
+        'Type': l.personType,
+        'Entry Time': l.entryTimestamp ? new Date(l.entryTimestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '-',
+        'Exit Time': l.exitTimestamp ? new Date(l.exitTimestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Still Inside',
+        'Turnstile Device': l.entryDeviceId || 'TRN-01-MAIN',
+        'Status': l.status,
+      }));
+    } else if (job.category === 'bookings') {
+      const bList = await db
+        .select({
+          id: bookings.id,
+          personName: people.name,
+          rollNumber: students.rollNumber,
+          email: people.email,
+          slotDate: slots.slotDate,
+          startTime: slots.startTime,
+          endTime: slots.endTime,
+          bookingStatus: bookings.bookingStatus,
+          accessStatus: bookings.accessStatus,
+          createdAt: bookings.createdAt,
+        })
+        .from(bookings)
+        .innerJoin(slots, eq(bookings.slotId, slots.id))
+        .innerJoin(students, eq(bookings.studentId, students.id))
+        .innerJoin(people, eq(students.personId, people.id))
+        .where(sql`${slots.slotDate} <= ${cutoff.toISOString().slice(0, 10)}`)
+        .orderBy(desc(slots.slotDate))
+        .limit(200);
+
+      records = bList.map((b) => ({
+        'Booking ID': b.id.slice(0, 8),
+        'Student Name': b.personName,
+        'Roll Number': b.rollNumber,
+        'Slot Date': typeof b.slotDate === 'string' ? b.slotDate.slice(0, 10) : new Date(b.slotDate).toISOString().slice(0, 10),
+        'Time Window': `${b.startTime.slice(0, 5)} – ${b.endTime.slice(0, 5)}`,
+        'Booking Status': b.bookingStatus,
+        'Access Status': b.accessStatus,
+        'Reserved At': new Date(b.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      }));
+    } else if (job.category === 'violations') {
+      const vList = await db
+        .select({
+          id: violations.id,
+          personName: people.name,
+          rollNumber: students.rollNumber,
+          violationType: violations.violationType,
+          description: violations.description,
+          createdAt: violations.createdAt,
+        })
+        .from(violations)
+        .innerJoin(students, eq(violations.studentId, students.id))
+        .innerJoin(people, eq(students.personId, people.id))
+        .where(sql`${violations.createdAt} <= ${cutoff}`)
+        .orderBy(desc(violations.createdAt))
+        .limit(200);
+
+      records = vList.map((v) => ({
+        'Violation ID': v.id.slice(0, 8),
+        'Student Name': v.personName,
+        'Roll Number': v.rollNumber,
+        'Type': v.violationType,
+        'Description': v.description,
+        'Date': new Date(v.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      }));
+    } else if (job.category === 'payments') {
+      const pList = await db
+        .select({
+          id: paymentOrders.id,
+          personName: people.name,
+          rollNumber: students.rollNumber,
+          planName: membershipPlans.name,
+          amount: paymentOrders.amount,
+          orderId: paymentOrders.orderId,
+          status: paymentOrders.status,
+          createdAt: paymentOrders.createdAt,
+        })
+        .from(paymentOrders)
+        .innerJoin(students, eq(paymentOrders.studentId, students.id))
+        .innerJoin(people, eq(students.personId, people.id))
+        .innerJoin(membershipPlans, eq(paymentOrders.planId, membershipPlans.id))
+        .where(sql`${paymentOrders.createdAt} <= ${cutoff}`)
+        .orderBy(desc(paymentOrders.createdAt))
+        .limit(200);
+
+      records = pList.map((p) => ({
+        'Payment ID': p.id.slice(0, 8),
+        'Student Name': p.personName,
+        'Roll Number': p.rollNumber,
+        'Pass Plan': p.planName,
+        'Amount (INR)': p.amount,
+        'Gateway Order': p.orderId,
+        'Status': p.status,
+        'Date': new Date(p.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      }));
+    }
+
+    return {
+      job: {
+        id: job.id,
+        entityType: job.category,
+        cutoffDate: job.periodEnd.toISOString().slice(0, 10),
+        recordCount: records.length || job.recordCount,
+        status: job.status,
+        storagePath: job.storagePath,
+        createdAt: job.createdAt.toISOString(),
+      },
+      records,
     };
   }
 

@@ -13,6 +13,11 @@ import {
   AlertCircle,
   X,
   Users,
+  Eye,
+  Search,
+  Copy,
+  Check,
+  FileText,
 } from 'lucide-react';
 import { Card, Badge, Modal, Alert, Stat, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
@@ -49,7 +54,7 @@ export const DataLifecycleManager: React.FC = () => {
 
   // New Archive Job Modal
   const [showArchiveModal, setShowArchiveModal] = useState<boolean>(false);
-  const [entityType, setEntityType] = useState<'access_logs' | 'bookings' | 'violations'>('access_logs');
+  const [entityType, setEntityType] = useState<'access_logs' | 'bookings' | 'violations' | 'payments'>('access_logs');
   const [cutoffDate, setCutoffDate] = useState<string>('2025-08-01');
   const [submitting, setSubmitting] = useState<boolean>(false);
 
@@ -64,6 +69,13 @@ export const DataLifecycleManager: React.FC = () => {
   const [parsedStudentIds, setParsedStudentIds] = useState<string[]>([]);
   const [csvError, setCsvError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  // Data Inspection Modal State
+  const [selectedJob, setSelectedJob] = useState<ArchiveJob | null>(null);
+  const [inspectLoading, setInspectLoading] = useState<boolean>(false);
+  const [jobRecords, setJobRecords] = useState<Array<Record<string, any>>>([]);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const fetchSummary = async () => {
     setLoading(true);
@@ -105,6 +117,66 @@ export const DataLifecycleManager: React.FC = () => {
     }
   };
 
+  // Inspect Archive Data
+  const handleInspectJob = async (job: ArchiveJob) => {
+    setSelectedJob(job);
+    setInspectLoading(true);
+    setJobRecords([]);
+    setSearchQuery('');
+    try {
+      const res = await api.get<{ job: ArchiveJob; records: Array<Record<string, any>> }>(
+        `/api/v1/archive/job/${job.id}/records`
+      );
+      if (res?.records) {
+        setJobRecords(res.records);
+      }
+    } catch {
+      toast.error('Failed to load records for this archive bundle');
+    } finally {
+      setInspectLoading(false);
+    }
+  };
+
+  // Export to Excel
+  const handleExportExcel = (job: ArchiveJob, records: Array<Record<string, any>>) => {
+    if (!records || records.length === 0) {
+      toast.error('No records available to export');
+      return;
+    }
+    const ws = XLSX.utils.json_to_sheet(records);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, job.entityType);
+    XLSX.writeFile(wb, `gym_archive_${job.entityType}_${job.cutoffDate}.xlsx`);
+    toast.success(`Exported ${records.length} records to Excel (.xlsx)`);
+  };
+
+  // Export to CSV
+  const handleExportCSV = (job: ArchiveJob, records: Array<Record<string, any>>) => {
+    if (!records || records.length === 0) {
+      toast.error('No records available to export');
+      return;
+    }
+    const ws = XLSX.utils.json_to_sheet(records);
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `gym_archive_${job.entityType}_${job.cutoffDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Exported ${records.length} records to CSV (.csv)`);
+  };
+
+  // Copy MinIO Path
+  const handleCopyPath = (path: string, id: string) => {
+    navigator.clipboard.writeText(path);
+    setCopiedId(id);
+    toast.success('MinIO S3 storage URI copied to clipboard');
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
   // Parse CSV / Excel File
   const handleProcessFile = (file: File) => {
     setCsvError(null);
@@ -123,7 +195,6 @@ export const DataLifecycleManager: React.FC = () => {
           const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
           if (lines.length > 0) {
-            // Check if header exists
             const header = lines[0].toLowerCase();
             const startIndex = header.includes('roll') || header.includes('student') || header.includes('email') || header.includes('id') ? 1 : 0;
 
@@ -165,36 +236,31 @@ export const DataLifecycleManager: React.FC = () => {
           }
         }
 
-        // Deduplicate
-        const uniqueIds = Array.from(new Set(identifiers.filter(Boolean)));
-        if (uniqueIds.length === 0) {
-          setCsvError('No valid student roll numbers or IDs found in the file.');
-          setParsedStudentIds([]);
+        const unique = Array.from(new Set(identifiers));
+        if (unique.length === 0) {
+          setCsvError('No student identifiers or roll numbers found in the uploaded file.');
         } else {
-          setParsedStudentIds(uniqueIds);
-          toast.info(`Parsed ${uniqueIds.length} student record(s) from ${file.name}`);
+          setParsedStudentIds(unique);
         }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setCsvError(`Failed to parse file: ${msg}`);
-        setParsedStudentIds([]);
+      } catch (err) {
+        setCsvError('Failed to parse file. Please ensure it is a valid CSV or Excel file.');
       }
     };
 
-    if (file.name.endsWith('.csv') || file.name.endsWith('.txt')) {
-      reader.readAsText(file);
-    } else {
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
       reader.readAsBinaryString(file);
+    } else {
+      reader.readAsText(file);
     }
   };
 
   const handleDownloadSampleCsv = () => {
-    const csvContent = 'roll_number,reason\n202101001,Graduation Batch 2026\n202101002,Graduation Batch 2026\n202101003,Graduation Batch 2026\n';
+    const csvContent = 'roll_number,name,department\n202101001,John Doe,CSE\n202101002,Jane Smith,ECE\n202101003,Alex Brown,MECH';
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'student_departure_sample.csv');
+    link.href = url;
+    link.setAttribute('download', 'sample_student_departure_template.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -202,147 +268,140 @@ export const DataLifecycleManager: React.FC = () => {
 
   const handleProcessDeparture = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
 
-    let studentIds: string[] = [];
+    let idsToProcess: string[] = [];
     if (departureMode === 'csv') {
-      studentIds = parsedStudentIds;
-      if (studentIds.length === 0) {
-        toast.error('Please upload a CSV file with student roll numbers or IDs.');
-        return;
-      }
+      idsToProcess = parsedStudentIds;
     } else {
-      // Manual input: split by comma, newline, or whitespace
-      studentIds = departureManualInput
-        .split(/[\n,]+/)
+      idsToProcess = departureManualInput
+        .split(/[\n,]/)
         .map((s) => s.trim())
         .filter(Boolean);
-
-      if (studentIds.length === 0) {
-        toast.error('Please enter at least one Student Roll Number, Email, or UUID.');
-        return;
-      }
     }
 
-    setSubmitting(true);
+    if (idsToProcess.length === 0) {
+      toast.error('No student IDs or roll numbers provided');
+      setSubmitting(false);
+      return;
+    }
+
     try {
-      const data = await api.post<{ message?: string; processedCount?: number }>('/api/v1/archive/departure', {
-        studentIds,
-        reason: departureReason.trim(),
+      const res = await api.post<{ processedCount: number; message: string }>('/api/v1/archive/departure', {
+        studentIds: idsToProcess,
+        reason: departureReason,
       });
 
-      const msg = data.message || `Processed departure for ${studentIds.length} student(s).`;
+      const msg = res.message || `${res.processedCount} students marked departed and credentials purged.`;
       setNotification(msg);
       toast.success(msg);
       setShowDepartureModal(false);
-      setDepartureManualInput('');
-      setParsedStudentIds([]);
       setCsvFile(null);
+      setParsedStudentIds([]);
+      setDepartureManualInput('');
       fetchSummary();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'Departure Processing Failed');
+      toast.error(msg, 'Departure Process Failed');
     } finally {
       setSubmitting(false);
     }
   };
 
+  // Filter records in inspector modal
+  const filteredRecords = jobRecords.filter((rec) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return Object.values(rec).some((val) => String(val).toLowerCase().includes(q));
+  });
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <Card className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Archive className="w-5 h-5 text-primary" />
-              <h3 className="font-bold text-base sm:text-lg text-text">
-                Data Lifecycle, Retention & Cold Storage Archive
-              </h3>
-            </div>
-            <p className="text-xs text-secondary mt-0.5">
-              Parquet/Zstandard Cold Storage • 7-Year Anonymization • Student Departure & Purge
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => {
-                setShowDepartureModal(true);
-                setCsvFile(null);
-                setParsedStudentIds([]);
-                setCsvError(null);
-              }}
-            >
-              <GraduationCap className="w-3.5 h-3.5" />
-              <span>Process Student Departure</span>
-            </Button>
-
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setShowArchiveModal(true)}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Create Archive Job</span>
-            </Button>
-
-            <IconButton
-              label="Refresh lifecycle"
-              size="sm"
-              onClick={fetchSummary}
-              disabled={loading}
-            >
-              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-            </IconButton>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-text">Data Retention & Cold Storage Archive</h2>
+          <p className="text-xs text-secondary mt-0.5">
+            Immutable Parquet Cold Storage • 7-Year Retention & PII Anonymization • Student Departure & Purge
+          </p>
         </div>
 
-        {notification && (
-          <Alert tone="success" onDismiss={() => setNotification(null)}>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-              <span>{notification}</span>
-            </div>
-          </Alert>
-        )}
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <Stat
-            label="Archived Parquet Jobs"
-            value={summary?.totalArchiveJobs || 0}
-            hint="Cold storage files"
-            icon={<Archive className="w-4 h-4 text-primary" />}
-          />
-          <Stat
-            label="Cold Storage Records"
-            value={summary?.coldStorageRecordsCount || 0}
-            hint="Compressed row records"
-            icon={<Database className="w-4 h-4 text-accent" />}
-          />
-          <Stat
-            label="Departed Students Purged"
-            value={summary?.departedStudentsCount || 0}
-            hint="Biometric credentials purged"
-            icon={<GraduationCap className="w-4 h-4 text-danger" />}
-          />
-          <Stat
-            label="7-Year Anonymized"
-            value={summary?.anonymizedProfilesCount || 0}
-            hint="GDPR/Retention compliance"
-            icon={<Database className="w-4 h-4 text-success" />}
-          />
-        </div>
-      </Card>
-
-      {/* Archive Jobs List */}
-      <Card className="space-y-4">
         <div className="flex items-center gap-2">
-          <Database className="w-5 h-5 text-primary" />
-          <h3 className="font-bold text-base text-text">
-            Cold Storage Archival Jobs & Compressed Parquet Bundles
-          </h3>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setShowDepartureModal(true)}
+          >
+            <GraduationCap className="w-4 h-4 mr-1.5" />
+            Process Student Departure
+          </Button>
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setShowArchiveModal(true)}
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            Create Archive Job
+          </Button>
+
+          <IconButton
+            label="Refresh lifecycle"
+            size="sm"
+            onClick={fetchSummary}
+            disabled={loading}
+          >
+            <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+          </IconButton>
+        </div>
+      </div>
+
+      {notification && (
+        <Alert tone="success" onDismiss={() => setNotification(null)}>
+          {notification}
+        </Alert>
+      )}
+
+      {/* Summary KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Stat
+          label="Total Archive Bundles"
+          value={summary?.totalArchiveJobs || 0}
+          icon={<Archive className="w-5 h-5 text-primary" />}
+          hint="S3 Parquet cold archive jobs"
+        />
+        <Stat
+          label="Cold Storage Records"
+          value={summary?.coldStorageRecordsCount || 0}
+          icon={<Database className="w-5 h-5 text-warning" />}
+          hint="Compressed row records"
+        />
+        <Stat
+          label="Departed Students Purged"
+          value={summary?.departedStudentsCount || 0}
+          icon={<GraduationCap className="w-5 h-5 text-danger" />}
+          hint="Biometric credentials purged"
+        />
+        <Stat
+          label="7-Year Anonymized"
+          value={summary?.anonymizedProfilesCount || 0}
+          icon={<Database className="w-5 h-5 text-success" />}
+          hint="GDPR/Retention compliance"
+        />
+      </div>
+
+      {/* Cold Storage Jobs Table */}
+      <Card className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Database className="w-5 h-5 text-primary" />
+            <h3 className="font-bold text-base text-text">
+              Jobs & Compressed Parquet Bundles
+            </h3>
+          </div>
+          <span className="text-xs text-muted">
+            {summary?.jobs.length || 0} Archives stored in MinIO
+          </span>
         </div>
 
         {summary && summary.jobs.length > 0 ? (
@@ -356,6 +415,7 @@ export const DataLifecycleManager: React.FC = () => {
                   <th className="p-3">Storage Location</th>
                   <th className="p-3">Status</th>
                   <th className="p-3">Created At</th>
+                  <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border text-text">
@@ -364,13 +424,41 @@ export const DataLifecycleManager: React.FC = () => {
                     <td className="p-3 font-bold uppercase text-text">{j.entityType}</td>
                     <td className="p-3 font-mono text-secondary">{j.cutoffDate}</td>
                     <td className="p-3 font-mono font-semibold text-success">{j.recordCount} rows</td>
-                    <td className="p-3 font-mono text-muted truncate max-w-xs">{j.storagePath}</td>
+                    <td className="p-3 font-mono text-muted">
+                      <div className="flex items-center gap-1.5 max-w-xs">
+                        <span className="truncate">{j.storagePath}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyPath(j.storagePath, j.id)}
+                          className="text-muted hover:text-primary shrink-0 transition-colors p-1"
+                          title="Copy MinIO S3 path"
+                        >
+                          {copiedId === j.id ? (
+                            <Check className="w-3.5 h-3.5 text-success" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </td>
                     <td className="p-3">
                       <Badge tone={j.status === 'completed' ? 'success' : 'warning'}>
                         {j.status}
                       </Badge>
                     </td>
                     <td className="p-3 font-mono text-muted">{new Date(j.createdAt).toLocaleDateString()}</td>
+                    <td className="p-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          variant="secondary"
+                          size="xs"
+                          onClick={() => handleInspectJob(j)}
+                        >
+                          <Eye className="w-3.5 h-3.5 mr-1 text-primary" />
+                          View Data
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -415,6 +503,7 @@ export const DataLifecycleManager: React.FC = () => {
             <option value="access_logs">Turnstile Access & Entry Logs</option>
             <option value="bookings">Historical Slot Bookings</option>
             <option value="violations">Resolved Disciplinary Violations</option>
+            <option value="payments">Financial Membership Orders</option>
           </Select>
 
           <Input
@@ -424,8 +513,147 @@ export const DataLifecycleManager: React.FC = () => {
             value={cutoffDate}
             onChange={(e) => setCutoffDate(e.target.value)}
           />
+          <p className="text-[11px] text-muted">
+            All records created on or before this cutoff date will be compressed into `.parquet.zst` format in MinIO cold storage.
+          </p>
         </form>
       </Modal>
+
+      {/* Interactive Data Inspector & Exporter Modal */}
+      {selectedJob && (
+        <Modal
+          open={Boolean(selectedJob)}
+          title={`Archive Inspector: ${selectedJob.entityType.toUpperCase()} (Cutoff: ${selectedJob.cutoffDate})`}
+          onClose={() => setSelectedJob(null)}
+          wide
+          footer={
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleExportExcel(selectedJob, jobRecords)}
+                  disabled={jobRecords.length === 0}
+                >
+                  <FileSpreadsheet className="w-4 h-4 mr-1.5 text-success" />
+                  Export to Excel (.xlsx)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleExportCSV(selectedJob, jobRecords)}
+                  disabled={jobRecords.length === 0}
+                >
+                  <Download className="w-4 h-4 mr-1.5 text-primary" />
+                  Export to CSV (.csv)
+                </Button>
+              </div>
+
+              <Button variant="secondary" size="sm" onClick={() => setSelectedJob(null)}>
+                Close
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4 text-xs">
+            {/* Storage Info Banner */}
+            <div className="p-3 rounded-xl bg-surface-elevated border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <span className="text-muted text-[11px]">Storage URI (MinIO Object Store):</span>
+                <p className="font-mono text-text font-semibold break-all text-xs">
+                  {selectedJob.storagePath}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => handleCopyPath(selectedJob.storagePath, 'modal')}
+              >
+                {copiedId === 'modal' ? (
+                  <span className="text-success font-semibold flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Copied
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    <Copy className="w-3.5 h-3.5" /> Copy URI
+                  </span>
+                )}
+              </Button>
+            </div>
+
+            {/* Search & Stats Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search student, roll number, status..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-surface border border-border text-text placeholder:text-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                />
+              </div>
+
+              <span className="text-muted text-xs font-medium">
+                Showing {filteredRecords.length} of {jobRecords.length} records
+              </span>
+            </div>
+
+            {/* Table or Loading / Empty state */}
+            {inspectLoading ? (
+              <div className="py-12 text-center text-muted flex flex-col items-center gap-2">
+                <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                <span>Reading and deserializing cold archive records...</span>
+              </div>
+            ) : filteredRecords.length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-border max-h-96 overflow-y-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-border-subtle/60 text-muted font-semibold sticky top-0 bg-surface-elevated z-10">
+                    <tr>
+                      {Object.keys(filteredRecords[0]).map((key) => (
+                        <th key={key} className="p-2.5 whitespace-nowrap">
+                          {key}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border text-text font-mono">
+                    {filteredRecords.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-border-subtle/30 transition-colors">
+                        {Object.entries(row).map(([k, val], valIdx) => (
+                          <td key={valIdx} className="p-2.5 whitespace-nowrap">
+                            {k.toLowerCase().includes('status') ? (
+                              <Badge
+                                tone={
+                                  String(val) === 'inside' || String(val) === 'booked' || String(val) === 'paid'
+                                    ? 'success'
+                                    : String(val) === 'exited'
+                                    ? 'neutral'
+                                    : 'warning'
+                                }
+                              >
+                                {String(val)}
+                              </Badge>
+                            ) : (
+                              String(val)
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-muted">
+                <FileText className="w-8 h-8 text-muted mx-auto mb-2 opacity-50" />
+                <p className="font-semibold text-text">No records matched your search query</p>
+                <p className="text-[11px] text-muted mt-1">Try clearing your search filter.</p>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {/* Enhanced Departure Wizard Modal with CSV Import */}
       <Modal

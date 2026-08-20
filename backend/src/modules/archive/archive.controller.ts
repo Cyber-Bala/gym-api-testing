@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { archiveService } from './archive.service.js';
 import {
   archiveJobSchema,
@@ -122,3 +122,22 @@ export const triggerAnonymizationCheck = async (
     next(err);
   }
 };
+
+export const getArchiveJobRecords = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const jobId = req.params.id;
+    const result = await archiveService.getJobRecords(jobId);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
