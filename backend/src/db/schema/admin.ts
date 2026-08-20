@@ -1,4 +1,4 @@
-import { pgSchema, uuid, varchar, text, timestamp, date, jsonb } from 'drizzle-orm/pg-core';
+import { pgSchema, uuid, varchar, text, timestamp, date, jsonb, numeric } from 'drizzle-orm/pg-core';
 import { accounts } from './identity.js';
 
 export const adminSchema = pgSchema('admin');
@@ -38,6 +38,17 @@ export const slotConfigs = adminSchema.table('slot_configs', {
   operatingWindows: jsonb('operating_windows').notNull().default([
     { startTime: '06:00', endTime: '10:00', label: 'Morning Session' },
     { startTime: '15:00', endTime: '21:00', label: 'Evening Session' },
+  ]),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const stipendConfigs = adminSchema.table('stipend_configs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  defaultHourlyRate: numeric('default_hourly_rate', { precision: 10, scale: 2 }).notNull().default('200.00'),
+  minShiftMinutes: numeric('min_shift_minutes', { precision: 10, scale: 2 }).notNull().default('30.00'),
+  timeWindows: jsonb('time_windows').notNull().default([
+    { id: 'morning', label: 'Morning Floor Shift', startTime: '06:00', endTime: '10:00', ratePerHour: 250 },
+    { id: 'evening', label: 'Evening Peak Shift', startTime: '15:00', endTime: '21:00', ratePerHour: 250 },
   ]),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

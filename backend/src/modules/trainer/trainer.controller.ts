@@ -1,6 +1,6 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { trainerService } from './trainer.service.js';
-import { updateRateSchema } from './trainer.types.js';
+import { updateRateSchema, updateStipendConfigSchema } from './trainer.types.js';
 import { ValidationError, UnauthorizedError } from '../../shared/errors/index.js';
 
 export const getMyTrainerProfile = async (
@@ -101,6 +101,46 @@ export const updateHourlyRate = async (
 
     res.status(200).json({
       success: true,
+      data: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getStipendConfig = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const config = await trainerService.getStipendConfig();
+    res.status(200).json({
+      success: true,
+      data: config,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateStipendConfig = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const parseResult = updateStipendConfigSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      throw new ValidationError('Invalid stipend configuration payload', parseResult.error.format());
+    }
+
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    const updated = await trainerService.updateStipendConfig(parseResult.data, adminEmail);
+
+    res.status(200).json({
+      success: true,
+      message: 'Trainer stipend configuration updated successfully',
       data: updated,
     });
   } catch (err) {

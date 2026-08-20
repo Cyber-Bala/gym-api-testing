@@ -135,6 +135,14 @@ export const runMigrations = async (): Promise<void> => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS admin.stipend_configs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      default_hourly_rate NUMERIC(10, 2) NOT NULL DEFAULT 200.00,
+      min_shift_minutes NUMERIC(10, 2) NOT NULL DEFAULT 30.00,
+      time_windows JSONB NOT NULL DEFAULT '[{"id":"morning","label":"Morning Floor Shift","startTime":"06:00","endTime":"10:00","ratePerHour":250},{"id":"evening","label":"Evening Peak Shift","startTime":"15:00","endTime":"21:00","ratePerHour":250}]'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     -- 5. Membership Domain
     CREATE TABLE IF NOT EXISTS membership.membership_plans (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
