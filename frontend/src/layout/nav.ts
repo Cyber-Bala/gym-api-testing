@@ -183,8 +183,8 @@ export function visibleNav(user?: SessionUser | null): NavItem[] {
     if (item.id === 'book') {
       return {
         ...item,
-        label: isStudent ? 'Book a slot' : 'Slot Bookings',
-        shortLabel: isStudent ? 'Book' : 'Bookings',
+        label: isStudent ? 'Book a slot' : 'Gym Schedule',
+        shortLabel: isStudent ? 'Book' : 'Schedule',
       };
     }
     return item;

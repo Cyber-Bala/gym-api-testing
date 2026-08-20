@@ -17,6 +17,8 @@ import {
   Trash2,
   Sparkles,
   ShieldAlert,
+  Award,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Card, Badge, ProgressBar, Modal, Alert } from '../ui/primitives';
@@ -134,6 +136,8 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
   const [loadingClosures, setLoadingClosures] = useState<boolean>(false);
 
   const isAdmin = user && ['admin', 'super_admin'].includes(user.role);
+  const isTrainer = user && (user.role === 'trainer' || user.personType === 'trainer');
+  const isStaff = user && (user.role === 'staff' || user.personType === 'staff');
   const isStudent = user && (user.personType === 'student' || user.role === 'student');
 
   const fetchSlots = useCallback(async () => {
@@ -198,32 +202,28 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
     try {
       await api.post('/api/v1/booking/reserve', { slotId });
 
-      const successText = 'Gym slot reserved successfully! Your face turnstile scan is ready.';
-      setBookingSuccessMsg(successText);
-      toast.success(successText, 'Slot Booked');
+      setBookingSuccessMsg('Gym slot booked successfully! See you on the gym floor.');
+      if (onBookingSuccess) {
+        onBookingSuccess();
+      }
       fetchSlots();
-      if (onBookingSuccess) onBookingSuccess();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
-      toast.error(msg, 'Reservation Error');
     } finally {
       setReservingSlotId(null);
     }
   };
 
-  const handleAdminUpdateCapacity = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAdminUpdateCapacity = async () => {
     if (!editSlot) return;
-
     setSavingEdit(true);
     try {
-      await api.patch(`/api/v1/booking/slots/${editSlot.id}/capacity`, {
+      await api.patch(`/api/v1/admin/slots/${editSlot.id}/capacity`, {
         capacity: editCapacity,
-        reason: editReason,
+        reason: editReason.trim() || 'Admin capacity adjustment',
       });
-
-      toast.success('Slot capacity updated successfully.');
+      toast.success(`Slot capacity updated to ${editCapacity}`);
       setEditSlot(null);
       fetchSlots();
     } catch (err: unknown) {
@@ -235,23 +235,17 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
   };
 
   const handleAdminToggleStatus = async (slot: SlotItem) => {
-    const reason = prompt(
-      `Enter reason to ${slot.isActive ? 'close/cancel' : 'reopen'} this slot:`,
-      'Schedule adjustment'
-    );
-    if (!reason) return;
-
     try {
-      await api.patch(`/api/v1/booking/slots/${slot.id}/status`, {
-        isActive: !slot.isActive,
-        reason,
+      const newStatus = !slot.isActive;
+      await api.patch(`/api/v1/admin/slots/${slot.id}/status`, {
+        isActive: newStatus,
+        reason: newStatus ? 'Reopened by admin' : 'Slot closed by admin',
       });
-
-      toast.success(`Slot status updated (${slot.isActive ? 'closed' : 'reopened'}).`);
+      toast.success(`Slot ${newStatus ? 'reopened' : 'closed'} successfully`);
       fetchSlots();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'Status Toggle Failed');
+      toast.error(msg, 'Status Update Failed');
     }
   };
 
@@ -259,7 +253,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
     e.preventDefault();
     setSavingConfig(true);
     try {
-      await api.put('/api/v1/admin/slot-config', {
+      await api.put('/api/v1/booking/config', {
         windowMode: cfgWindowMode,
         windowDays: cfgWindowDays,
         defaultCapacity: cfgDefaultCapacity,
@@ -268,12 +262,12 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         operatingWindows: cfgOperatingWindows,
       });
 
-      toast.success('Slot schedule configured and slots regenerated!');
+      toast.success('Gym schedule configuration updated and regenerated successfully');
       setConfigModalOpen(false);
       fetchSlots();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'Configuration Save Failed');
+      toast.error(msg, 'Save Configuration Failed');
     } finally {
       setSavingConfig(false);
     }
@@ -281,19 +275,14 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
 
   const handleLockDate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!lockDateVal || !lockReasonVal.trim()) {
-      toast.error('Date and reason are required to lock a date.');
-      return;
-    }
-
+    if (!lockDateVal) return;
     setLockingDate(true);
     try {
-      const res = await api.post<{ message: string }>('/api/v1/admin/calendar/closure', {
+      await api.post('/api/v1/admin/calendar/closure', {
         closureDate: lockDateVal,
-        reason: lockReasonVal.trim(),
+        reason: lockReasonVal.trim() || 'Scheduled maintenance / facility closure',
       });
-
-      toast.success(res.message || `Date ${lockDateVal} locked successfully.`);
+      toast.success(`Gym closed on ${lockDateVal}. Existing bookings cancelled and refunded.`);
       setLockDateVal('');
       setLockReasonVal('');
       fetchClosures();
@@ -306,15 +295,10 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
     }
   };
 
-  const handleUnlockDate = async (closureDate: string) => {
-    if (!window.confirm(`Unlock date ${closureDate} and re-open gym slots?`)) return;
-
+  const handleUnlockDate = async (closureId: string) => {
     try {
-      await api.post('/api/v1/admin/calendar/unlock', {
-        date: typeof closureDate === 'string' ? closureDate.slice(0, 10) : closureDate,
-      });
-
-      toast.success(`Date ${closureDate} unlocked and slots reopened.`);
+      await api.delete(`/api/v1/admin/calendar/closure/${closureId}`);
+      toast.success('Facility closure removed and date reopened');
       fetchClosures();
       fetchSlots();
     } catch (err: unknown) {
@@ -352,9 +336,24 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
     <Card className="space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-primary" />
-          <h3 className="font-bold text-base sm:text-lg text-text">Gym Slot Booking</h3>
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-2xl bg-primary/10 text-primary shrink-0">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-base sm:text-lg text-text">
+              {isStudent ? 'Gym Slot Booking' : 'Gym Schedule & Batches'}
+            </h3>
+            <p className="text-xs text-secondary mt-0.5">
+              {isStudent
+                ? 'Reserve your daily workout slots up to 3 days in advance'
+                : isTrainer
+                ? 'Gym batch operational hours, slot capacities, and real-time occupancy'
+                : isStaff
+                ? 'Daily facility operating schedule and student batch capacities'
+                : 'Gym operating schedule and slot capacities'}
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -374,11 +373,37 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
           )}
 
           <Button variant="outline" size="sm" onClick={fetchSlots} disabled={loading}>
-            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            <RefreshCw className={cn('w-3.5 h-3.5 mr-1.5', loading && 'animate-spin')} />
             <span>Refresh</span>
           </Button>
         </div>
       </div>
+
+      {/* Informational Banner for Trainers */}
+      {isTrainer && (
+        <div className="p-4 rounded-2xl bg-accent-muted/25 border border-accent/30 flex items-center gap-3 text-xs">
+          <Award className="w-5 h-5 text-accent shrink-0" />
+          <div>
+            <p className="font-bold text-text">Trainer Floor Supervision Access</p>
+            <p className="text-[11px] text-secondary mt-0.5">
+              Trainers have direct, unrestricted floor supervision access during gym operational shifts. You do not need to book workout slots.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Informational Banner for Staff */}
+      {isStaff && (
+        <div className="p-4 rounded-2xl bg-primary-muted/20 border border-primary/30 flex items-center gap-3 text-xs">
+          <ShieldCheck className="w-5 h-5 text-primary shrink-0" />
+          <div>
+            <p className="font-bold text-text">Staff Inclusive Facility Access</p>
+            <p className="text-[11px] text-secondary mt-0.5">
+              College staff members have direct inclusive access to the gym facility. You do not need to reserve student booking slots.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Success Alert */}
       {bookingSuccessMsg && (
@@ -438,7 +463,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                       <Lock className="w-3 h-3 mr-1" />
                       Locked
                     </Badge>
-                  ) : day.userBookedCountOnDate && day.userBookedCountOnDate > 0 ? (
+                  ) : isStudent && day.userBookedCountOnDate && day.userBookedCountOnDate > 0 ? (
                     <Badge tone={day.userBookedCountOnDate >= 3 ? 'warning' : 'success'}>
                       <CheckCircle2 className="w-3 h-3" /> {day.userBookedCountOnDate}/3 Booked
                     </Badge>
@@ -501,8 +526,8 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </Alert>
       )}
 
-      {/* Quota Indicators and Reminders */}
-      {!currentDay?.isLocked && (data?.totalUserBookingsInWindow || 0) >= 3 ? (
+      {/* Quota Indicators and Reminders (Students Only) */}
+      {isStudent && !currentDay?.isLocked && (data?.totalUserBookingsInWindow || 0) >= 3 ? (
         <Alert tone="warning">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
@@ -514,7 +539,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
             </div>
           </div>
         </Alert>
-      ) : !currentDay?.isLocked && (currentDay?.userBookedCountOnDate || 0) >= 3 ? (
+      ) : isStudent && !currentDay?.isLocked && (currentDay?.userBookedCountOnDate || 0) >= 3 ? (
         <Alert tone="warning">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
@@ -528,8 +553,8 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </Alert>
       ) : null}
 
-      {/* Day Scholar Pass Reminder */}
-      {user?.studentDetails?.residency === 'day_scholar' && (
+      {/* Day Scholar Pass Reminder (Students Only) */}
+      {isStudent && user?.studentDetails?.residency === 'day_scholar' && (
         <Alert tone="info">
           <div className="flex items-center gap-2">
             <CreditCard className="w-4 h-4 text-primary shrink-0" />
@@ -609,7 +634,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                   key={slot.id}
                   className={cn(
                     'p-5 rounded-2xl bg-surface-elevated flex flex-col justify-between space-y-4 shadow-sm transition-all hover:shadow-md',
-                    slot.isBookedByCurrentUser
+                    isStudent && slot.isBookedByCurrentUser
                       ? 'bg-success-muted/25'
                       : !slot.isActive || slot.isPast
                       ? 'opacity-60 bg-surface-elevated/40'
@@ -634,7 +659,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
 
                     <Badge
                       tone={
-                        slot.isBookedByCurrentUser
+                        isStudent && slot.isBookedByCurrentUser
                           ? 'success'
                           : !slot.isActive
                           ? 'neutral'
@@ -647,7 +672,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                           : 'primary'
                       }
                     >
-                      {slot.isBookedByCurrentUser
+                      {isStudent && slot.isBookedByCurrentUser
                         ? 'Your Slot'
                         : !slot.isActive
                         ? 'Closed'
@@ -655,6 +680,8 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                         ? 'Past'
                         : slot.isFull
                         ? 'Full'
+                        : !isStudent
+                        ? `${slot.availableSpots} Spots Open`
                         : 'Available'}
                     </Badge>
                   </div>
@@ -680,7 +707,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                     </span>
 
                     <div className="flex items-center gap-1.5">
-                      {slot.isBookedByCurrentUser ? (
+                      {isStudent && slot.isBookedByCurrentUser ? (
                         <span className="text-xs font-bold text-success flex items-center gap-1">
                           <BookmarkCheck className="w-4 h-4" /> Reserved
                         </span>
@@ -693,6 +720,14 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                         >
                           Book Slot
                         </Button>
+                      ) : isTrainer ? (
+                        <span className="text-[11px] font-medium text-secondary">
+                          Floor Supervision
+                        </span>
+                      ) : isStaff ? (
+                        <span className="text-[11px] font-medium text-secondary">
+                          Direct Access
+                        </span>
                       ) : null}
 
                       {isAdmin && (
