@@ -96,6 +96,8 @@ export class BiometricsService {
       .where(
         or(
           eq(students.id, studentIdentifier),
+          eq(students.personId, studentIdentifier),
+          eq(people.id, studentIdentifier),
           eq(students.rollNumber, studentIdentifier),
           eq(people.email, studentIdentifier)
         )
@@ -106,14 +108,20 @@ export class BiometricsService {
       throw new NotFoundError(`Student '${studentIdentifier}' not found`);
     }
 
-    // Update face enrollment status
+    const faceReferenceId = studentData.student.faceReferenceId || `face_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
+
+    // Update face enrollment status and reference ID
     await db
       .update(students)
       .set({
         faceEnrollmentStatus: 'enrolled',
+        faceReferenceId,
         updatedAt: new Date(),
       })
       .where(eq(students.id, studentData.student.id));
+
+    // Remove existing pending task for this student to avoid duplicate queue entries
+    this.syncQueue = this.syncQueue.filter((s) => s.studentId !== studentData.student.id || s.status !== 'pending');
 
     const syncId = uuidv4();
     const syncRecord: InMemSyncRecord = {
@@ -122,7 +130,7 @@ export class BiometricsService {
       personId: studentData.person.id,
       rollNumber: studentData.student.rollNumber,
       name: studentData.person.name,
-      status: 'pending',
+      status: 'pending', // Correctly queued while turnstile socket/device is offline
       retryCount: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -131,8 +139,8 @@ export class BiometricsService {
     this.syncQueue.unshift(syncRecord);
 
     logger.info(
-      { studentId: studentData.student.id, rollNumber: studentData.student.rollNumber, syncId },
-      'Face biometric enrolled and queued for asynchronous ZKBio sync'
+      { studentId: studentData.student.id, rollNumber: studentData.student.rollNumber, syncId, status: 'pending' },
+      'Face biometric enrolled and queued for asynchronous turnstile sync'
     );
 
     return {

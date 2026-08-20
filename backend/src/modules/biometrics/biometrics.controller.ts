@@ -1,11 +1,12 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { biometricsService } from './biometrics.service.js';
 import {
   deviceHeartbeatSchema,
   enrollFaceSchema,
   retrySyncSchema,
 } from './biometrics.types.js';
-import { ValidationError } from '../../shared/errors/index.js';
+import { ValidationError, UnauthorizedError } from '../../shared/errors/index.js';
+import { authService } from '../auth/auth.service.js';
 
 export const registerHeartbeat = async (
   req: Request,
@@ -58,20 +59,39 @@ export const enrollFace = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) {
+      throw new UnauthorizedError('Authentication required to enroll face biometric');
+    }
+
     const parseResult = enrollFaceSchema.safeParse(req.body);
     if (!parseResult.success) {
       throw new ValidationError('Invalid face enrollment payload', parseResult.error.format());
     }
 
+    const isStaffOrAdmin = ['admin', 'super_admin', 'staff', 'trainer'].includes(req.user.role);
+    const targetStudentId = isStaffOrAdmin && parseResult.data.studentId
+      ? parseResult.data.studentId
+      : req.user.personId;
+
     const task = await biometricsService.enrollStudentFace(
-      parseResult.data.studentId,
+      targetStudentId,
       parseResult.data.faceImageBase64
     );
+
+    // Sync fresh user data to active session in Redis
+    let freshUser = req.user;
+    if (req.sessionId) {
+      freshUser = await authService.findAndSyncProvisionedUser(req.user.email);
+      await authService.updateSessionUser(req.sessionId, freshUser);
+    }
 
     res.status(201).json({
       success: true,
       message: 'Face biometric enrolled and queued for turnstile synchronization',
-      data: task,
+      data: {
+        ...task,
+        user: freshUser,
+      },
     });
   } catch (err) {
     next(err);

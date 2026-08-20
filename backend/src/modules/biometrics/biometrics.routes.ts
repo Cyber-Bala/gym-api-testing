@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import {
   registerHeartbeat,
   listDevices,
@@ -15,8 +15,9 @@ export const biometricsRouter = Router();
 biometricsRouter.post('/device/heartbeat', registerHeartbeat);
 biometricsRouter.get('/devices', requireAuth, requireRole(['admin', 'super_admin']), listDevices);
 
-// Face enrollment & async synchronization
-biometricsRouter.post('/face-enroll', requireAuth, requireRole(['admin', 'super_admin']), enrollFace);
+// Face enrollment & async synchronization (Students can self-enroll; admins can enroll any student)
+biometricsRouter.post('/face-enroll', requireAuth, enrollFace);
+biometricsRouter.post('/face-enroll/me', requireAuth, enrollFace);
 biometricsRouter.get('/sync-queue', requireAuth, requireRole(['admin', 'super_admin']), listSyncQueue);
 biometricsRouter.post('/sync-process', requireAuth, requireRole(['admin', 'super_admin']), processSyncQueue);
 biometricsRouter.post('/sync-retry', requireAuth, requireRole(['admin', 'super_admin']), retrySync);

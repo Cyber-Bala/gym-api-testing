@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 export const deviceHeartbeatSchema = z.object({
   deviceId: z.string().min(1, 'Device ID is required'),
@@ -9,7 +9,7 @@ export const deviceHeartbeatSchema = z.object({
 });
 
 export const enrollFaceSchema = z.object({
-  studentId: z.string().uuid('Valid studentId UUID is required'),
+  studentId: z.string().min(1).optional(),
   faceImageBase64: z.string().min(10, 'Face image data is required'),
 });
 

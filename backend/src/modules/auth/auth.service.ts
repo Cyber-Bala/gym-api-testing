@@ -262,7 +262,7 @@ export class AuthService {
         .from(students)
         .where(eq(students.personId, personRecord.id))
         .limit(1);
-if (studentRec) {
+      if (studentRec) {
         studentDetails = {
           rollNumber: studentRec.rollNumber,
           department: studentRec.department,
@@ -270,6 +270,8 @@ if (studentRec) {
           residency: studentRec.residency,
           isBanned: studentRec.isBanned,
           violationCount: studentRec.violationCount,
+          faceEnrollmentStatus: studentRec.faceEnrollmentStatus || 'not_enrolled',
+          faceReferenceId: studentRec.faceReferenceId || null,
           phone: personRecord.phone || null,
           emergencyContact: studentRec.emergencyContact || null,
           address: studentRec.address || null,

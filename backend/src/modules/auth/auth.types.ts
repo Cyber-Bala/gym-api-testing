@@ -1,4 +1,4 @@
-﻿export type UserRole = 'student' | 'trainer' | 'staff' | 'authorized_person' | 'admin' | 'super_admin';
+export type UserRole = 'student' | 'trainer' | 'staff' | 'authorized_person' | 'admin' | 'super_admin';
 
 export interface SessionUser {
   accountId: string;
@@ -10,13 +10,15 @@ export interface SessionUser {
   status: string;
   permissions: string[];
   isProtectedSuperAdmin?: boolean;
-studentDetails?: {
+  studentDetails?: {
     rollNumber: string;
     department: string;
     joiningYear: number;
     residency: string;
     isBanned: boolean;
     violationCount: number;
+    faceEnrollmentStatus?: string | null;
+    faceReferenceId?: string | null;
     phone?: string | null;
     emergencyContact?: string | null;
     address?: string | null;

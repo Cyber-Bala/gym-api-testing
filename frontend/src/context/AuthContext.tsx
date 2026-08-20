@@ -12,13 +12,15 @@ export interface SessionUser {
   status: string;
   permissions: string[];
   isProtectedSuperAdmin?: boolean;
-studentDetails?: {
+  studentDetails?: {
     rollNumber: string;
     department: string;
     joiningYear: number;
     residency: string;
     isBanned: boolean;
     violationCount: number;
+    faceEnrollmentStatus?: string | null;
+    faceReferenceId?: string | null;
     phone?: string | null;
     emergencyContact?: string | null;
     address?: string | null;
