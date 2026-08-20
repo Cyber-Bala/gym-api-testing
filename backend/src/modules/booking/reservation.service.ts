@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { eq, and, or, desc, sql } from 'drizzle-orm';
+import { eq, and, or, desc, sql, gt } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { redis } from '../../shared/redis/index.js';
 import { logger } from '../../shared/logging/index.js';
@@ -77,24 +77,44 @@ export class ReservationService {
       throw new ForbiddenError('Only registered students can reserve gym workout slots');
     }
 
-    // 1. Pre-validation: Ban check (ADR-010)
-    if (user.studentDetails?.isBanned) {
+    // 1. Resolve student profile from database
+    const [studentRecord] = await db
+      .select({
+        id: students.id,
+        personId: students.personId,
+        residency: students.residency,
+        isBanned: students.isBanned,
+        violationCount: students.violationCount,
+      })
+      .from(students)
+      .where(or(eq(students.personId, user.personId), eq(students.id, user.personId)))
+      .limit(1);
+
+    if (!studentRecord) {
+      throw new NotFoundError('Student profile not found for this user account');
+    }
+
+    const studentTableId = studentRecord.id;
+
+    // 2. Pre-validation: Ban check (ADR-010)
+    if (studentRecord.isBanned || user.studentDetails?.isBanned) {
       throw new ForbiddenError(
-        `Your gym booking privileges are temporarily suspended due to ${user.studentDetails.violationCount} attendance/cancellation violations.`
+        `Your gym booking privileges are temporarily suspended due to ${studentRecord.violationCount || user.studentDetails?.violationCount || 3} attendance/cancellation violations.`
       );
     }
 
-    // 2. Pre-validation: Day Scholar membership check (FR-MEM-001)
-    if (user.studentDetails?.residency === 'day_scholar') {
-      const todayStr = bookingService.formatISTDate();
+    // 3. Pre-validation: Day Scholar membership pass check (FR-MEM-001)
+    const residency = studentRecord.residency || user.studentDetails?.residency;
+    if (residency === 'day_scholar') {
+      const now = new Date();
       const activeMemberships = await db
         .select()
         .from(memberships)
         .where(
           and(
-            eq(memberships.studentId, user.personId),
+            or(eq(memberships.studentId, studentTableId), eq(memberships.studentId, user.personId)),
             eq(memberships.status, 'active'),
-            sql`${memberships.endDate} >= ${todayStr}`
+            gt(memberships.endDate, now)
           )
         )
         .limit(1);
@@ -106,29 +126,14 @@ export class ReservationService {
       }
     }
 
-    // 3. Acquire Tier 1 Redis Lock
+    // 4. Acquire Tier 1 Redis Lock
     const lockValue = await this.acquireSlotLock(slotId, 5000);
 
     try {
-      // 4. Tier 2 PostgreSQL ACID Transaction with row-level lock
+      // 5. Tier 2 PostgreSQL ACID Transaction with row-level lock
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-
-        // Resolve student table primary key
-        const studentRes = await client.query(
-          `SELECT id, residency, is_banned, violation_count 
-           FROM people.students 
-           WHERE person_id = $1`,
-          [user.personId]
-        );
-
-        if (studentRes.rows.length === 0) {
-          throw new NotFoundError('Student profile not found for this user account');
-        }
-
-        const studentRecord = studentRes.rows[0];
-        const studentTableId = studentRecord.id;
 
         // Row lock on slots
         const slotRes = await client.query(
@@ -155,9 +160,10 @@ export class ReservationService {
         }
 
         // Verify rolling window
-        if (!bookingService.isDateInRollingWindow(slotDateStr)) {
+        const isInWindow = await bookingService.isDateInRollingWindow(slotDateStr);
+        if (!isInWindow) {
           throw new ValidationError(
-            `Slot date (${slotDateStr}) is outside the active 3-day booking window`
+            `Slot date (${slotDateStr}) is outside the active booking window`
           );
         }
 
@@ -186,7 +192,7 @@ export class ReservationService {
            FROM booking.bookings b
            JOIN booking.slots s ON b.slot_id = s.id
            WHERE b.student_id = $1 
-             AND s.slot_date = $2 
+             AND s.slot_date::text = $2 
              AND b.booking_status = 'booked'`,
           [studentTableId, slotDateStr]
         );
@@ -198,14 +204,14 @@ export class ReservationService {
           );
         }
 
-        // 3. Check total window quota: max 3 slots total across the 3-day rolling window
-        const windowDates = bookingService.getRollingWindowDates();
+        // 3. Check total window quota: max 3 slots total across the active rolling window
+        const { dates: windowDates } = await bookingService.getRollingWindowDates();
         const windowCountRes = await client.query(
           `SELECT COUNT(*)::int AS count 
            FROM booking.bookings b
            JOIN booking.slots s ON b.slot_id = s.id
            WHERE b.student_id = $1 
-             AND s.slot_date = ANY($2) 
+             AND s.slot_date::text = ANY($2::text[]) 
              AND b.booking_status = 'booked'`,
           [studentTableId, windowDates]
         );
@@ -213,7 +219,7 @@ export class ReservationService {
         const windowCount = Number(windowCountRes.rows[0]?.count || 0);
         if (windowCount >= 3) {
           throw new ConflictError(
-            `You have reached the maximum allowed limit of 3 active bookings across the 3-day window (3/3 slots booked).`
+            `You have reached the maximum allowed limit of 3 active bookings across the window (3/3 slots booked).`
           );
         }
 
@@ -285,7 +291,7 @@ export class ReservationService {
     }
 
     try {
-      // 2. Query booking with slot details
+      // Query booking with slot details
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -306,7 +312,7 @@ export class ReservationService {
         const booking = bookingRes.rows[0];
 
         // Ensure user owns booking (or is admin)
-        if (booking.person_id !== user.personId && !['admin', 'super_admin'].includes(user.role)) {
+        if (booking.person_id !== user.personId && booking.student_id !== user.personId && !['admin', 'super_admin'].includes(user.role)) {
           throw new ForbiddenError('You can only cancel your own gym bookings');
         }
 
@@ -368,7 +374,7 @@ export class ReservationService {
               `UPDATE people.students 
                SET is_banned = true,
                    ban_expires_at = NOW() + INTERVAL '3 days',
-                   updated_at = NOW()
+               updated_at = NOW()
                WHERE id = $1`,
               [booking.student_id]
             );
