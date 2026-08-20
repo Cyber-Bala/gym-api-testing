@@ -44,7 +44,7 @@ export const AuthorizedPersonsManager: React.FC = () => {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
-      toast.error(msg, 'Failed to Load VIP Directory');
+      toast.error(msg, 'Failed to Load Guest Directory');
     } finally {
       setLoading(false);
     }

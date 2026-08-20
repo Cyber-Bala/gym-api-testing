@@ -1,4 +1,4 @@
-﻿import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx';
 import { v4 as uuidv4 } from 'uuid';
 import { eq, ilike, or, and, not, sql, desc, count } from 'drizzle-orm';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
@@ -868,6 +868,96 @@ const items = await db
       removed,
       notFound,
       failed,
+    };
+  }
+
+  /**
+   * Admin: Add a single student manually
+   */
+  public async createSingleStudent(data: StudentRowInput, adminEmail: string) {
+    // Check if roll number already exists
+    const [existingStudent] = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(eq(students.rollNumber, data.rollNumber))
+      .limit(1);
+
+    if (existingStudent) {
+      throw new ConflictError(`A student with roll number '${data.rollNumber}' already exists.`);
+    }
+
+    // Check if email already exists
+    const [existingPerson] = await db
+      .select({ id: people.id })
+      .from(people)
+      .where(eq(people.email, data.email))
+      .limit(1);
+
+    if (existingPerson) {
+      throw new ConflictError(`Email '${data.email}' is already registered with another user.`);
+    }
+
+    // Provision Account, Person, and Student records
+    const [newAccount] = await db
+      .insert(accounts)
+      .values({
+        email: data.email,
+        role: 'student',
+        isActive: true,
+      })
+      .returning();
+
+    const [newPerson] = await db
+      .insert(people)
+      .values({
+        accountId: newAccount.id,
+        name: data.name,
+        email: data.email,
+        personType: 'student',
+        status: 'active',
+      })
+      .returning();
+
+    const [newStudent] = await db
+      .insert(students)
+      .values({
+        personId: newPerson.id,
+        rollNumber: data.rollNumber,
+        department: data.department,
+        joiningYear: data.joiningYear,
+        residency: data.residency,
+        faceEnrollmentStatus: 'not_enrolled',
+      })
+      .returning();
+
+    await db.insert(auditLogs).values({
+      actorEmail: adminEmail,
+      action: 'create_single_student',
+      entity: 'student',
+      entityId: newStudent.id,
+      newValue: {
+        rollNumber: newStudent.rollNumber,
+        name: newPerson.name,
+        email: newPerson.email,
+        department: newStudent.department,
+        joiningYear: newStudent.joiningYear,
+        residency: newStudent.residency,
+      },
+      reason: `Admin created student '${newStudent.rollNumber}'`,
+    });
+
+    return {
+      id: newStudent.id,
+      personId: newPerson.id,
+      rollNumber: newStudent.rollNumber,
+      name: newPerson.name,
+      email: newPerson.email,
+      department: newStudent.department,
+      joiningYear: newStudent.joiningYear,
+      residency: newStudent.residency,
+      faceEnrollmentStatus: newStudent.faceEnrollmentStatus,
+      status: newPerson.status,
+      createdAt: newStudent.createdAt.toISOString(),
     };
   }
 }

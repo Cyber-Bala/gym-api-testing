@@ -1,8 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, UserCheck, ShieldAlert, GraduationCap, CheckCircle2, AlertCircle, FileSpreadsheet, Award, Camera } from 'lucide-react';
-import { Card, Badge, Alert } from '../ui/primitives';
+import {
+  RefreshCw,
+  UserCheck,
+  ShieldAlert,
+  GraduationCap,
+  AlertCircle,
+  FileSpreadsheet,
+  Award,
+  Camera,
+  UserPlus,
+} from 'lucide-react';
+import { Card, Badge, Alert, Modal } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
-import { SearchInput, Select } from '../ui/Input';
+import { SearchInput, Select, Input } from '../ui/Input';
 import { ExcelImportModal } from './ExcelImportModal';
 import { FaceEnrollmentModal } from './FaceEnrollmentModal';
 import { api } from '../lib/api';
@@ -31,6 +41,20 @@ interface StudentDirectoryProps {
   onOpenImport?: () => void;
 }
 
+const DEPARTMENTS = [
+  'Computer Science and Engineering',
+  'Information Technology',
+  'Artificial Intelligence & Machine Learning',
+  'Electronics and Communication Engineering',
+  'Electrical and Electronics Engineering',
+  'Mechanical Engineering',
+  'Civil Engineering',
+  'Biotechnology',
+  'Biomedical Engineering',
+  'Chemical Engineering',
+  'Aeronautical Engineering',
+  'Management Studies (MBA)',
+];
 
 export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport }) => {
   const toast = useToast();
@@ -45,6 +69,19 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   const [importOpen, setImportOpen] = useState<boolean>(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [enrollStudent, setEnrollStudent] = useState<StudentItem | null>(null);
+
+  // Add Single Student Modal State
+  const [addModalOpen, setAddModalOpen] = useState<boolean>(false);
+  const [addingStudent, setAddingStudent] = useState<boolean>(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    rollNumber: '',
+    email: '',
+    department: 'Computer Science and Engineering',
+    customDepartment: '',
+    joiningYear: new Date().getFullYear(),
+    residency: 'day_scholar' as 'day_scholar' | 'hosteller',
+  });
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -100,6 +137,46 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
     }
   };
 
+  const handleCreateStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalDepartment = formData.department === 'Other' ? formData.customDepartment.trim() : formData.department;
+
+    if (!formData.name.trim() || !formData.rollNumber.trim() || !formData.email.trim() || !finalDepartment) {
+      toast.error('Please fill in all required fields.');
+      return;
+    }
+
+    setAddingStudent(true);
+    try {
+      await api.post('/api/v1/people/students', {
+        name: formData.name.trim(),
+        rollNumber: formData.rollNumber.trim().toUpperCase(),
+        email: formData.email.trim().toLowerCase(),
+        department: finalDepartment,
+        joiningYear: Number(formData.joiningYear),
+        residency: formData.residency,
+      });
+
+      toast.success(`Student '${formData.rollNumber.toUpperCase()}' registered successfully!`);
+      setAddModalOpen(false);
+      setFormData({
+        name: '',
+        rollNumber: '',
+        email: '',
+        department: 'Computer Science and Engineering',
+        customDepartment: '',
+        joiningYear: new Date().getFullYear(),
+        residency: 'day_scholar',
+      });
+      fetchStudents();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Failed to Add Student');
+    } finally {
+      setAddingStudent(false);
+    }
+  };
+
   return (
     <Card className="space-y-6">
       {/* Header & Controls */}
@@ -115,6 +192,24 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setAddModalOpen(true)}
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Add Student</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => (onOpenImport ? onOpenImport() : setImportOpen(true))}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-accent" />
+            <span>Bulk Import Excel</span>
+          </Button>
+
           <IconButton
             label="Refresh list"
             size="sm"
@@ -123,15 +218,6 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
           >
             <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
           </IconButton>
-
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => (onOpenImport ? onOpenImport() : setImportOpen(true))}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-accent" />
-            <span>Bulk Import Excel</span>
-          </Button>
         </div>
       </div>
 
@@ -160,9 +246,8 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
         </div>
       </div>
 
-      {/* Error Alert */}
       {error && (
-        <Alert tone="danger" onDismiss={() => setError(null)}>
+        <Alert tone="danger">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-danger shrink-0" />
             <span>{error}</span>
@@ -172,78 +257,81 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
 
       {/* Directory Table */}
       <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-border-subtle/50 text-muted font-semibold border-b border-border">
+        <table className="w-full text-xs text-left">
+          <thead className="bg-border-subtle/60 text-muted font-semibold">
             <tr>
-              <th className="py-3 px-4">Roll Number</th>
-              <th className="py-3 px-4">Student Name</th>
-              <th className="py-3 px-4">Department</th>
+              <th className="py-3 px-4">Student</th>
+              <th className="py-3 px-4">Department & Year</th>
               <th className="py-3 px-4">Residency</th>
-              <th className="py-3 px-4">Trainer</th>
+              <th className="py-3 px-4">Role</th>
               <th className="py-3 px-4">Face Scan</th>
-              <th className="py-3 px-4">Violations</th>
+              <th className="py-3 px-4">Discipline</th>
               <th className="py-3 px-4">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border text-text">
-            {students.length === 0 ? (
+            {loading && students.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-8 text-center text-muted">
-                  {loading ? 'Loading students...' : 'No student records found matching filters'}
+                <td colSpan={7} className="py-8 text-center text-muted">
+                  Loading directory records...
+                </td>
+              </tr>
+            ) : students.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="py-8 text-center text-muted">
+                  No students found matching current filters.
                 </td>
               </tr>
             ) : (
               students.map((stu) => (
                 <tr key={stu.id} className="hover:bg-border-subtle/30 transition-colors">
-                  <td className="py-3 px-4 font-mono font-bold text-text">
-                    {stu.rollNumber}
+                  <td className="py-3 px-4">
+                    <div className="font-semibold text-text">{stu.name}</div>
+                    <div className="text-[11px] font-mono text-muted">{stu.rollNumber} • {stu.email}</div>
                   </td>
                   <td className="py-3 px-4">
-                    <p className="font-semibold text-text">{stu.name}</p>
-                    <p className="text-[11px] text-muted font-mono">{stu.email}</p>
+                    <div className="text-secondary">{stu.department}</div>
+                    <div className="text-[11px] text-muted">Batch of {stu.joiningYear}</div>
                   </td>
-                  <td className="py-3 px-4 text-secondary">{stu.department}</td>
                   <td className="py-3 px-4">
-                    <Badge tone={stu.residency === 'hosteller' ? 'success' : 'neutral'}>
-                      {stu.residency.replace('_', ' ')}
+                    <Badge tone={stu.residency === 'hosteller' ? 'accent' : 'neutral'}>
+                      {stu.residency === 'hosteller' ? 'Hosteller' : 'Day Scholar'}
                     </Badge>
                   </td>
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      {stu.isTrainer ? (
-                        <Badge tone="accent">
-                          <Award className="w-3 h-3 mr-0.5 inline" /> Trainer
-                        </Badge>
-                      ) : (
-                        <span className="text-muted text-[11px]">Student</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleTrainer(stu)}
+                      disabled={togglingId === stu.id}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-medium text-[11px] transition-all',
+                        stu.isTrainer
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-sm'
+                          : 'bg-surface-elevated text-muted hover:text-text border border-border',
+                        togglingId === stu.id && 'opacity-60 cursor-wait'
                       )}
-                      <Button
-                        variant="outline"
-                        size="xs"
-                        loading={togglingId === stu.id}
-                        onClick={() => handleToggleTrainer(stu)}
-                      >
-                        {stu.isTrainer ? 'Remove' : 'Make Trainer'}
-                      </Button>
-                    </div>
+                      title={stu.isTrainer ? 'Click to remove Trainer role' : 'Click to assign Trainer role'}
+                    >
+                      <Award className={cn('w-3.5 h-3.5', stu.isTrainer ? 'text-amber-400' : 'text-muted')} />
+                      <span>{stu.isTrainer ? 'Trainer' : 'Student'}</span>
+                    </button>
                   </td>
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <Badge tone={stu.faceEnrollmentStatus === 'enrolled' ? 'success' : 'warning'}>
+                        {stu.faceEnrollmentStatus === 'enrolled' ? 'Enrolled' : 'Pending'}
+                      </Badge>
                       {stu.faceEnrollmentStatus === 'enrolled' ? (
-                        <>
-                          <span className="flex items-center gap-1 text-[11px] text-success font-medium">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Enrolled
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            onClick={() => setEnrollStudent(stu)}
-                            title="Re-enroll Face Biometric"
-                          >
-                            <Camera className="w-3 h-3 text-muted hover:text-primary" />
-                            <span className="text-[10px]">Re-enroll</span>
-                          </Button>
-                        </>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => setEnrollStudent(stu)}
+                          className="text-[10px] py-0.5 px-2 text-secondary hover:text-text"
+                          title="Re-enroll facial biometric scan"
+                        >
+                          <Camera className="w-3 h-3 text-muted" />
+                          <span>Re-enroll</span>
+                        </Button>
                       ) : (
                         <Button
                           variant="secondary"
@@ -303,6 +391,116 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
         </div>
       )}
 
+      {/* Add Single Student Modal */}
+      <Modal
+        open={addModalOpen}
+        title="Add Single Student"
+        onClose={() => setAddModalOpen(false)}
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setAddModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={addingStudent}
+              onClick={handleCreateStudent}
+            >
+              Register Student
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleCreateStudent} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Full Name"
+              type="text"
+              required
+              placeholder="e.g. Karthik Raja"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+
+            <Input
+              label="Roll Number"
+              type="text"
+              required
+              placeholder="e.g. 2024CS001"
+              value={formData.rollNumber}
+              onChange={(e) => setFormData({ ...formData, rollNumber: e.target.value })}
+            />
+          </div>
+
+          <Input
+            label="College Email"
+            type="email"
+            required
+            placeholder="e.g. karthik.24cs@rajalakshmi.edu.in"
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Select
+              label="Department"
+              value={formData.department}
+              onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+            >
+              {DEPARTMENTS.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
+              <option value="Other">Other / Custom Department</option>
+            </Select>
+
+            {formData.department === 'Other' ? (
+              <Input
+                label="Custom Department Name"
+                type="text"
+                required
+                placeholder="Enter department name"
+                value={formData.customDepartment}
+                onChange={(e) => setFormData({ ...formData, customDepartment: e.target.value })}
+              />
+            ) : (
+              <Input
+                label="Joining Year"
+                type="number"
+                required
+                min={2000}
+                max={2050}
+                value={formData.joiningYear}
+                onChange={(e) => setFormData({ ...formData, joiningYear: Number(e.target.value) })}
+              />
+            )}
+          </div>
+
+          {formData.department === 'Other' && (
+            <Input
+              label="Joining Year"
+              type="number"
+              required
+              min={2000}
+              max={2050}
+              value={formData.joiningYear}
+              onChange={(e) => setFormData({ ...formData, joiningYear: Number(e.target.value) })}
+            />
+          )}
+
+          <Select
+            label="Residency Type"
+            value={formData.residency}
+            onChange={(e) => setFormData({ ...formData, residency: e.target.value as 'day_scholar' | 'hosteller' })}
+          >
+            <option value="day_scholar">Day Scholar (Gym Membership Pass Required)</option>
+            <option value="hosteller">Hosteller (Free Inclusive Access)</option>
+          </Select>
+        </form>
+      </Modal>
+
       <ExcelImportModal
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}
@@ -324,4 +522,3 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
     </Card>
   );
 };
-

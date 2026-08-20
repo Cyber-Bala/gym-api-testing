@@ -1,8 +1,9 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import {
   downloadTemplate,
   getUploadUrl,
   importStudents,
+  createStudent,
   importStaff,
   listStudents,
   listAuthorizedPersons,
@@ -25,8 +26,9 @@ peopleRouter.use(requireAuth);
 // Student self-onboarding profile update
 peopleRouter.patch('/students/me', updateMyStudentProfile);
 
-// Student queries
+// Student queries & single creation
 peopleRouter.get('/students', requireRole(['admin', 'super_admin', 'trainer']), listStudents);
+peopleRouter.post('/students', requireRole(['admin', 'super_admin']), createStudent);
 
 // Trainer role management (students who are trainers)
 peopleRouter.patch('/students/:id/trainer-role', requireRole(['admin', 'super_admin']), setStudentTrainerRole);

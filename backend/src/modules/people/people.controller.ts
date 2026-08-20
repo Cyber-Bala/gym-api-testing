@@ -1,8 +1,8 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { peopleService } from './people.service.js';
 import { ValidationError, NotFoundError, UnauthorizedError } from '../../shared/errors/index.js';
-import { studentSelfUpdateSchema, trainerBulkSchema } from './people.types.js';
+import { studentSelfUpdateSchema, trainerBulkSchema, studentRowSchema } from './people.types.js';
 
 const uploadUrlSchema = z.object({
   fileName: z.string().min(1, 'fileName is required'),
@@ -251,6 +251,26 @@ export const revokeAuthorizedPerson = async (req: Request, res: Response, next: 
     res.status(200).json({
       success: true,
       message: 'Authorized person access revoked',
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const createStudent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const parseResult = studentRowSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      throw new ValidationError('Invalid student data', parseResult.error.format());
+    }
+
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    const result = await peopleService.createSingleStudent(parseResult.data, adminEmail);
+
+    res.status(201).json({
+      success: true,
+      message: 'Student created successfully',
       data: result,
     });
   } catch (err) {
