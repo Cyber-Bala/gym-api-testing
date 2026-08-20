@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { membershipService } from './membership.service.js';
 import { UnauthorizedError, ValidationError } from '../../shared/errors/index.js';
 import { createPlanSchema, updatePlanSchema } from './membership.types.js';
@@ -96,6 +96,25 @@ export const togglePlanActive = async (
     res.status(200).json({
       success: true,
       data: plan,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const deletePlan = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const planId = req.params.id;
+    const actorEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    await membershipService.deletePlan(planId, actorEmail);
+
+    res.status(200).json({
+      success: true,
+      message: 'Membership package deleted successfully',
     });
   } catch (err) {
     next(err);

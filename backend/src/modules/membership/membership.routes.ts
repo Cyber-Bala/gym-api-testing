@@ -1,10 +1,11 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import {
   getPlans,
   getAllPlansForAdmin,
   createPlan,
   updatePlan,
   togglePlanActive,
+  deletePlan,
   getMyMembership,
   triggerExpiryCheck,
 } from './membership.controller.js';
@@ -21,6 +22,7 @@ membershipRouter.get('/plans/manage', requireAuth, requireRole(['admin', 'super_
 membershipRouter.post('/plans', requireAuth, requireRole(['admin', 'super_admin']), createPlan);
 membershipRouter.patch('/plans/:id', requireAuth, requireRole(['admin', 'super_admin']), updatePlan);
 membershipRouter.post('/plans/:id/toggle', requireAuth, requireRole(['admin', 'super_admin']), togglePlanActive);
+membershipRouter.delete('/plans/:id', requireAuth, requireRole(['admin', 'super_admin']), deletePlan);
 
 // Admin expiry check
 membershipRouter.post('/expiry-check', requireAuth, requireRole(['admin', 'super_admin']), triggerExpiryCheck);

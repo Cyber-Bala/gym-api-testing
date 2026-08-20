@@ -1,4 +1,4 @@
-﻿import { eq, and, desc, asc, sql, lte, gt } from 'drizzle-orm';
+import { eq, and, desc, asc, sql, lte, gt } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError, ValidationError } from '../../shared/errors/index.js';
@@ -164,7 +164,7 @@ export class MembershipService {
       expiredCount++;
     }
 
-if (expiredCount > 0) {
+    if (expiredCount > 0) {
       logger.info({ expiredCount }, 'Membership expiry worker transitioned passes to expired');
     }
 
@@ -312,6 +312,41 @@ if (expiredCount > 0) {
       price: updated.price,
       isActive: updated.isActive,
     };
+  }
+
+  /**
+   * Admin: Permanently delete a membership plan / package
+   */
+  public async deletePlan(planId: string, actorEmail: string): Promise<void> {
+    const [existing] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, planId)).limit(1);
+    if (!existing) {
+      throw new NotFoundError(`Membership plan '${planId}' not found`);
+    }
+
+    try {
+      await db.delete(membershipPlans).where(eq(membershipPlans.id, planId));
+
+      await db.insert(auditLogs).values({
+        actorEmail,
+        action: 'delete_membership_plan',
+        entity: 'membership_plan',
+        entityId: planId,
+        previousValue: {
+          name: existing.name,
+          durationDays: existing.durationDays,
+          price: existing.price,
+        },
+        reason: `Admin deleted membership package '${existing.name}'`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('foreign key') || msg.includes('violates foreign key constraint')) {
+        throw new ValidationError(
+          `Cannot delete package '${existing.name}' because student subscriptions or payment history are linked to it. Please deactivate the package instead.`
+        );
+      }
+      throw err;
+    }
   }
 }
 

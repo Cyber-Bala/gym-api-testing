@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, CreditCard, Power, PowerOff, Pencil, RefreshCw } from 'lucide-react';
+import { Plus, CreditCard, Power, PowerOff, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { Card, Badge, Stat, PageHeader, Modal, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input, Select } from '../ui/Input';
@@ -33,6 +33,7 @@ export const MembershipPlanManager: React.FC = () => {
   const [form, setForm] = useState<PlanForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,6 +116,23 @@ export const MembershipPlanManager: React.FC = () => {
     }
   };
 
+  const handleDelete = async (plan: Plan) => {
+    if (!window.confirm(`Are you sure you want to permanently delete the "${plan.name}" membership package?`)) {
+      return;
+    }
+    setDeletingId(plan.id);
+    try {
+      await api.delete(`/api/v1/membership/plans/${plan.id}`);
+      toast.success(`Package "${plan.name}" deleted successfully.`);
+      load();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Delete Failed');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -180,6 +198,15 @@ export const MembershipPlanManager: React.FC = () => {
                         >
                           {p.isActive === 'active' ? 'Deactivate' : 'Activate'}
                         </Button>
+                        <IconButton
+                          label="Delete package"
+                          size="sm"
+                          variant="danger"
+                          disabled={deletingId === p.id}
+                          onClick={() => handleDelete(p)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </IconButton>
                       </div>
                     </td>
                   </tr>
