@@ -101,6 +101,75 @@ export class PaymentService {
   }
 
   /**
+   * Handle Razorpay Webhooks (payment.captured, order.paid, payment.failed)
+   */
+  public async handleWebhook(payload: any, signature?: string) {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    // Verify HMAC-SHA256 signature if secret and signature are configured
+    if (signature && webhookSecret && webhookSecret !== 'placeholder_webhook_secret') {
+      const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+      const expectedSignature = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(payloadString)
+        .digest('hex');
+
+      if (signature !== expectedSignature) {
+        logger.warn({ signature }, 'Razorpay webhook signature verification failed');
+        throw new ValidationError('Invalid webhook signature');
+      }
+    }
+
+    const event = payload?.event;
+    logger.info({ event }, 'Received Razorpay webhook event');
+
+    if (event === 'payment.captured' || event === 'order.paid') {
+      const paymentEntity = payload?.payload?.payment?.entity;
+      const orderId = paymentEntity?.order_id || payload?.payload?.order?.entity?.id;
+      const paymentId = paymentEntity?.id;
+
+      if (orderId) {
+        const [order] = await db
+          .select()
+          .from(paymentOrders)
+          .where(eq(paymentOrders.orderId, orderId))
+          .limit(1);
+
+        if (order) {
+          await db
+            .update(paymentOrders)
+            .set({
+              status: 'paid',
+              paymentId: paymentId || order.paymentId,
+              gatewayResponse: payload,
+              updatedAt: new Date(),
+            })
+            .where(eq(paymentOrders.id, order.id));
+
+          // Activate membership pass if not already active
+          await membershipService.activateMembership(order.studentId, order.planId, paymentId || order.orderId);
+          logger.info({ orderId, paymentId, studentId: order.studentId }, 'Membership activated via Razorpay webhook');
+        }
+      }
+    } else if (event === 'payment.failed') {
+      const paymentEntity = payload?.payload?.payment?.entity;
+      const orderId = paymentEntity?.order_id;
+      if (orderId) {
+        await db
+          .update(paymentOrders)
+          .set({
+            status: 'failed',
+            gatewayResponse: payload,
+            updatedAt: new Date(),
+          })
+          .where(eq(paymentOrders.orderId, orderId));
+      }
+    }
+
+    return { received: true, event };
+  }
+
+  /**
    * Get payment transactions history for a student
    */
   public async getPaymentHistory(studentId: string) {

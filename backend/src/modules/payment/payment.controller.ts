@@ -81,3 +81,20 @@ export const getMyPaymentHistory = async (
   }
 };
 
+export const handleWebhook = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const signature = req.headers['x-razorpay-signature'] as string | undefined;
+    const result = await paymentService.handleWebhook(req.body, signature);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
