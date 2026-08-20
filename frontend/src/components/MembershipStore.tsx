@@ -151,6 +151,7 @@ export const MembershipStore: React.FC = () => {
           prefill: {
             name: user.name,
             email: user.email,
+            contact: user.studentDetails?.phone || '',
           },
           theme: {
             color: '#4A154B',

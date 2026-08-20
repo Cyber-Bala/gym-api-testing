@@ -7,6 +7,7 @@ import { NotFoundError, ValidationError } from '../../shared/errors/index.js';
 import { paymentOrders, membershipPlans, students } from '../../db/schema/index.js';
 import { membershipService } from '../membership/membership.service.js';
 import { PaymentOrderDto } from './payment.types.js';
+import { config } from '../../config/index.js';
 
 export class PaymentService {
   /**
@@ -38,8 +39,49 @@ export class PaymentService {
       throw new NotFoundError(`Membership plan '${planId}' not found`);
     }
 
-    const orderId = `order_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
+    const keyId = process.env.RAZORPAY_KEY_ID || config.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET || config.RAZORPAY_KEY_SECRET;
+
+    let orderId = `order_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
     const amountNum = parseFloat(plan.price);
+    const amountPaise = Math.round(amountNum * 100);
+
+    // If Razorpay API credentials are configured, create a real order on Razorpay servers
+    if (keyId && keySecret && !keyId.includes('placeholder') && !keySecret.includes('placeholder')) {
+      try {
+        const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+        const rzpResponse = await fetch('https://api.razorpay.com/v1/orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authHeader,
+          },
+          body: JSON.stringify({
+            amount: amountPaise,
+            currency: 'INR',
+            receipt: `rcpt_${uuidv4().replace(/-/g, '').slice(0, 10)}`,
+            notes: {
+              studentId,
+              planId,
+              planName: plan.name,
+            },
+          }),
+        });
+
+        if (rzpResponse.ok) {
+          const rzpOrder = (await rzpResponse.json()) as { id: string };
+          if (rzpOrder.id) {
+            orderId = rzpOrder.id;
+            logger.info({ orderId, amountPaise }, 'Created real Razorpay Order on Razorpay gateway');
+          }
+        } else {
+          const errBody = await rzpResponse.text();
+          logger.error({ status: rzpResponse.status, errBody }, 'Failed to create order on Razorpay API');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Error connecting to Razorpay API for order creation');
+      }
+    }
 
     const [order] = await db
       .insert(paymentOrders)
@@ -53,7 +95,7 @@ export class PaymentService {
       })
       .returning();
 
-    logger.info({ orderId, studentId, amount: plan.price }, 'Payment order created');
+    logger.info({ orderId, studentId, amount: plan.price }, 'Payment order record saved in database');
 
     return {
       id: order.id,
@@ -63,7 +105,7 @@ export class PaymentService {
       status: order.status,
       planId: plan.id,
       planName: plan.name,
-      keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_rec_college_gym',
+      keyId: keyId || 'rzp_test_rec_college_gym',
     };
   }
 
@@ -84,7 +126,7 @@ export class PaymentService {
     }
 
     // Razorpay HMAC Verification
-    const secret = process.env.RAZORPAY_KEY_SECRET || 'rec_gym_razorpay_secret_key';
+    const secret = process.env.RAZORPAY_KEY_SECRET || config.RAZORPAY_KEY_SECRET || 'rec_gym_razorpay_secret_key';
     const generatedSignature = crypto
       .createHmac('sha256', secret)
       .update(`${orderId}|${paymentId}`)
@@ -93,7 +135,7 @@ export class PaymentService {
     const isSimulated = signature === 'simulated_success' || process.env.NODE_ENV === 'test' || signature === generatedSignature;
 
     if (!isSimulated && signature !== generatedSignature) {
-      logger.warn({ orderId, paymentId }, 'Razorpay payment signature mismatch');
+      logger.warn({ orderId, paymentId, signature, generatedSignature }, 'Razorpay payment signature mismatch');
       throw new ValidationError('Invalid payment verification signature');
     }
 
@@ -125,10 +167,10 @@ export class PaymentService {
    * Handle Razorpay Webhooks (payment.captured, order.paid, payment.failed)
    */
   public async handleWebhook(payload: any, signature?: string) {
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || config.RAZORPAY_WEBHOOK_SECRET;
 
     // Verify HMAC-SHA256 signature if secret and signature are configured
-    if (signature && webhookSecret && webhookSecret !== 'placeholder_webhook_secret') {
+    if (signature && webhookSecret && !webhookSecret.includes('placeholder')) {
       const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
       const expectedSignature = crypto
         .createHmac('sha256', webhookSecret)
