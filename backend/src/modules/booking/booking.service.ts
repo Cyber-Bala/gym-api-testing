@@ -263,7 +263,16 @@ export class BookingService {
       generatedIntervals.map((i) => `${i.startTime.slice(0, 5)}|${i.endTime.slice(0, 5)}`)
     );
 
+    const todayStr = this.formatISTDate();
+    const currentISTTime = this.getISTCurrentTime();
+
     for (const dateStr of dates) {
+      // Ignore past dates that have already finished
+      if (dateStr < todayStr) {
+        continue;
+      }
+
+      const isToday = dateStr === todayStr;
       const isLocked = lockedMap.has(dateStr);
 
       const existing = await db
@@ -287,9 +296,16 @@ export class BookingService {
       for (const s of existing) {
         const intervalKey = `${s.startTime.slice(0, 5)}|${s.endTime.slice(0, 5)}`;
         const isTarget = targetIntervalKeys.has(intervalKey);
+        const hasStarted = isToday && s.startTime.slice(0, 5) <= currentISTTime;
 
-        // If unbooked and not in target schedule, delete it
-        if ((s.bookedCount || 0) === 0 && !isTarget) {
+        // Never delete slots that have already started or have active reservations
+        if (hasStarted || (s.bookedCount || 0) > 0) {
+          seenIntervals.set(intervalKey, s);
+          continue;
+        }
+
+        // If unbooked, unstarted, and not in target schedule, delete it
+        if (!isTarget) {
           slotsToDelete.push(s.id);
           continue;
         }
@@ -319,12 +335,15 @@ export class BookingService {
           .map((s) => `${s.startTime.slice(0, 5)}|${s.endTime.slice(0, 5)}`)
       );
 
-      const missingIntervals = generatedIntervals.filter(
-        (schedule) =>
-          !remainingIntervals.has(
-            `${schedule.startTime.slice(0, 5)}|${schedule.endTime.slice(0, 5)}`
-          )
-      );
+      const missingIntervals = generatedIntervals.filter((schedule) => {
+        // Do not generate intervals that have already passed for today
+        if (isToday && schedule.startTime <= currentISTTime) {
+          return false;
+        }
+        return !remainingIntervals.has(
+          `${schedule.startTime.slice(0, 5)}|${schedule.endTime.slice(0, 5)}`
+        );
+      });
 
       if (missingIntervals.length > 0) {
         logger.info(

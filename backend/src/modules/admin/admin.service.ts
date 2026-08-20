@@ -1,7 +1,7 @@
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
-import { NotFoundError, ConflictError } from '../../shared/errors/index.js';
+import { NotFoundError, ConflictError, ValidationError } from '../../shared/errors/index.js';
 import {
   students,
   people,
@@ -145,6 +145,17 @@ export class AdminService {
    * Emergency Gym Closure / Date Locking Cascade (ADR-017, FR-ADM-002)
    */
   public async createCalendarClosure(closureDate: string, reason: string, adminEmail: string): Promise<GymClosureDto> {
+    const todayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+    if (closureDate < todayStr) {
+      throw new ValidationError(`Cannot lock date '${closureDate}' as it has already passed.`);
+    }
+
     const [existing] = await db.select().from(gymCalendar).where(eq(gymCalendar.closureDate, closureDate)).limit(1);
 
     if (existing) {
