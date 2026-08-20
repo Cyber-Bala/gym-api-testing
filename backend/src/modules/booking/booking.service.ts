@@ -246,7 +246,8 @@ export class BookingService {
   }
 
   /**
-   * Idempotently ensure slots exist in database for all active window dates
+   * Idempotently ensure slots exist in database for all active window dates,
+   * removing obsolete unbooked slots and deduplicating if schedule changed.
    */
   public async ensureSlotsForWindow(config?: SlotConfigDto): Promise<void> {
     const cfg = config || (await this.getSlotConfig());
@@ -258,11 +259,13 @@ export class BookingService {
       cfg.bufferMinutes
     );
 
+    const targetStartTimesHHmm = new Set(generatedIntervals.map((i) => i.startTime));
+
     for (const dateStr of dates) {
       const isLocked = lockedMap.has(dateStr);
 
       const existing = await db
-        .select({ id: slots.id, startTime: slots.startTime, status: slots.status, capacity: slots.capacity })
+        .select()
         .from(slots)
         .where(eq(slots.slotDate, dateStr));
 
@@ -275,10 +278,45 @@ export class BookingService {
         continue;
       }
 
-      const existingTimes = new Set(existing.map((s) => s.startTime.slice(0, 5)));
+      // 1. Deduplicate any multiple slots with the exact same startTime
+      const seenTimes = new Map<string, typeof slots.$inferSelect>();
+      const duplicateIdsToDelete: string[] = [];
+
+      for (const s of existing) {
+        const timeKey = s.startTime.slice(0, 5);
+        if (!seenTimes.has(timeKey)) {
+          seenTimes.set(timeKey, s);
+        } else {
+          const prev = seenTimes.get(timeKey)!;
+          if ((s.bookedCount || 0) > 0 && (prev.bookedCount || 0) === 0) {
+            duplicateIdsToDelete.push(prev.id);
+            seenTimes.set(timeKey, s);
+          } else if ((s.bookedCount || 0) === 0) {
+            duplicateIdsToDelete.push(s.id);
+          }
+        }
+      }
+
+      // 2. Remove obsolete unbooked slots that do not match the current schedule
+      for (const s of existing) {
+        const timeKey = s.startTime.slice(0, 5);
+        if ((s.bookedCount || 0) === 0 && !targetStartTimesHHmm.has(timeKey)) {
+          if (!duplicateIdsToDelete.includes(s.id)) {
+            duplicateIdsToDelete.push(s.id);
+          }
+        }
+      }
+
+      if (duplicateIdsToDelete.length > 0) {
+        await db.delete(slots).where(inArray(slots.id, duplicateIdsToDelete));
+      }
+
+      // 3. Find missing intervals from the active generated schedule
+      const remainingSlots = existing.filter((s) => !duplicateIdsToDelete.includes(s.id));
+      const remainingTimes = new Set(remainingSlots.map((s) => s.startTime.slice(0, 5)));
 
       const missingIntervals = generatedIntervals.filter(
-        (schedule) => !existingTimes.has(schedule.startTime)
+        (schedule) => !remainingTimes.has(schedule.startTime)
       );
 
       if (missingIntervals.length > 0) {
