@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 export const archiveJobSchema = z.object({
   entityType: z.enum(['access_logs', 'bookings', 'violations']),
@@ -6,8 +6,8 @@ export const archiveJobSchema = z.object({
 });
 
 export const studentDepartureSchema = z.object({
-  studentIds: z.array(z.string().uuid()).min(1, 'At least one studentId UUID is required'),
-  reason: z.string().min(5, 'Departure reason required (e.g. Graduation Batch 2026)'),
+  studentIds: z.array(z.string().min(1)).min(1, 'At least one student ID / Roll number is required'),
+  reason: z.string().min(3, 'Departure reason required (e.g. Graduation Batch 2026)'),
 });
 
 export const reactivateStudentSchema = z.object({

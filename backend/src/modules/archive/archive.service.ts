@@ -111,12 +111,16 @@ export class ArchiveService {
 
       for (const sId of studentIds) {
         const studentRes = await client.query(
-          `SELECT person_id FROM people.students WHERE id = $1`,
-          [sId]
+          `SELECT s.id as student_id, s.person_id 
+           FROM people.students s
+           JOIN people.people p ON s.person_id = p.id
+           WHERE s.id::text = $1 OR s.roll_number = $1 OR p.email = $1
+           LIMIT 1`,
+          [sId.trim()]
         );
 
         if (studentRes.rows.length === 0) continue;
-        const personId = studentRes.rows[0].person_id;
+        const { student_id: studentId, person_id: personId } = studentRes.rows[0];
 
         // 1. Mark person as departed
         await client.query(
@@ -129,7 +133,7 @@ export class ArchiveService {
           `UPDATE people.students 
            SET face_enrollment_status = 'purged', is_banned = false, updated_at = NOW() 
            WHERE id = $1`,
-          [sId]
+          [studentId]
         );
 
         // 3. Cancel any future bookings
