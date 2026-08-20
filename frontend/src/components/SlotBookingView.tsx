@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Calendar,
   Clock,
@@ -8,10 +8,15 @@ import {
   RefreshCw,
   Sliders,
   Lock,
+  Unlock,
   Sun,
   Moon,
   BookmarkCheck,
   CreditCard,
+  Plus,
+  Trash2,
+  Sparkles,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Card, Badge, ProgressBar, Modal, Alert } from '../ui/primitives';
@@ -20,6 +25,23 @@ import { Input, Textarea } from '../ui/Input';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
+
+interface OperatingWindow {
+  startTime: string;
+  endTime: string;
+  label?: string;
+}
+
+interface SlotConfig {
+  id?: string;
+  windowMode: 'block' | 'rolling';
+  windowDays: number;
+  defaultCapacity: number;
+  slotDurationMinutes: number;
+  bufferMinutes: number;
+  operatingWindows: OperatingWindow[];
+  updatedAt?: string;
+}
 
 interface SlotItem {
   id: string;
@@ -41,6 +63,8 @@ interface DaySlots {
   dayLabel: string;
   dayOfWeek: string;
   isToday: boolean;
+  isLocked: boolean;
+  lockReason?: string;
   hasUserBookedOnDate: boolean;
   userBookedSlotId?: string;
   userBookedCountOnDate?: number;
@@ -53,7 +77,16 @@ interface DaySlots {
 interface RollingWindowData {
   windowDates: string[];
   totalUserBookingsInWindow?: number;
+  config?: SlotConfig;
   days: DaySlots[];
+}
+
+interface CalendarClosureItem {
+  id: string;
+  closureDate: string;
+  reason: string;
+  cancelledBookingsCount: number;
+  createdAt: string;
 }
 
 interface SlotBookingViewProps {
@@ -77,26 +110,72 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
   const [editReason, setEditReason] = useState<string>('');
   const [savingEdit, setSavingEdit] = useState<boolean>(false);
 
+  // Configure Schedule Modal State
+  const [configModalOpen, setConfigModalOpen] = useState<boolean>(false);
+  const [configTab, setConfigTab] = useState<'schedule' | 'closures'>('schedule');
+  const [savingConfig, setSavingConfig] = useState<boolean>(false);
+
+  // Config Form State
+  const [cfgWindowMode, setCfgWindowMode] = useState<'block' | 'rolling'>('block');
+  const [cfgWindowDays, setCfgWindowDays] = useState<number>(3);
+  const [cfgDefaultCapacity, setCfgDefaultCapacity] = useState<number>(100);
+  const [cfgSlotDuration, setCfgSlotDuration] = useState<number>(60);
+  const [cfgBufferMinutes, setCfgBufferMinutes] = useState<number>(0);
+  const [cfgOperatingWindows, setCfgOperatingWindows] = useState<OperatingWindow[]>([
+    { startTime: '06:00', endTime: '10:00', label: 'Morning Session' },
+    { startTime: '15:00', endTime: '21:00', label: 'Evening Session' },
+  ]);
+
+  // Lock / Unlock Date State
+  const [lockDateVal, setLockDateVal] = useState<string>('');
+  const [lockReasonVal, setLockReasonVal] = useState<string>('');
+  const [lockingDate, setLockingDate] = useState<boolean>(false);
+  const [closuresList, setClosuresList] = useState<CalendarClosureItem[]>([]);
+  const [loadingClosures, setLoadingClosures] = useState<boolean>(false);
+
   const isAdmin = user && ['admin', 'super_admin'].includes(user.role);
   const isStudent = user && (user.personType === 'student' || user.role === 'student');
 
-  const fetchSlots = async () => {
+  const fetchSlots = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const resData = await api.get<RollingWindowData>('/api/v1/booking/slots/window');
       setData(resData);
+      if (resData.config) {
+        setCfgWindowMode(resData.config.windowMode || 'block');
+        setCfgWindowDays(resData.config.windowDays || 3);
+        setCfgDefaultCapacity(resData.config.defaultCapacity || 100);
+        setCfgSlotDuration(resData.config.slotDurationMinutes || 60);
+        setCfgBufferMinutes(resData.config.bufferMinutes || 0);
+        if (resData.config.operatingWindows && resData.config.operatingWindows.length > 0) {
+          setCfgOperatingWindows(resData.config.operatingWindows);
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const fetchClosures = async () => {
+    if (!isAdmin) return;
+    setLoadingClosures(true);
+    try {
+      const res = await api.get<CalendarClosureItem[]>('/api/v1/admin/calendar');
+      setClosuresList(res || []);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingClosures(false);
+    }
   };
 
   useEffect(() => {
     fetchSlots();
-  }, [user]);
+  }, [fetchSlots, user]);
 
   const formatTime12h = (timeStr: string) => {
     const [hh, mm] = timeStr.split(':');
@@ -156,7 +235,10 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
   };
 
   const handleAdminToggleStatus = async (slot: SlotItem) => {
-    const reason = prompt(`Enter reason to ${slot.isActive ? 'close/cancel' : 'reopen'} this slot:`, 'Schedule adjustment');
+    const reason = prompt(
+      `Enter reason to ${slot.isActive ? 'close/cancel' : 'reopen'} this slot:`,
+      'Schedule adjustment'
+    );
     if (!reason) return;
 
     try {
@@ -173,6 +255,91 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
     }
   };
 
+  const handleSaveSlotConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingConfig(true);
+    try {
+      await api.put('/api/v1/admin/slot-config', {
+        windowMode: cfgWindowMode,
+        windowDays: cfgWindowDays,
+        defaultCapacity: cfgDefaultCapacity,
+        slotDurationMinutes: cfgSlotDuration,
+        bufferMinutes: cfgBufferMinutes,
+        operatingWindows: cfgOperatingWindows,
+      });
+
+      toast.success('Slot schedule configured and slots regenerated!');
+      setConfigModalOpen(false);
+      fetchSlots();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Configuration Save Failed');
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  const handleLockDate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lockDateVal || !lockReasonVal.trim()) {
+      toast.error('Date and reason are required to lock a date.');
+      return;
+    }
+
+    setLockingDate(true);
+    try {
+      const res = await api.post<{ message: string }>('/api/v1/admin/calendar/closure', {
+        closureDate: lockDateVal,
+        reason: lockReasonVal.trim(),
+      });
+
+      toast.success(res.message || `Date ${lockDateVal} locked successfully.`);
+      setLockDateVal('');
+      setLockReasonVal('');
+      fetchClosures();
+      fetchSlots();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Lock Date Failed');
+    } finally {
+      setLockingDate(false);
+    }
+  };
+
+  const handleUnlockDate = async (closureDate: string) => {
+    if (!window.confirm(`Unlock date ${closureDate} and re-open gym slots?`)) return;
+
+    try {
+      await api.post('/api/v1/admin/calendar/unlock', {
+        date: typeof closureDate === 'string' ? closureDate.slice(0, 10) : closureDate,
+      });
+
+      toast.success(`Date ${closureDate} unlocked and slots reopened.`);
+      fetchClosures();
+      fetchSlots();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg, 'Unlock Date Failed');
+    }
+  };
+
+  const handleAddOperatingWindow = () => {
+    setCfgOperatingWindows((prev) => [
+      ...prev,
+      { startTime: '12:00', endTime: '14:00', label: 'Midday Session' },
+    ]);
+  };
+
+  const handleRemoveOperatingWindow = (idx: number) => {
+    setCfgOperatingWindows((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleUpdateOperatingWindow = (idx: number, field: keyof OperatingWindow, val: string) => {
+    setCfgOperatingWindows((prev) =>
+      prev.map((item, i) => (i === idx ? { ...item, [field]: val } : item))
+    );
+  };
+
   const currentDay = data?.days[selectedDateIdx];
 
   const filteredSlots = (currentDay?.slots || []).filter((slot) => {
@@ -187,18 +354,31 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <Calendar className="w-5 h-5 text-primary" />
-          <h3 className="font-bold text-base sm:text-lg text-text">
-            Gym Slot Booking
-          </h3>
+          <h3 className="font-bold text-base sm:text-lg text-text">Gym Slot Booking</h3>
+          {data?.config?.windowMode === 'block' ? (
+            <Badge tone="neutral">3-Day Block Cycle</Badge>
+          ) : (
+            <Badge tone="neutral">Rolling Window</Badge>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchSlots}
-            disabled={loading}
-          >
+          {isAdmin && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                setConfigModalOpen(true);
+                fetchClosures();
+              }}
+              className="gap-1.5"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Configure Schedule</span>
+            </Button>
+          )}
+
+          <Button variant="outline" size="sm" onClick={fetchSlots} disabled={loading}>
             <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
             <span>Refresh</span>
           </Button>
@@ -225,44 +405,81 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </Alert>
       )}
 
-      {/* 3-Day Rolling Window Tabs */}
+      {/* Date Window Tabs (Includes Locked Dates with dynamic extension) */}
       {data && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {data.days.map((day, idx) => {
             const isSelected = selectedDateIdx === idx;
+            const isLocked = day.isLocked;
+
             return (
               <button
                 key={day.date}
                 type="button"
                 onClick={() => setSelectedDateIdx(idx)}
                 className={cn(
-                  'p-4 rounded-2xl text-left transition-all relative shadow-sm',
+                  'p-4 rounded-2xl text-left transition-all relative shadow-sm border',
                   isSelected
-                    ? 'bg-primary text-white shadow-md'
-                    : 'bg-surface-elevated hover:bg-surface-elevated/80'
+                    ? isLocked
+                      ? 'bg-danger text-white border-danger shadow-md'
+                      : 'bg-primary text-white border-primary shadow-md'
+                    : isLocked
+                    ? 'bg-danger-muted/15 border-danger/30 hover:bg-danger-muted/25'
+                    : 'bg-surface-elevated border-white/5 hover:bg-surface-elevated/80'
                 )}
               >
                 <div className="flex items-center justify-between">
-                  <span className={cn('text-[10px] uppercase font-bold tracking-wider', isSelected ? 'text-accent' : 'text-primary')}>
-                    {day.dayLabel}
+                  <span
+                    className={cn(
+                      'text-[10px] uppercase font-bold tracking-wider',
+                      isSelected ? 'text-accent' : isLocked ? 'text-danger' : 'text-primary'
+                    )}
+                  >
+                    {isLocked ? `${day.dayLabel || day.date} (Locked)` : day.dayLabel}
                   </span>
-                  {day.userBookedCountOnDate && day.userBookedCountOnDate > 0 ? (
+
+                  {isLocked ? (
+                    <Badge tone="danger">
+                      <Lock className="w-3 h-3 mr-1" />
+                      Locked
+                    </Badge>
+                  ) : day.userBookedCountOnDate && day.userBookedCountOnDate > 0 ? (
                     <Badge tone={day.userBookedCountOnDate >= 3 ? 'warning' : 'success'}>
                       <CheckCircle2 className="w-3 h-3" /> {day.userBookedCountOnDate}/3 Booked
                     </Badge>
                   ) : null}
                 </div>
-                <h4 className={cn('font-bold text-base mt-1', isSelected ? 'text-white' : 'text-text')}>
+
+                <h4
+                  className={cn(
+                    'font-bold text-base mt-1',
+                    isSelected ? 'text-white' : isLocked ? 'text-danger' : 'text-text'
+                  )}
+                >
                   {day.dayOfWeek}
                 </h4>
-                <p className={cn('text-xs font-mono mt-0.5', isSelected ? 'text-white/80' : 'text-muted')}>
+                <p
+                  className={cn(
+                    'text-xs font-mono mt-0.5',
+                    isSelected ? 'text-white/80' : 'text-muted'
+                  )}
+                >
                   {day.date}
                 </p>
 
-                <div className={cn('mt-3 pt-2 flex items-center justify-between text-xs', isSelected ? 'text-white/80 border-t border-white/20' : 'text-secondary border-t border-border')}>
-                  <span>Occupancy</span>
+                <div
+                  className={cn(
+                    'mt-3 pt-2 flex items-center justify-between text-xs',
+                    isSelected
+                      ? 'text-white/80 border-t border-white/20'
+                      : isLocked
+                      ? 'text-danger border-t border-danger/20'
+                      : 'text-secondary border-t border-border'
+                  )}
+                >
+                  <span>{isLocked ? 'Status' : 'Occupancy'}</span>
                   <span className={cn('font-semibold', isSelected ? 'text-white' : 'text-text')}>
-                    {day.totalBooked} / {day.totalCapacity}
+                    {isLocked ? 'Facility Closed' : `${day.totalBooked} / ${day.totalCapacity}`}
                   </span>
                 </div>
               </button>
@@ -271,20 +488,38 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </div>
       )}
 
-      {/* Quota Indicators and Reminders */}
-      {(data?.totalUserBookingsInWindow || 0) >= 3 ? (
-        <Alert tone="warning">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold">3-Day Window Quota Reached (3/3 Slots Active)</p>
-              <p className="mt-0.5 text-xs text-secondary">
-                You have reached the maximum allowed limit of 3 active bookings across the 3-day window. To book a new slot, cancel an existing upcoming booking first.
+      {/* Locked Date Notice Banner */}
+      {currentDay?.isLocked && (
+        <Alert tone="danger">
+          <div className="flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-danger shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-sm">Gym Facility Closed on {currentDay.date}</p>
+              <p className="text-xs text-secondary leading-relaxed">
+                <strong>Reason:</strong> {currentDay.lockReason || 'Scheduled Maintenance / Blackout'}.
+              </p>
+              <p className="text-[11px] text-muted">
+                All reservations on this date have been cancelled and your booking quota has been restored. Please select another open day from the tabs above.
               </p>
             </div>
           </div>
         </Alert>
-      ) : (currentDay?.userBookedCountOnDate || 0) >= 3 ? (
+      )}
+
+      {/* Quota Indicators and Reminders */}
+      {!currentDay?.isLocked && (data?.totalUserBookingsInWindow || 0) >= 3 ? (
+        <Alert tone="warning">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Window Quota Reached (3/3 Slots Active)</p>
+              <p className="mt-0.5 text-xs text-secondary">
+                You have reached the maximum allowed limit of 3 active bookings across the window. To book a new slot, cancel an existing upcoming booking first.
+              </p>
+            </div>
+          </div>
+        </Alert>
+      ) : !currentDay?.isLocked && (currentDay?.userBookedCountOnDate || 0) >= 3 ? (
         <Alert tone="warning">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
@@ -310,13 +545,13 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </Alert>
       )}
 
-      {/* Session Filter & Slot Grid */}
-      {currentDay && (
+      {/* Session Filter & Slot Grid (Hidden if day is locked) */}
+      {currentDay && !currentDay.isLocked && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-muted flex items-center gap-2">
               <Clock className="w-4 h-4 text-primary" />
-              <span>Available Batches (10 Daily Slots)</span>
+              <span>Available Batches ({currentDay.slots.length} Slots Generated)</span>
             </h4>
 
             {/* Session Tabs */}
@@ -331,7 +566,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                     : 'text-secondary hover:text-text'
                 )}
               >
-                All (10)
+                All ({currentDay.slots.length})
               </button>
               <button
                 type="button"
@@ -498,7 +733,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </div>
       )}
 
-      {/* Admin Slot Edit Modal */}
+      {/* Admin Slot Capacity Override Modal */}
       <Modal
         open={Boolean(editSlot)}
         title="Admin Slot Capacity Override"
@@ -551,7 +786,320 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
           </form>
         )}
       </Modal>
+
+      {/* Admin Configure Schedule & Date Locking Modal */}
+      {configModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-2xl rounded-3xl bg-surface-elevated shadow-2xl p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shadow-sm shrink-0">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-text">Configure Slot Schedule & Locking</h3>
+                  <p className="text-xs text-muted">
+                    Automated slot generation, operating windows, buffer times, and calendar locking
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfigModalOpen(false)}
+                className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-surface"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Sub-tabs */}
+            <div className="flex items-center gap-2 border-b border-white/5 pb-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setConfigTab('schedule')}
+                className={cn(
+                  'px-3.5 py-1.5 rounded-xl font-semibold transition-all',
+                  configTab === 'schedule'
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-muted hover:text-text hover:bg-surface'
+                )}
+              >
+                Schedule & Operating Hours
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfigTab('closures')}
+                className={cn(
+                  'px-3.5 py-1.5 rounded-xl font-semibold transition-all flex items-center gap-1.5',
+                  configTab === 'closures'
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-muted hover:text-text hover:bg-surface'
+                )}
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Lock / Unlock Dates</span>
+                {closuresList.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-danger text-white text-[10px]">
+                    {closuresList.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* TAB 1: Schedule Configuration */}
+            {configTab === 'schedule' && (
+              <form onSubmit={handleSaveSlotConfig} className="space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-semibold text-text block">Window Mode & Refresh</label>
+                    <select
+                      value={cfgWindowMode}
+                      onChange={(e) => setCfgWindowMode(e.target.value as 'block' | 'rolling')}
+                      className="w-full px-3 py-2 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      <option value="block">Batch / Block Mode (Refreshes every 3 days)</option>
+                      <option value="rolling">Continuous Rolling Mode (Daily slide)</option>
+                    </select>
+                    <p className="text-[10px] text-muted">
+                      Block mode opens 3-day groups; after 3rd day finishes, next 3 days open.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-semibold text-text block">Window Days Count</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="14"
+                      required
+                      value={cfgWindowDays}
+                      onChange={(e) => setCfgWindowDays(parseInt(e.target.value, 10))}
+                      className="w-full px-3 py-2 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <p className="text-[10px] text-muted">Number of open bookable days displayed</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-semibold text-text block">Default Slot Capacity</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="500"
+                      required
+                      value={cfgDefaultCapacity}
+                      onChange={(e) => setCfgDefaultCapacity(parseInt(e.target.value, 10))}
+                      className="w-full px-3 py-2 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <p className="text-[10px] text-muted">Max students allowed per batch</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-semibold text-text block">Slot Duration (Minutes)</label>
+                    <input
+                      type="number"
+                      min="15"
+                      max="240"
+                      required
+                      value={cfgSlotDuration}
+                      onChange={(e) => setCfgSlotDuration(parseInt(e.target.value, 10))}
+                      className="w-full px-3 py-2 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <p className="text-[10px] text-muted">e.g. 60m, 45m, 90m per batch</p>
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="font-semibold text-text block">Buffer Between Slots (Minutes)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="60"
+                      required
+                      value={cfgBufferMinutes}
+                      onChange={(e) => setCfgBufferMinutes(parseInt(e.target.value, 10))}
+                      className="w-full px-3 py-2 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <p className="text-[10px] text-muted">
+                      Transition gap between consecutive batches (e.g. 0m or 15m cleaning gap)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Operating Sessions (Allows leaving in-between hours closed) */}
+                <div className="space-y-2 pt-2 border-t border-white/5">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-text flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-primary" />
+                      <span>Operating Sessions & Facility Hours</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleAddOperatingWindow}
+                      className="text-[11px] text-primary hover:underline font-semibold flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add Session</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {cfgOperatingWindows.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-2xl bg-surface flex flex-col sm:flex-row sm:items-center gap-2 justify-between"
+                      >
+                        <input
+                          type="text"
+                          value={item.label || ''}
+                          onChange={(e) => handleUpdateOperatingWindow(idx, 'label', e.target.value)}
+                          placeholder="Session Label (e.g. Morning Batch)"
+                          className="px-2.5 py-1.5 rounded-lg bg-surface-elevated text-text text-xs w-full sm:w-44 focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted">From</span>
+                          <input
+                            type="time"
+                            required
+                            value={item.startTime}
+                            onChange={(e) => handleUpdateOperatingWindow(idx, 'startTime', e.target.value)}
+                            className="px-2 py-1.5 rounded-lg bg-surface-elevated text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                          <span className="text-muted">To</span>
+                          <input
+                            type="time"
+                            required
+                            value={item.endTime}
+                            onChange={(e) => handleUpdateOperatingWindow(idx, 'endTime', e.target.value)}
+                            className="px-2 py-1.5 rounded-lg bg-surface-elevated text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+
+                        {cfgOperatingWindows.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveOperatingWindow(idx)}
+                            className="p-1.5 text-danger hover:bg-danger-muted/20 rounded-lg self-end sm:self-center"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted">
+                    Hours outside these sessions (e.g. 10:00 to 15:00) will be left closed automatically.
+                  </p>
+                </div>
+
+                <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-white/5">
+                  <Button type="button" variant="outline" size="md" onClick={() => setConfigModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" variant="primary" size="md" loading={savingConfig} className="gap-1.5">
+                    <Sparkles className="w-4 h-4" />
+                    <span>Save & Automate Slots</span>
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {/* TAB 2: Date Locking & Unlocking */}
+            {configTab === 'closures' && (
+              <div className="space-y-5 text-xs">
+                {/* Lock a Date Form */}
+                <form onSubmit={handleLockDate} className="p-4 rounded-2xl bg-surface space-y-3">
+                  <h4 className="font-bold text-text flex items-center gap-1.5">
+                    <Lock className="w-4 h-4 text-danger" />
+                    <span>Lock Date & Auto-Cancel Active Bookings</span>
+                  </h4>
+                  <p className="text-[11px] text-muted">
+                    Marking a date as locked cancels all existing bookings on that date, notifies affected students, and opens the next open day in the window.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="font-medium text-text block">Date to Lock</label>
+                      <input
+                        type="date"
+                        required
+                        value={lockDateVal}
+                        onChange={(e) => setLockDateVal(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-surface-elevated text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-medium text-text block">Closure Reason</label>
+                      <input
+                        type="text"
+                        required
+                        value={lockReasonVal}
+                        onChange={(e) => setLockReasonVal(e.target.value)}
+                        placeholder="e.g. Annual Maintenance / Sports Day"
+                        className="w-full px-3 py-2 rounded-xl bg-surface-elevated text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <Button type="submit" variant="danger" size="sm" loading={lockingDate} className="gap-1.5">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Lock Date & Cancel Bookings</span>
+                    </Button>
+                  </div>
+                </form>
+
+                {/* List of Currently Locked Dates */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-text flex items-center gap-1.5">
+                    <span>Active Locked Dates & Closures</span>
+                  </h4>
+
+                  {loadingClosures ? (
+                    <p className="text-muted text-xs py-4 text-center">Loading closures...</p>
+                  ) : closuresList.length === 0 ? (
+                    <p className="text-muted text-xs py-4 text-center bg-surface rounded-2xl">
+                      No dates are currently locked. The gym is operating on standard schedule.
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {closuresList.map((c) => (
+                        <div
+                          key={c.id}
+                          className="p-3 rounded-2xl bg-surface flex items-center justify-between gap-3 border border-white/5"
+                        >
+                          <div className="space-y-0.5 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-danger text-xs">{c.closureDate}</span>
+                              <Badge tone="danger">Locked</Badge>
+                            </div>
+                            <p className="text-xs text-text font-medium truncate">{c.reason}</p>
+                            <p className="text-[10px] text-muted">
+                              {c.cancelledBookingsCount} bookings auto-cancelled
+                            </p>
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            onClick={() => handleUnlockDate(c.closureDate)}
+                            className="gap-1 text-xs shrink-0"
+                          >
+                            <Unlock className="w-3 h-3 text-success" />
+                            <span>Unlock Date</span>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </Card>
   );
 };
-

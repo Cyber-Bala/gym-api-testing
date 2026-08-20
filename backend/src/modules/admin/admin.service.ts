@@ -142,7 +142,7 @@ export class AdminService {
   }
 
   /**
-   * Emergency Gym Closure Cascade (ADR-017, FR-ADM-002)
+   * Emergency Gym Closure / Date Locking Cascade (ADR-017, FR-ADM-002)
    */
   public async createCalendarClosure(closureDate: string, reason: string, adminEmail: string): Promise<GymClosureDto> {
     const [existing] = await db.select().from(gymCalendar).where(eq(gymCalendar.closureDate, closureDate)).limit(1);
@@ -171,16 +171,32 @@ export class AdminService {
              cancelled_at = NOW(),
              updated_at = NOW()
          FROM booking.slots s
+         LEFT JOIN people.students st ON b.student_id = st.id
+         LEFT JOIN people.people p ON st.person_id = p.id
          WHERE b.slot_id = s.id 
            AND s.slot_date = $2 
            AND b.booking_status = 'booked'
-         RETURNING b.id`,
-        [`Gym Emergency Closure: ${reason}`, closureDate]
+         RETURNING b.id, p.account_id`,
+        [`Gym Closure: ${reason}`, closureDate]
       );
 
       const affectedCount = cancelRes.rows.length;
 
-      // 3. Record in gym_calendar
+      // 3. Notify affected students
+      for (const row of cancelRes.rows) {
+        if (row.account_id) {
+          await client.query(
+            `INSERT INTO notification.notification_logs (account_id, event_type, title, message, created_at)
+             VALUES ($1, 'system_alert', 'Gym Reservation Cancelled — Date Locked', $2, NOW())`,
+            [
+              row.account_id,
+              `Your gym reservation on ${closureDate} was cancelled because the gym is closed for: ${reason}. Your daily booking quota has been restored so you can reserve another slot.`,
+            ]
+          );
+        }
+      }
+
+      // 4. Record in gym_calendar
       const insertCal = await client.query(
         `INSERT INTO admin.gym_calendar (closure_date, reason, cancelled_bookings_count, created_at)
          VALUES ($1, $2, $3, NOW())
@@ -190,18 +206,18 @@ export class AdminService {
 
       const newClosure = insertCal.rows[0];
 
-      // 4. Audit Log
+      // 5. Audit Log
       await client.query(
         `INSERT INTO audit.audit_logs (actor_email, action, entity, entity_id, reason, created_at)
          VALUES ($1, 'emergency_calendar_closure', 'calendar', $2, $3, NOW())`,
-        [adminEmail, closureDate, `${reason} (${affectedCount} reservations auto-cancelled)`]
+        [adminEmail, closureDate, `${reason} (${affectedCount} reservations auto-cancelled and notified)`]
       );
 
       await client.query('COMMIT');
 
       logger.info(
         { closureDate, affectedCount, adminEmail },
-        'Gym emergency blackout closure executed successfully'
+        'Gym emergency closure executed and users notified successfully'
       );
 
       return {
@@ -211,6 +227,42 @@ export class AdminService {
         cancelledBookingsCount: affectedCount,
         createdAt: newClosure.created_at,
       };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Unlock / Re-open a previously closed date
+   */
+  public async unlockDate(closureDate: string, adminEmail: string): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Remove closure record
+      await client.query(`DELETE FROM admin.gym_calendar WHERE closure_date = $1`, [closureDate]);
+
+      // 2. Re-open slots for that date
+      await client.query(
+        `UPDATE booking.slots 
+         SET status = 'open' 
+         WHERE slot_date = $1`,
+        [closureDate]
+      );
+
+      // 3. Audit Log
+      await client.query(
+        `INSERT INTO audit.audit_logs (actor_email, action, entity, entity_id, reason, created_at)
+         VALUES ($1, 'unlock_calendar_date', 'calendar', $2, 'Unlocked date and re-opened slots', NOW())`,
+        [adminEmail, closureDate]
+      );
+
+      await client.query('COMMIT');
+      logger.info({ closureDate, adminEmail }, 'Gym date unlocked and slots re-opened successfully');
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

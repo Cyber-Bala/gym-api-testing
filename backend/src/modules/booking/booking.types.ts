@@ -2,24 +2,53 @@ import { z } from 'zod';
 
 export const DEFAULT_SLOT_CAPACITY = 100;
 
-export interface SlotScheduleConfig {
+export interface OperatingWindowDto {
   startTime: string; // HH:mm
   endTime: string;   // HH:mm
   label?: string;
 }
 
-export const DEFAULT_DAILY_SLOTS: SlotScheduleConfig[] = [
-  { startTime: '06:00', endTime: '07:00', label: 'Morning Slot 1' },
-  { startTime: '07:00', endTime: '08:00', label: 'Morning Slot 2' },
-  { startTime: '08:00', endTime: '09:00', label: 'Morning Slot 3' },
-  { startTime: '09:00', endTime: '10:00', label: 'Morning Slot 4' },
-  { startTime: '15:00', endTime: '16:00', label: 'Evening Slot 1' },
-  { startTime: '16:00', endTime: '17:00', label: 'Evening Slot 2' },
-  { startTime: '17:00', endTime: '18:00', label: 'Evening Slot 3' },
-  { startTime: '18:00', endTime: '19:00', label: 'Evening Slot 4' },
-  { startTime: '19:00', endTime: '20:00', label: 'Evening Slot 5' },
-  { startTime: '20:00', endTime: '21:00', label: 'Evening Slot 6' },
+export const DEFAULT_OPERATING_WINDOWS: OperatingWindowDto[] = [
+  { startTime: '06:00', endTime: '10:00', label: 'Morning Session' },
+  { startTime: '15:00', endTime: '21:00', label: 'Evening Session' },
 ];
+
+export interface SlotConfigDto {
+  id?: string;
+  windowMode: 'block' | 'rolling';
+  windowDays: number;
+  defaultCapacity: number;
+  slotDurationMinutes: number;
+  bufferMinutes: number;
+  operatingWindows: OperatingWindowDto[];
+  updatedAt?: string;
+}
+
+export const updateSlotConfigSchema = z.object({
+  windowMode: z.enum(['block', 'rolling']).default('block'),
+  windowDays: z.coerce.number().int().min(1).max(14).default(3),
+  defaultCapacity: z.coerce.number().int().min(1).max(500).default(100),
+  slotDurationMinutes: z.coerce.number().int().min(15).max(240).default(60),
+  bufferMinutes: z.coerce.number().int().min(0).max(60).default(0),
+  operatingWindows: z
+    .array(
+      z.object({
+        startTime: z.string().regex(/^\d{2}:\d{2}$/, 'startTime must be HH:mm'),
+        endTime: z.string().regex(/^\d{2}:\d{2}$/, 'endTime must be HH:mm'),
+        label: z.string().optional(),
+      })
+    )
+    .min(1, 'At least one operating session is required'),
+});
+
+export const lockDateSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  reason: z.string().min(3, 'Closure reason is required (e.g. Annual Maintenance, Sports Day)'),
+});
+
+export const unlockDateSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+});
 
 export interface SlotDto {
   id: string;
@@ -41,6 +70,8 @@ export interface DaySlotsDto {
   dayLabel: string;
   dayOfWeek: string;
   isToday: boolean;
+  isLocked: boolean;
+  lockReason?: string;
   hasUserBookedOnDate: boolean;
   userBookedSlotId?: string;
   userBookedCountOnDate?: number;
@@ -53,6 +84,7 @@ export interface DaySlotsDto {
 export interface RollingWindowSlotsResponse {
   windowDates: string[];
   totalUserBookingsInWindow?: number;
+  config?: SlotConfigDto;
   days: DaySlotsDto[];
 }
 

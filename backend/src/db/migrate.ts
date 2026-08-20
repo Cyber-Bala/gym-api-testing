@@ -124,6 +124,17 @@ export const runMigrations = async (): Promise<void> => {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS admin.slot_configs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      window_mode VARCHAR(20) NOT NULL DEFAULT 'block',
+      window_days VARCHAR(10) NOT NULL DEFAULT '3',
+      default_capacity VARCHAR(10) NOT NULL DEFAULT '100',
+      slot_duration_minutes VARCHAR(10) NOT NULL DEFAULT '60',
+      buffer_minutes VARCHAR(10) NOT NULL DEFAULT '0',
+      operating_windows JSONB NOT NULL DEFAULT '[{"startTime":"06:00","endTime":"10:00","label":"Morning Session"},{"startTime":"15:00","endTime":"21:00","label":"Evening Session"}]'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     -- 5. Membership Domain
     CREATE TABLE IF NOT EXISTS membership.membership_plans (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

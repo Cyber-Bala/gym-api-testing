@@ -27,3 +27,18 @@ export const gymCalendar = adminSchema.table('gym_calendar', {
   cancelledBookingsCount: varchar('cancelled_bookings_count', { length: 20 }).default('0'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const slotConfigs = adminSchema.table('slot_configs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  windowMode: varchar('window_mode', { length: 20 }).notNull().default('block'), // 'block' | 'rolling'
+  windowDays: varchar('window_days', { length: 10 }).notNull().default('3'),
+  defaultCapacity: varchar('default_capacity', { length: 10 }).notNull().default('100'),
+  slotDurationMinutes: varchar('slot_duration_minutes', { length: 10 }).notNull().default('60'),
+  bufferMinutes: varchar('buffer_minutes', { length: 10 }).notNull().default('0'),
+  operatingWindows: jsonb('operating_windows').notNull().default([
+    { startTime: '06:00', endTime: '10:00', label: 'Morning Session' },
+    { startTime: '15:00', endTime: '21:00', label: 'Evening Session' },
+  ]),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+

@@ -57,8 +57,75 @@ export const createCalendarClosure = async (
 
     res.status(201).json({
       success: true,
-      message: `Gym closed for ${result.closureDate}. ${result.cancelledBookingsCount} bookings cancelled.`,
+      message: `Gym closed and locked for ${result.closureDate}. ${result.cancelledBookingsCount} bookings cancelled and students notified.`,
       data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const unlockCalendarDate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { date } = req.body;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new ValidationError('Valid date in YYYY-MM-DD format is required');
+    }
+
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    await adminService.unlockDate(date, adminEmail);
+
+    res.status(200).json({
+      success: true,
+      message: `Date ${date} has been unlocked and slots re-opened successfully.`,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getSlotConfigHandler = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { bookingService } = await import('../booking/booking.service.js');
+    const config = await bookingService.getSlotConfig();
+
+    res.status(200).json({
+      success: true,
+      data: config,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateSlotConfigHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { updateSlotConfigSchema } = await import('../booking/booking.types.js');
+    const parseResult = updateSlotConfigSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      throw new ValidationError('Invalid slot config payload', parseResult.error.format());
+    }
+
+    const { bookingService } = await import('../booking/booking.service.js');
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    const updated = await bookingService.updateSlotConfig(parseResult.data, adminEmail);
+
+    res.status(200).json({
+      success: true,
+      message: 'Slot schedule configuration updated and future slots generated successfully',
+      data: updated,
     });
   } catch (err) {
     next(err);
