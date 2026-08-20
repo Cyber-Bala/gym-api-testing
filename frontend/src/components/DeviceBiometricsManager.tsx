@@ -9,12 +9,12 @@ import {
   Plus,
   Radio,
 } from 'lucide-react';
-import { Card, Badge, Modal, Alert, EmptyState } from '../ui/primitives';
+import { Card, Badge, Alert, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
-import { Input } from '../ui/Input';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
+import { FaceEnrollmentModal } from './FaceEnrollmentModal';
 
 interface AccessDevice {
   deviceId: string;
@@ -48,8 +48,6 @@ export const DeviceBiometricsManager: React.FC = () => {
 
   // Enroll Face Modal
   const [showEnrollModal, setShowEnrollModal] = useState<boolean>(false);
-  const [enrollStudentId, setEnrollStudentId] = useState<string>('');
-  const [enrollSubmitting, setEnrollSubmitting] = useState<boolean>(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -98,29 +96,6 @@ export const DeviceBiometricsManager: React.FC = () => {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(msg, 'Retry Failed');
-    }
-  };
-
-  const handleSimulateEnroll = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setEnrollSubmitting(true);
-    try {
-      await api.post('/api/v1/biometrics/face-enroll', {
-        studentId: enrollStudentId || '11111111-1111-1111-1111-111111111111',
-        faceImageBase64: 'data:image/jpeg;base64,mock_biometric_face_vector',
-      });
-
-      const msg = 'Face biometric enrolled & queued for hardware sync.';
-      setNotification(msg);
-      toast.success(msg);
-      setShowEnrollModal(false);
-      setEnrollStudentId('');
-      fetchData();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'Enrollment Failed');
-    } finally {
-      setEnrollSubmitting(false);
     }
   };
 
@@ -292,43 +267,12 @@ export const DeviceBiometricsManager: React.FC = () => {
         )}
       </Card>
 
-      {/* Enroll Face Modal */}
-      <Modal
+      {/* Real Live Camera Face Enrollment Modal */}
+      <FaceEnrollmentModal
         open={showEnrollModal}
-        title="Enroll Student Face Biometric"
         onClose={() => setShowEnrollModal(false)}
-        footer={
-          <>
-            <Button variant="secondary" size="sm" onClick={() => setShowEnrollModal(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              loading={enrollSubmitting}
-              onClick={handleSimulateEnroll}
-            >
-              Capture & Enroll
-            </Button>
-          </>
-        }
-      >
-        <form onSubmit={handleSimulateEnroll} className="space-y-4 text-xs">
-          <Input
-            label="Student UUID or Roll Number"
-            placeholder="Enter Student UUID or leave blank for default"
-            value={enrollStudentId}
-            onChange={(e) => setEnrollStudentId(e.target.value)}
-          />
-
-          <div className="p-4 rounded-xl border border-dashed border-border bg-border-subtle/30 text-center space-y-2">
-            <ScanFace className="w-8 h-8 text-primary mx-auto" />
-            <p className="text-secondary text-xs">
-              Simulated biometric camera stream active. High-definition vector extraction ready.
-            </p>
-          </div>
-        </form>
-      </Modal>
+        onEnrolled={fetchData}
+      />
     </div>
   );
 };

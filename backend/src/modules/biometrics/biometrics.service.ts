@@ -1,5 +1,5 @@
-﻿import { v4 as uuidv4 } from 'uuid';
-import { eq, desc } from 'drizzle-orm';
+import { v4 as uuidv4 } from 'uuid';
+import { eq, desc, or } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError, ValidationError } from '../../shared/errors/index.js';
@@ -85,7 +85,7 @@ export class BiometricsService {
   /**
    * Enroll a student's face biometric and queue for hardware sync (ADR-011, ACINT-011)
    */
-  public async enrollStudentFace(studentId: string, faceImageBase64: string): Promise<FaceSyncTaskDto> {
+  public async enrollStudentFace(studentIdentifier: string, faceImageBase64: string): Promise<FaceSyncTaskDto> {
     const [studentData] = await db
       .select({
         student: students,
@@ -93,11 +93,17 @@ export class BiometricsService {
       })
       .from(students)
       .innerJoin(people, eq(students.personId, people.id))
-      .where(eq(students.id, studentId))
+      .where(
+        or(
+          eq(students.id, studentIdentifier),
+          eq(students.rollNumber, studentIdentifier),
+          eq(people.email, studentIdentifier)
+        )
+      )
       .limit(1);
 
     if (!studentData) {
-      throw new NotFoundError(`Student '${studentId}' not found`);
+      throw new NotFoundError(`Student '${studentIdentifier}' not found`);
     }
 
     // Update face enrollment status
@@ -107,7 +113,7 @@ export class BiometricsService {
         faceEnrollmentStatus: 'enrolled',
         updatedAt: new Date(),
       })
-      .where(eq(students.id, studentId));
+      .where(eq(students.id, studentData.student.id));
 
     const syncId = uuidv4();
     const syncRecord: InMemSyncRecord = {
@@ -125,7 +131,7 @@ export class BiometricsService {
     this.syncQueue.unshift(syncRecord);
 
     logger.info(
-      { studentId, rollNumber: studentData.student.rollNumber, syncId },
+      { studentId: studentData.student.id, rollNumber: studentData.student.rollNumber, syncId },
       'Face biometric enrolled and queued for asynchronous ZKBio sync'
     );
 

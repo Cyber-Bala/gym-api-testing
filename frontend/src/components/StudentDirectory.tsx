@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, UserCheck, ShieldAlert, GraduationCap, CheckCircle2, AlertCircle, FileSpreadsheet, Award } from 'lucide-react';
+import { RefreshCw, UserCheck, ShieldAlert, GraduationCap, CheckCircle2, AlertCircle, FileSpreadsheet, Award, Camera } from 'lucide-react';
 import { Card, Badge, Alert } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { SearchInput, Select } from '../ui/Input';
 import { ExcelImportModal } from './ExcelImportModal';
+import { FaceEnrollmentModal } from './FaceEnrollmentModal';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
@@ -43,6 +44,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   const [totalCount, setTotalCount] = useState<number>(0);
   const [importOpen, setImportOpen] = useState<boolean>(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [enrollStudent, setEnrollStudent] = useState<StudentItem | null>(null);
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -226,15 +228,34 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                     </div>
                   </td>
                   <td className="py-3 px-4">
-                    {stu.faceEnrollmentStatus === 'enrolled' ? (
-                      <span className="flex items-center gap-1 text-[11px] text-success font-medium">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Enrolled
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-[11px] text-muted">
-                        Pending Scan
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {stu.faceEnrollmentStatus === 'enrolled' ? (
+                        <>
+                          <span className="flex items-center gap-1 text-[11px] text-success font-medium">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Enrolled
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => setEnrollStudent(stu)}
+                            title="Re-enroll Face Biometric"
+                          >
+                            <Camera className="w-3 h-3 text-muted hover:text-primary" />
+                            <span className="text-[10px]">Re-enroll</span>
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="xs"
+                          onClick={() => setEnrollStudent(stu)}
+                          className="text-[10px] py-0.5 px-2"
+                        >
+                          <Camera className="w-3 h-3 text-primary" />
+                          <span>Enroll Face</span>
+                        </Button>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 px-4">
                     {stu.isBanned ? (
@@ -287,6 +308,16 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
         onClose={() => setImportOpen(false)}
         onSuccess={() => {
           setImportOpen(false);
+          fetchStudents();
+        }}
+      />
+
+      <FaceEnrollmentModal
+        open={Boolean(enrollStudent)}
+        initialStudent={enrollStudent}
+        onClose={() => setEnrollStudent(null)}
+        onEnrolled={() => {
+          setEnrollStudent(null);
           fetchStudents();
         }}
       />
