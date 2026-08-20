@@ -355,11 +355,6 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         <div className="flex items-center gap-2">
           <Calendar className="w-5 h-5 text-primary" />
           <h3 className="font-bold text-base sm:text-lg text-text">Gym Slot Booking</h3>
-          {data?.config?.windowMode === 'block' ? (
-            <Badge tone="neutral">3-Day Block Cycle</Badge>
-          ) : (
-            <Badge tone="neutral">Rolling Window</Badge>
-          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -852,21 +847,6 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
               <form onSubmit={handleSaveSlotConfig} className="space-y-4 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="font-semibold text-text block">Window Mode & Refresh</label>
-                    <select
-                      value={cfgWindowMode}
-                      onChange={(e) => setCfgWindowMode(e.target.value as 'block' | 'rolling')}
-                      className="w-full px-3 py-2 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      <option value="block">Batch / Block Mode (Refreshes every 3 days)</option>
-                      <option value="rolling">Continuous Rolling Mode (Daily slide)</option>
-                    </select>
-                    <p className="text-[10px] text-muted">
-                      Block mode opens 3-day groups; after 3rd day finishes, next 3 days open.
-                    </p>
-                  </div>
-
-                  <div className="space-y-1">
                     <label className="font-semibold text-text block">Window Days Count</label>
                     <input
                       type="number"
@@ -877,7 +857,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                       onChange={(e) => setCfgWindowDays(parseInt(e.target.value, 10))}
                       className="w-full px-3 py-2 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
                     />
-                    <p className="text-[10px] text-muted">Number of open bookable days displayed</p>
+                    <p className="text-[10px] text-muted">Number of open bookable days in the window (default 3)</p>
                   </div>
 
                   <div className="space-y-1">
@@ -908,7 +888,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                     <p className="text-[10px] text-muted">e.g. 60m, 45m, 90m per batch</p>
                   </div>
 
-                  <div className="space-y-1 sm:col-span-2">
+                  <div className="space-y-1">
                     <label className="font-semibold text-text block">Buffer Between Slots (Minutes)</label>
                     <input
                       type="number"
@@ -920,7 +900,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                       className="w-full px-3 py-2 rounded-xl bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                     <p className="text-[10px] text-muted">
-                      Transition gap between consecutive batches (e.g. 0m or 15m cleaning gap)
+                      Transition gap between batches (e.g. 0m or 15m cleaning gap)
                     </p>
                   </div>
                 </div>
