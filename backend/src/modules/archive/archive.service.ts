@@ -1,4 +1,4 @@
-import { eq, desc, sql, lte } from 'drizzle-orm';
+import { eq, desc, sql, lte, inArray } from 'drizzle-orm';
 import {
   PutObjectCommand,
   GetObjectCommand,
@@ -235,36 +235,27 @@ export class ArchiveService {
       // ── 2c. Delete archived records from source DB ──
       if (entityType === 'access_logs') {
         const ids = rows.map((r) => r.id as string);
-        // delete in batches
         for (let i = 0; i < ids.length; i += 100) {
           const batch = ids.slice(i, i + 100);
-          await db
-            .delete(accessSessions)
-            .where(sql`${accessSessions.id} = ANY(${sql.raw(`ARRAY[${batch.map((id) => `'${id}'`).join(',')}]::uuid[]`)}`);
+          await db.delete(accessSessions).where(inArray(accessSessions.id, batch));
         }
       } else if (entityType === 'bookings') {
         const ids = rows.map((r) => r.id as string);
         for (let i = 0; i < ids.length; i += 100) {
           const batch = ids.slice(i, i + 100);
-          await db
-            .delete(bookings)
-            .where(sql`${bookings.id} = ANY(${sql.raw(`ARRAY[${batch.map((id) => `'${id}'`).join(',')}]::uuid[]`)}`);
+          await db.delete(bookings).where(inArray(bookings.id, batch));
         }
       } else if (entityType === 'violations') {
         const ids = rows.map((r) => r.id as string);
         for (let i = 0; i < ids.length; i += 100) {
           const batch = ids.slice(i, i + 100);
-          await db
-            .delete(violations)
-            .where(sql`${violations.id} = ANY(${sql.raw(`ARRAY[${batch.map((id) => `'${id}'`).join(',')}]::uuid[]`)}`);
+          await db.delete(violations).where(inArray(violations.id, batch));
         }
       } else if (entityType === 'payments') {
         const ids = rows.map((r) => r.id as string);
         for (let i = 0; i < ids.length; i += 100) {
           const batch = ids.slice(i, i + 100);
-          await db
-            .delete(paymentOrders)
-            .where(sql`${paymentOrders.id} = ANY(${sql.raw(`ARRAY[${batch.map((id) => `'${id}'`).join(',')}]::uuid[]`)}`);
+          await db.delete(paymentOrders).where(inArray(paymentOrders.id, batch));
         }
       }
 
