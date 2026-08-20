@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
 export const archiveJobSchema = z.object({
-  entityType: z.enum(['access_logs', 'bookings', 'violations']),
+  entityType: z.enum(['access_logs', 'bookings', 'violations', 'payments']),
   cutoffDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Cutoff date must be YYYY-MM-DD'),
 });
+
 
 export const studentDepartureSchema = z.object({
   studentIds: z.array(z.string().min(1)).min(1, 'At least one student ID / Roll number is required'),
