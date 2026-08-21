@@ -4,6 +4,7 @@ import {
   getCalendarClosures,
   createCalendarClosure,
   unlockCalendarDate,
+  deleteCalendarClosureHandler,
   getSlotConfigHandler,
   updateSlotConfigHandler,
   getAuditLogs,
@@ -13,6 +14,7 @@ import {
   updateAdminHandler,
   deleteAdminHandler,
 } from './admin.controller.js';
+import { updateSlotCapacity, updateSlotStatus } from '../booking/booking.controller.js';
 import { requireAuth, requireRole } from '../auth/auth.middleware.js';
 
 export const adminRouter = Router();
@@ -23,11 +25,17 @@ adminRouter.get('/analytics', requireAuth, requireRole(['admin', 'super_admin'])
 // Gym operational calendar & date locking
 adminRouter.get('/calendar', requireAuth, requireRole(['admin', 'super_admin']), getCalendarClosures);
 adminRouter.post('/calendar/closure', requireAuth, requireRole(['admin', 'super_admin']), createCalendarClosure);
+adminRouter.delete('/calendar/closure/:id', requireAuth, requireRole(['admin', 'super_admin']), deleteCalendarClosureHandler);
 adminRouter.post('/calendar/unlock', requireAuth, requireRole(['admin', 'super_admin']), unlockCalendarDate);
+
+// Slot maintenance & overrides via admin path
+adminRouter.patch('/slots/:id/capacity', requireAuth, requireRole(['admin', 'super_admin']), updateSlotCapacity);
+adminRouter.patch('/slots/:id/status', requireAuth, requireRole(['admin', 'super_admin']), updateSlotStatus);
 
 // Slot Schedule & Window Configuration
 adminRouter.get('/slot-config', requireAuth, requireRole(['admin', 'super_admin']), getSlotConfigHandler);
 adminRouter.put('/slot-config', requireAuth, requireRole(['admin', 'super_admin']), updateSlotConfigHandler);
+
 
 // System audit logs
 adminRouter.get('/audit-logs', requireAuth, requireRole(['admin', 'super_admin']), getAuditLogs);

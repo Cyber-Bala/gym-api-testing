@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { bookingService } from './booking.service.js';
 import { reservationService } from './reservation.service.js';
 import {
@@ -6,7 +6,9 @@ import {
   cancelBookingSchema,
   updateCapacitySchema,
   updateStatusSchema,
+  updateSlotConfigSchema,
 } from './booking.types.js';
+
 import { ValidationError, UnauthorizedError } from '../../shared/errors/index.js';
 
 export const getRollingWindowSlots = async (
@@ -195,3 +197,45 @@ export const updateSlotStatus = async (
     next(err);
   }
 };
+
+export const getSlotConfig = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const config = await bookingService.getSlotConfig();
+
+    res.status(200).json({
+      success: true,
+      data: config,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateSlotConfig = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const parseResult = updateSlotConfigSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      throw new ValidationError('Invalid slot configuration payload', parseResult.error.format());
+    }
+
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    const updated = await bookingService.updateSlotConfig(parseResult.data, adminEmail);
+
+    res.status(200).json({
+      success: true,
+      message: 'Gym schedule configuration updated and regenerated successfully',
+      data: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+

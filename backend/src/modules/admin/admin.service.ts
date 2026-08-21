@@ -249,13 +249,23 @@ export class AdminService {
   /**
    * Unlock / Re-open a previously closed date
    */
-  public async unlockDate(closureDate: string, adminEmail: string): Promise<void> {
+  public async unlockDate(closureIdOrDate: string, adminEmail: string): Promise<void> {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      // 1. Remove closure record
-      await client.query(`DELETE FROM admin.gym_calendar WHERE closure_date = $1`, [closureDate]);
+      // 1. Resolve date and remove closure record
+      const calRes = await client.query(
+        `SELECT id, closure_date FROM admin.gym_calendar WHERE id::text = $1 OR closure_date = $1 LIMIT 1`,
+        [closureIdOrDate]
+      );
+
+      const closureDate = calRes.rows.length > 0 ? calRes.rows[0].closure_date : closureIdOrDate;
+
+      await client.query(
+        `DELETE FROM admin.gym_calendar WHERE id::text = $1 OR closure_date = $1`,
+        [closureIdOrDate]
+      );
 
       // 2. Re-open slots for that date
       await client.query(
@@ -281,6 +291,7 @@ export class AdminService {
       client.release();
     }
   }
+
 
   /**
    * System Audit Log Explorer (FR-ADM-004)

@@ -8,10 +8,16 @@ import {
   generateSlots,
   updateSlotCapacity,
   updateSlotStatus,
+  getSlotConfig,
+  updateSlotConfig,
 } from './booking.controller.js';
 import { requireAuth, optionalAuth, requireRole } from '../auth/auth.middleware.js';
 
 export const bookingRouter = Router();
+
+// Slot schedule configuration
+bookingRouter.get('/config', optionalAuth, getSlotConfig);
+bookingRouter.put('/config', requireAuth, requireRole(['admin', 'super_admin']), updateSlotConfig);
 
 // Slot visibility with optional user session
 bookingRouter.get('/slots/window', optionalAuth, getRollingWindowSlots);
@@ -43,3 +49,4 @@ bookingRouter.patch(
   requireRole(['admin', 'super_admin']),
   updateSlotStatus
 );
+

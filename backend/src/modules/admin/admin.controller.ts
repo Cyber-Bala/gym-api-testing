@@ -88,6 +88,26 @@ export const unlockCalendarDate = async (
   }
 };
 
+export const deleteCalendarClosureHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const closureIdOrDate = req.params.id;
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    await adminService.unlockDate(closureIdOrDate, adminEmail);
+
+    res.status(200).json({
+      success: true,
+      message: `Calendar closure ${closureIdOrDate} removed and date unlocked successfully.`,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
 export const getSlotConfigHandler = async (
   _req: Request,
   res: Response,
