@@ -76,18 +76,25 @@ export const App: React.FC = () => {
   // 3. ROLE-SPECIFIC CONTENT RENDERING
   // ─────────────────────────────────────────────
   const renderContent = () => {
-    // A. STUDENTS: Home shows ONLY their bookings; Profile view when requested via avatar menu
+    // A. STUDENTS: Home shows active reservation; Book shows normal slot booking; Profile & Payments from top menu
     if (user.role === 'student') {
-      if (activeView === 'profile') {
-        return <UserProfileView onBack={() => setActiveView('home')} />;
+      switch (activeView) {
+        case 'book':
+          return <SlotBookingView onNavigate={setActiveView} />;
+        case 'profile':
+          return <UserProfileView onBack={() => setActiveView('home')} />;
+        case 'memberships':
+          return <MembershipStore />;
+        case 'home':
+        default:
+          return (
+            <div className="space-y-6">
+              <MyBookingsCard onNavigateToBook={() => setActiveView('book')} />
+            </div>
+          );
       }
-      return (
-        <div className="space-y-6">
-          <MyBookingsCard />
-          <SlotBookingView onNavigate={setActiveView} />
-        </div>
-      );
     }
+
 
     // B. STAFF: Home shows their Profile and Entry/Exit Attendance history
     if (user.role === 'staff') {

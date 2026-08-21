@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Menu, MoreHorizontal, X } from 'lucide-react';
+import { Menu, MoreHorizontal, X, Home, CalendarCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { UserProfileBadge } from '../components/UserProfileBadge';
@@ -17,7 +17,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
   const { user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Students and Staff have simplified direct single-purpose portals without sidebars
+  const isStudent = user?.role === 'student';
   const hasSidebar = user ? ['admin', 'super_admin', 'trainer'].includes(user.role) : false;
 
   const items = useMemo(() => visibleNav(user), [user]);
@@ -72,7 +72,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
   };
 
   return (
-    <div className="min-h-screen bg-background text-text flex flex-col">
+    <div className="min-h-screen bg-background text-text flex flex-col relative">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-surface focus:p-3 focus:shadow-xl focus:border focus:border-border"
@@ -80,12 +80,12 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
         Skip to main content
       </a>
 
-      {/* Mobile Top Header */}
+      {/* Top Header Bar */}
       <header className={cn(
         'sticky top-0 z-40 border-b border-border bg-surface pt-[var(--safe-top)]',
-        hasSidebar ? 'lg:hidden' : 'block'
+        hasSidebar ? 'lg:hidden' : 'block shadow-sm'
       )}>
-        <div className="flex h-14 items-center justify-between gap-2 px-4 max-w-wide mx-auto">
+        <div className="flex h-14 items-center justify-between gap-2 px-4 sm:px-6 max-w-wide mx-auto">
           {hasSidebar ? (
             <button
               type="button"
@@ -96,14 +96,17 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
               <Menu className="h-4 w-4" />
             </button>
           ) : (
-            <div className="flex items-center gap-2.5">
+            <div
+              className="flex items-center gap-2.5 cursor-pointer select-none"
+              onClick={() => onNavigate('home')}
+            >
               <img
                 src="/icons/desktop-icon-256x256.png"
                 alt="REC Gym Logo"
                 className="h-8 w-8 rounded-lg object-contain shadow-sm shrink-0"
               />
               <div className="min-w-0">
-                <p className="font-bold text-xs text-text leading-tight truncate">REC College Gym</p>
+                <p className="font-bold text-xs sm:text-sm text-text leading-tight truncate">REC College Gym</p>
                 <p className="text-[10px] text-muted truncate">
                   {user?.role === 'student' ? 'Student Portal' : user?.role === 'staff' ? 'Staff Portal' : 'Member Portal'}
                 </p>
@@ -127,12 +130,12 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
           <div className="flex items-center gap-2">
             <NotificationCenter compact />
             <ThemeToggle compact />
-            <UserProfileBadge compact />
+            <UserProfileBadge compact onNavigate={onNavigate} />
           </div>
         </div>
       </header>
 
-      {/* Mobile Drawer Sheet (Only for roles with sidebar) */}
+      {/* Mobile Drawer Sheet (Only for roles with full sidebar) */}
       {hasSidebar && drawerOpen && (
         <div className="fixed inset-0 z-50 lg:hidden animate-in fade-in duration-150">
           <button
@@ -188,12 +191,12 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
         </div>
       )}
 
-      {/* Main Desktop Grid */}
+      {/* Main Content Layout */}
       <div className={cn(
         'flex-1',
         hasSidebar ? 'lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]' : 'flex flex-col'
       )}>
-        {/* Desktop Sidebar Navigation (Only for admin, super_admin, trainer) */}
+        {/* Desktop Sidebar (Only for admin, super_admin, trainer) */}
         {hasSidebar && (
           <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-surface pt-[var(--safe-top)] lg:flex">
             <div className="flex items-center gap-3 border-b border-border px-5 py-4">
@@ -231,9 +234,8 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
           </aside>
         )}
 
-        {/* Desktop Main Content Area */}
+        {/* Main Content Area */}
         <div className="flex min-h-screen min-w-0 flex-col flex-1">
-          {/* Desktop Top Header Bar (Only when sidebar exists; full-width mode uses top header above) */}
           {hasSidebar && (
             <header className="sticky top-0 z-30 hidden items-center justify-between border-b border-border bg-surface px-8 py-3 lg:flex shadow-sm">
               <div className="flex items-center gap-2">
@@ -244,7 +246,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
 
               <div className="flex items-center gap-3">
                 <NotificationCenter />
-                <UserProfileBadge />
+                <UserProfileBadge onNavigate={onNavigate} />
               </div>
             </header>
           )}
@@ -253,7 +255,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             id="main"
             className={cn(
               'mx-auto w-full max-w-wide flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-8',
-              hasSidebar ? 'pb-[calc(5.5rem+var(--safe-bottom))] lg:pb-10' : 'pb-10'
+              isStudent ? 'pb-24' : hasSidebar ? 'pb-[calc(5.5rem+var(--safe-bottom))] lg:pb-10' : 'pb-10'
             )}
           >
             {children}
@@ -261,7 +263,45 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation Bar (Only for roles with sidebar navigation) */}
+      {/* Floating Rounded Bottom Navigation Bar for Students */}
+      {isStudent && (
+        <nav
+          className="fixed inset-x-0 bottom-5 z-40 flex justify-center pointer-events-none px-4 animate-in fade-in slide-in-from-bottom-4 duration-200"
+          aria-label="Student Floating Navigation"
+        >
+          <div className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-full bg-surface/90 backdrop-blur-xl border border-border shadow-2xl">
+            <button
+              type="button"
+              onClick={() => onNavigate('home')}
+              className={cn(
+                'flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold transition-all',
+                active === 'home'
+                  ? 'bg-primary text-white shadow-md'
+                  : 'text-muted hover:text-text hover:bg-border-subtle'
+              )}
+            >
+              <Home className="w-4 h-4" />
+              <span>Home</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigate('book')}
+              className={cn(
+                'flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold transition-all',
+                active === 'book'
+                  ? 'bg-primary text-white shadow-md'
+                  : 'text-muted hover:text-text hover:bg-border-subtle'
+              )}
+            >
+              <CalendarCheck className="w-4 h-4" />
+              <span>Book</span>
+            </button>
+          </div>
+        </nav>
+      )}
+
+      {/* Mobile Bottom Navigation Bar (For trainer / admin on small screens) */}
       {hasSidebar && (
         <nav
           className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface shadow-2xl pb-[var(--safe-bottom)] lg:hidden"

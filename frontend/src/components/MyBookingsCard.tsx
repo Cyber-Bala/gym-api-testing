@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarCheck, Clock, RefreshCw, CheckCircle2, Ban } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Card, Badge, Modal, Alert, EmptyState } from '../ui/primitives';
+import { Card, Badge, Modal, Alert } from '../ui/primitives';
+
 import { Button, IconButton } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { api } from '../lib/api';
@@ -24,9 +25,10 @@ interface UserBooking {
 
 interface MyBookingsCardProps {
   onBookingChanged?: () => void;
+  onNavigateToBook?: () => void;
 }
 
-export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged }) => {
+export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged, onNavigateToBook }) => {
   const { user } = useAuth();
   const toast = useToast();
   const [bookings, setBookings] = useState<UserBooking[]>([]);
@@ -116,12 +118,32 @@ export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged
       </div>
 
       {activeBookings.length === 0 ? (
-        <EmptyState
-          icon={<CalendarCheck className="w-6 h-6" />}
-          title="No active gym slots reserved"
-          description="Choose an available slot from the 3-day booking calendar below to reserve your workout batch."
-        />
+        <div className="p-8 text-center space-y-4 rounded-2xl bg-surface-elevated/60 border border-border">
+          <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto shadow-inner">
+            <CalendarCheck className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h4 className="font-bold text-base text-text">No Active Gym Reservations</h4>
+            <p className="text-xs text-muted max-w-sm mx-auto">
+              You don't have any workout slots booked for today. Reserve your batch to work out at REC Gym.
+            </p>
+          </div>
+          {onNavigateToBook && (
+            <div className="pt-2">
+              <Button
+                variant="primary"
+                size="md"
+                onClick={onNavigateToBook}
+                className="shadow-md"
+              >
+                <CalendarCheck className="w-4 h-4 mr-2" />
+                <span>Book a Slot</span>
+              </Button>
+            </div>
+          )}
+        </div>
       ) : (
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {activeBookings.map((b) => (
             <div
