@@ -1,12 +1,23 @@
 import { v4 as uuidv4 } from 'uuid';
-import { eq } from 'drizzle-orm';
+import { eq, and, gt, desc } from 'drizzle-orm';
 import { db } from '../../shared/database/index.js';
 import { redis } from '../../shared/redis/index.js';
 import { config } from '../../config/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { UnauthorizedError } from '../../shared/errors/index.js';
-import { accounts, oauthProviders, people, students, staff, authorizedPersons, adminProfiles, roles } from '../../db/schema/index.js';
+import {
+  accounts,
+  oauthProviders,
+  people,
+  students,
+  staff,
+  authorizedPersons,
+  adminProfiles,
+  roles,
+  memberships,
+} from '../../db/schema/index.js';
 import { UserRole, SessionUser, SessionData, GoogleTokenPayload, AuthResponse } from './auth.types.js';
+
 
 export class AuthService {
   /**
@@ -254,8 +265,15 @@ export class AuthService {
       }
     }
 
+    // Determine overall face enrollment status
+    let faceEnrollmentStatus = personRecord.faceEnrollmentStatus || 'not_enrolled';
+    let faceReferenceId = personRecord.faceReferenceId || null;
+
     // Load student details if applicable
     let studentDetails: SessionUser['studentDetails'];
+    let hasActiveMembership = true;
+    let activeMembershipEndDate: string | null = null;
+
     if (personRecord.personType === 'student') {
       const [studentRec] = await db
         .select()
@@ -263,6 +281,11 @@ export class AuthService {
         .where(eq(students.personId, personRecord.id))
         .limit(1);
       if (studentRec) {
+        if (studentRec.faceEnrollmentStatus === 'enrolled') {
+          faceEnrollmentStatus = 'enrolled';
+          faceReferenceId = studentRec.faceReferenceId || faceReferenceId;
+        }
+
         studentDetails = {
           rollNumber: studentRec.rollNumber,
           department: studentRec.department,
@@ -270,13 +293,41 @@ export class AuthService {
           residency: studentRec.residency,
           isBanned: studentRec.isBanned,
           violationCount: studentRec.violationCount,
-          faceEnrollmentStatus: studentRec.faceEnrollmentStatus || 'not_enrolled',
-          faceReferenceId: studentRec.faceReferenceId || null,
+          faceEnrollmentStatus,
+          faceReferenceId,
           phone: personRecord.phone || null,
           emergencyContact: studentRec.emergencyContact || null,
           address: studentRec.address || null,
           healthConcerns: studentRec.healthConcerns || null,
         };
+
+        // Determine active membership for day scholars
+        if (studentRec.residency === 'day_scholar') {
+          const now = new Date();
+          const [activeMem] = await db
+            .select()
+            .from(memberships)
+            .where(
+              and(
+                eq(memberships.studentId, studentRec.id),
+                eq(memberships.status, 'active'),
+                gt(memberships.endDate, now)
+              )
+            )
+            .orderBy(desc(memberships.endDate))
+            .limit(1);
+
+          if (activeMem) {
+            hasActiveMembership = true;
+            activeMembershipEndDate = activeMem.endDate.toISOString();
+          } else {
+            hasActiveMembership = false;
+            activeMembershipEndDate = null;
+          }
+        } else {
+          // Hostellers have inclusive access
+          hasActiveMembership = true;
+        }
       }
     }
 
@@ -304,11 +355,16 @@ export class AuthService {
       role: userRole,
       personType: personRecord.personType,
       status: personRecord.status,
+      faceEnrollmentStatus,
+      faceReferenceId,
+      hasActiveMembership,
+      activeMembershipEndDate,
       permissions,
       isProtectedSuperAdmin,
       studentDetails,
       staffDetails,
     };
+
   }
 
   /**

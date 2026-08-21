@@ -722,25 +722,34 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                     </Badge>
                   </div>
 
-                  {/* Occupancy Progress */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5" />
-                        <span>Capacity</span>
-                      </span>
-                      <span className="font-semibold text-text">
-                        {slot.bookedCount} / {slot.capacity}
-                      </span>
+                  {/* Occupancy Progress (Visible to Staff, Trainer, and Admin) */}
+                  {!isStudent && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5" />
+                          <span>Capacity</span>
+                        </span>
+                        <span className="font-semibold text-text">
+                          {slot.bookedCount} / {slot.capacity}
+                        </span>
+                      </div>
+                      <ProgressBar value={slot.occupancyPercentage} />
                     </div>
-                    <ProgressBar value={slot.occupancyPercentage} />
-                  </div>
+                  )}
 
                   {/* Actions & Admin Controls */}
                   <div className="pt-2 border-t border-border flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted">
-                      {slot.availableSpots} spots open
-                    </span>
+                    {!isStudent ? (
+                      <span className="text-xs text-muted">
+                        {slot.availableSpots} spots open
+                      </span>
+                    ) : (
+                      <span className="text-xs text-secondary font-medium">
+                        {slot.isBookedByCurrentUser ? 'Confirmed booking' : slot.isFull ? 'Batch full' : 'Available for booking'}
+                      </span>
+                    )}
+
 
                     <div className="flex items-center gap-1.5">
                       {isStudent && slot.isBookedByCurrentUser ? (

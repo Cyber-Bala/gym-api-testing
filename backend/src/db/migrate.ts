@@ -56,9 +56,14 @@ export const runMigrations = async (): Promise<void> => {
       phone VARCHAR(20),
       person_type VARCHAR(50) NOT NULL,
       status VARCHAR(50) NOT NULL DEFAULT 'active',
+      face_enrollment_status VARCHAR(50) NOT NULL DEFAULT 'not_enrolled',
+      face_reference_id VARCHAR(255),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE people.people ADD COLUMN IF NOT EXISTS face_enrollment_status VARCHAR(50) NOT NULL DEFAULT 'not_enrolled';
+    ALTER TABLE people.people ADD COLUMN IF NOT EXISTS face_reference_id VARCHAR(255);
+
 
     CREATE TABLE IF NOT EXISTS people.students (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

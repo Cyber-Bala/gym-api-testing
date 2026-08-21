@@ -11,9 +11,12 @@ export const people = peopleSchema.table('people', {
   phone: varchar('phone', { length: 20 }),
   personType: varchar('person_type', { length: 50 }).notNull(), // student, staff, trainer, authorized_person, admin
   status: varchar('status', { length: 50 }).notNull().default('active'), // active, inactive, departed
+  faceEnrollmentStatus: varchar('face_enrollment_status', { length: 50 }).notNull().default('not_enrolled'),
+  faceReferenceId: varchar('face_reference_id', { length: 255 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
 
 export const students = peopleSchema.table('students', {
   id: uuid('id').primaryKey().defaultRandom(),

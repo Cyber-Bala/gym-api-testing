@@ -48,8 +48,12 @@ interface PaymentRecord {
   createdAt: string;
 }
 
-export const MembershipStore: React.FC = () => {
-  const { user } = useAuth();
+interface MembershipStoreProps {
+  mandatoryMode?: boolean;
+}
+
+export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode = false }) => {
+  const { user, refreshSession, logout } = useAuth();
   const toast = useToast();
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [myMembership, setMyMembership] = useState<UserMembership | null>(null);
@@ -60,6 +64,7 @@ export const MembershipStore: React.FC = () => {
 
   const isDayScholar = user?.studentDetails?.residency === 'day_scholar';
   const isAdmin = user && ['admin', 'super_admin'].includes(user.role);
+
 
   // Load Razorpay Checkout Script
   useEffect(() => {
@@ -166,6 +171,7 @@ export const MembershipStore: React.FC = () => {
               const msg = `Payment confirmed! Your ${plan.name} pass is now active.`;
               setSuccessMessage(msg);
               toast.success(msg, 'Payment Verified');
+              await refreshSession();
               fetchData();
             } catch (err: unknown) {
               const msg = err instanceof Error ? err.message : String(err);
@@ -199,15 +205,132 @@ export const MembershipStore: React.FC = () => {
         const msg = `Payment confirmed! Your ${plan.name} is now active.`;
         setSuccessMessage(msg);
         toast.success(msg, 'Payment Completed');
+        await refreshSession();
         fetchData();
         setPurchasingPlanId(null);
       }
+
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(msg, 'Order Initiation Failed');
       setPurchasingPlanId(null);
     }
   };
+
+  if (mandatoryMode) {
+    return (
+      <div className="min-h-screen bg-background text-text flex flex-col items-center justify-center p-4 sm:p-6 relative">
+        <div className="w-full max-w-4xl space-y-6">
+          {/* Header Branding */}
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-surface-elevated border border-border shadow-sm mb-1">
+              <img
+                src="/icons/desktop-icon-256x256.png"
+                alt="REC Gym Logo"
+                className="w-12 h-12 object-contain rounded-xl shadow-sm"
+              />
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold text-text">Institutional Gym Pass Required</h1>
+            <p className="text-xs text-secondary max-w-md mx-auto leading-relaxed">
+              As a Day Scholar student, an active gym membership pass is required to enter the facility and book workout sessions.
+            </p>
+          </div>
+
+          <Card className="space-y-6 border-2 border-primary/40 bg-surface shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-accent to-primary" />
+
+            {/* Student Info Strip */}
+            <div className="flex items-center justify-between p-3.5 rounded-xl bg-surface-elevated border border-border text-xs">
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-text truncate">{user?.name}</span>
+                  <Badge tone="primary">Day Scholar</Badge>
+                  {user?.studentDetails?.rollNumber && (
+                    <span className="font-mono text-muted text-[11px]">
+                      ({user.studentDetails.rollNumber})
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted truncate">{user?.email}</p>
+              </div>
+
+              <Badge tone="warning" className="shrink-0 flex items-center gap-1">
+                <CreditCard className="w-3 h-3" /> Pass Required
+              </Badge>
+            </div>
+
+            {successMessage && (
+              <Alert tone="success" onDismiss={() => setSuccessMessage(null)}>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
+                  <span className="font-semibold">{successMessage}</span>
+                </div>
+              </Alert>
+            )}
+
+            {/* Plans Grid */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-sm text-text">Choose Your Gym Membership Pass</h4>
+                <IconButton
+                  label="Refresh plans"
+                  size="sm"
+                  onClick={fetchData}
+                  disabled={loading}
+                >
+                  <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+                </IconButton>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {plans.map((p) => (
+                  <div
+                    key={p.id}
+                    className={cn(
+                      'p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-4 relative bg-surface-elevated/60',
+                      'border-border hover:border-primary hover:shadow-md'
+                    )}
+                  >
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-base text-text">{p.name}</h4>
+                      <p className="text-xs text-muted">{p.durationDays} Days Access</p>
+                      <div className="pt-2 text-2xl font-black text-text">
+                        ₹{p.price}
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="primary"
+                      size="md"
+                      className="w-full shadow-sm"
+                      loading={purchasingPlanId === p.id}
+                      onClick={() => handlePurchase(p)}
+                    >
+                      {purchasingPlanId === p.id ? 'Processing...' : 'Pay & Activate'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-border flex items-center justify-between text-xs text-muted">
+              <span className="text-[11px]">
+                Payments are securely processed via Razorpay.
+              </span>
+
+              <button
+                type="button"
+                onClick={logout}
+                className="text-danger hover:underline inline-flex items-center gap-1 text-[11px] font-medium"
+              >
+                Sign out
+              </button>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -229,6 +352,7 @@ export const MembershipStore: React.FC = () => {
             <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
           </IconButton>
         </div>
+
 
         {successMessage && (
           <Alert tone="success" onDismiss={() => setSuccessMessage(null)}>

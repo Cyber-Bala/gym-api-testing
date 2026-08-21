@@ -10,8 +10,13 @@ export interface SessionUser {
   role: UserRole;
   personType: string;
   status: string;
+  faceEnrollmentStatus?: string | null;
+  faceReferenceId?: string | null;
+  hasActiveMembership?: boolean;
+  activeMembershipEndDate?: string | null;
   permissions: string[];
   isProtectedSuperAdmin?: boolean;
+
   studentDetails?: {
     rollNumber: string;
     department: string;

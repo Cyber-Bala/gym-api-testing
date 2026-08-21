@@ -83,53 +83,69 @@ export class BiometricsService {
   }
 
   /**
-   * Enroll a student's face biometric and queue for hardware sync (ADR-011, ACINT-011)
+   * Enroll a person's face biometric (student, staff, trainer) and queue for hardware sync (ADR-011, ACINT-011)
    */
-  public async enrollStudentFace(studentIdentifier: string, faceImageBase64: string): Promise<FaceSyncTaskDto> {
-    const [studentData] = await db
+  public async enrollStudentFace(personIdentifier: string, faceImageBase64: string): Promise<FaceSyncTaskDto> {
+    const [personData] = await db
       .select({
-        student: students,
         person: people,
+        student: students,
       })
-      .from(students)
-      .innerJoin(people, eq(students.personId, people.id))
+      .from(people)
+      .leftJoin(students, eq(students.personId, people.id))
       .where(
         or(
-          eq(students.id, studentIdentifier),
-          eq(students.personId, studentIdentifier),
-          eq(people.id, studentIdentifier),
-          eq(students.rollNumber, studentIdentifier),
-          eq(people.email, studentIdentifier)
+          eq(people.id, personIdentifier),
+          eq(people.email, personIdentifier),
+          eq(students.id, personIdentifier),
+          eq(students.rollNumber, personIdentifier)
         )
       )
       .limit(1);
 
-    if (!studentData) {
-      throw new NotFoundError(`Student '${studentIdentifier}' not found`);
+    if (!personData) {
+      throw new NotFoundError(`Person '${personIdentifier}' not found`);
     }
 
-    const faceReferenceId = studentData.student.faceReferenceId || `face_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
+    const faceReferenceId =
+      personData.person.faceReferenceId ||
+      personData.student?.faceReferenceId ||
+      `face_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
 
-    // Update face enrollment status and reference ID
+    // Update people table
     await db
-      .update(students)
+      .update(people)
       .set({
         faceEnrollmentStatus: 'enrolled',
         faceReferenceId,
         updatedAt: new Date(),
       })
-      .where(eq(students.id, studentData.student.id));
+      .where(eq(people.id, personData.person.id));
 
-    // Remove existing pending task for this student to avoid duplicate queue entries
-    this.syncQueue = this.syncQueue.filter((s) => s.studentId !== studentData.student.id || s.status !== 'pending');
+    // If student record exists, also update students table
+    if (personData.student) {
+      await db
+        .update(students)
+        .set({
+          faceEnrollmentStatus: 'enrolled',
+          faceReferenceId,
+          updatedAt: new Date(),
+        })
+        .where(eq(students.id, personData.student.id));
+    }
+
+    // Remove existing pending task for this person to avoid duplicate queue entries
+    this.syncQueue = this.syncQueue.filter((s) => s.personId !== personData.person.id || s.status !== 'pending');
 
     const syncId = uuidv4();
+    const rollNumber = personData.student?.rollNumber || (personData.person.personType === 'staff' ? 'Staff' : 'Trainer');
+
     const syncRecord: InMemSyncRecord = {
       id: syncId,
-      studentId: studentData.student.id,
-      personId: studentData.person.id,
-      rollNumber: studentData.student.rollNumber,
-      name: studentData.person.name,
+      studentId: personData.student?.id || personData.person.id,
+      personId: personData.person.id,
+      rollNumber,
+      name: personData.person.name,
       status: 'pending', // Correctly queued while turnstile socket/device is offline
       retryCount: 0,
       createdAt: new Date(),
@@ -139,7 +155,7 @@ export class BiometricsService {
     this.syncQueue.unshift(syncRecord);
 
     logger.info(
-      { studentId: studentData.student.id, rollNumber: studentData.student.rollNumber, syncId, status: 'pending' },
+      { personId: personData.person.id, rollNumber, syncId, status: 'pending' },
       'Face biometric enrolled and queued for asynchronous turnstile sync'
     );
 
@@ -155,6 +171,7 @@ export class BiometricsService {
       updatedAt: syncRecord.updatedAt.toISOString(),
     };
   }
+
 
   /**
    * List all biometric synchronization tasks

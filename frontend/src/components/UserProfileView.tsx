@@ -22,11 +22,16 @@ import { useToast } from '../context/ToastContext';
 import { FaceEnrollmentModal, StudentSummary } from './FaceEnrollmentModal';
 import { cn } from '../lib/cn';
 
-export const UserProfileView: React.FC = () => {
+interface UserProfileViewProps {
+  onBack?: () => void;
+}
+
+export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
   const { user, refreshSession } = useAuth();
   const toast = useToast();
   const details = user?.studentDetails;
   const staffDetails = user?.staffDetails;
+
 
   // Editable fields state
   const [phone, setPhone] = useState<string>(details?.phone || '');
@@ -137,6 +142,16 @@ export const UserProfileView: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 self-end sm:self-center">
+            {onBack && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onBack}
+              >
+                <span>Back to Bookings</span>
+              </Button>
+            )}
+
             <Button
               variant="outline"
               size="sm"
@@ -158,6 +173,7 @@ export const UserProfileView: React.FC = () => {
               </Button>
             )}
           </div>
+
         </div>
       </Card>
 

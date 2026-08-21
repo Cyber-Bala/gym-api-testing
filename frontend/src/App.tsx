@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext';
 import { AppShell } from './layout/AppShell';
 import { AppView } from './layout/nav';
 import { LoginPage } from './components/LoginPage';
+import { MandatoryFaceEnrollment } from './components/MandatoryFaceEnrollment';
 import { HomeDashboard } from './components/HomeDashboard';
 import { SlotBookingView } from './components/SlotBookingView';
 import { MyBookingsCard } from './components/MyBookingsCard';
@@ -47,7 +48,58 @@ export const App: React.FC = () => {
     return <LoginPage />;
   }
 
+  // ─────────────────────────────────────────────
+  // 1. DAY SCHOLAR PAYMENT GATEKEEPER
+  // Day scholars MUST complete payment for a gym pass before entering the app
+  // ─────────────────────────────────────────────
+  const isDayScholar =
+    user.role === 'student' && user.studentDetails?.residency === 'day_scholar';
+
+  if (isDayScholar && user.hasActiveMembership === false) {
+    return <MembershipStore mandatoryMode />;
+  }
+
+  // ─────────────────────────────────────────────
+  // 2. MANDATORY FACE BIOMETRIC ENROLLMENT GATEKEEPER
+  // Face scan is mandatory to enter the app for student, staff, and trainer
+  // ─────────────────────────────────────────────
+  const isMemberRole = ['student', 'staff', 'trainer'].includes(user.role);
+  const isFaceEnrolled =
+    user.faceEnrollmentStatus === 'enrolled' ||
+    user.studentDetails?.faceEnrollmentStatus === 'enrolled';
+
+  if (isMemberRole && !isFaceEnrolled) {
+    return <MandatoryFaceEnrollment />;
+  }
+
+  // ─────────────────────────────────────────────
+  // 3. ROLE-SPECIFIC CONTENT RENDERING
+  // ─────────────────────────────────────────────
   const renderContent = () => {
+    // A. STUDENTS: Home shows ONLY their bookings; Profile view when requested via avatar menu
+    if (user.role === 'student') {
+      if (activeView === 'profile') {
+        return <UserProfileView onBack={() => setActiveView('home')} />;
+      }
+      return (
+        <div className="space-y-6">
+          <MyBookingsCard />
+          <SlotBookingView onNavigate={setActiveView} />
+        </div>
+      );
+    }
+
+    // B. STAFF: Home shows their Profile and Entry/Exit Attendance history
+    if (user.role === 'staff') {
+      return (
+        <div className="space-y-6">
+          <UserProfileView />
+          <MyAccessHistory />
+        </div>
+      );
+    }
+
+    // C. TRAINERS & ADMINS: Multi-view operations dashboard
     switch (activeView) {
       case 'home':
         return <HomeDashboard onNavigate={setActiveView} />;
@@ -61,9 +113,6 @@ export const App: React.FC = () => {
           </div>
         );
       case 'memberships':
-        if (user.studentDetails?.residency === 'hosteller') {
-          return <HomeDashboard onNavigate={setActiveView} />;
-        }
         return <MembershipStore />;
       case 'my_access':
         return <MyAccessHistory />;
@@ -102,5 +151,3 @@ export const App: React.FC = () => {
     </AppShell>
   );
 };
-
-
