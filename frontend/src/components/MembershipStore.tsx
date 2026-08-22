@@ -365,12 +365,12 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
 
         {/* Active Membership Status Card */}
         {myMembership ? (
-          <div className="p-5 rounded-2xl bg-success-muted/20 space-y-2 shadow-sm">
+          <div className="p-5 rounded-2xl bg-surface-elevated space-y-3 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-success" />
                 <span className="text-xs uppercase font-bold text-success">
-                  Active Pass
+                  Active Gym Pass
                 </span>
               </div>
               <Badge tone="success">
@@ -378,64 +378,78 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
               </Badge>
             </div>
 
-            <h4 className="font-bold text-lg text-text mt-1">
-              {myMembership.planName} — ₹{myMembership.price}
-            </h4>
-            <p className="text-xs text-secondary">
-              Valid until {new Date(myMembership.endDate).toLocaleDateString()}
-            </p>
+            <div>
+              <h4 className="font-bold text-lg text-text">
+                {myMembership.planName} — ₹{myMembership.price}
+              </h4>
+              <p className="text-xs text-secondary mt-0.5">
+                Valid from {new Date(myMembership.startDate).toLocaleDateString()} until {new Date(myMembership.endDate).toLocaleDateString()}
+              </p>
+            </div>
           </div>
         ) : isDayScholar ? (
-          <Alert tone="warning">
-            <div className="flex items-start gap-2.5">
-              <Zap className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">No Active Membership Pass</p>
-                <p className="mt-0.5 text-xs text-secondary">
-                  Please select and activate a pass below to enable gym workout slot reservations.
-                </p>
+          <div className="space-y-4">
+            <Alert tone="warning">
+              <div className="flex items-start gap-2.5">
+                <Zap className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">No Active Membership Pass</p>
+                  <p className="mt-0.5 text-xs text-secondary">
+                    Please select and activate a pass below to enable gym workout slot reservations.
+                  </p>
+                </div>
               </div>
-            </div>
-          </Alert>
-        ) : null}
+            </Alert>
 
-        {/* Plans Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {plans.map((p) => (
-            <div
-              key={p.id}
-              className="p-5 rounded-2xl bg-surface-elevated flex flex-col justify-between space-y-4 shadow-sm transition-all hover:shadow-md"
-            >
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h4 className="font-bold text-base text-text">{p.name}</h4>
-                    <p className="text-xs text-muted font-mono mt-0.5">{p.durationDays} Days Duration</p>
+            {/* Plans Grid (Only shown when Day Scholar has no active pass) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {plans.map((p) => (
+                <div
+                  key={p.id}
+                  className="p-5 rounded-2xl bg-surface-elevated flex flex-col justify-between space-y-4 shadow-sm transition-all hover:shadow-md"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h4 className="font-bold text-base text-text">{p.name}</h4>
+                        <p className="text-xs text-muted font-mono mt-0.5">{p.durationDays} Days Duration</p>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <span className="text-2xl font-black text-text">₹{p.price}</span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="pt-2">
-                  <span className="text-2xl font-black text-text">₹{p.price}</span>
+                  <Button
+                    variant="primary"
+                    size="md"
+                    className="w-full"
+                    loading={purchasingPlanId === p.id}
+                    onClick={() => handlePurchase(p)}
+                  >
+                    {purchasingPlanId === p.id ? 'Processing...' : 'Activate Pass'}
+                  </Button>
                 </div>
-              </div>
-
-              <Button
-                variant="primary"
-                size="md"
-                className="w-full"
-                loading={purchasingPlanId === p.id}
-                onClick={() => handlePurchase(p)}
-              >
-                {purchasingPlanId === p.id
-                  ? 'Processing...'
-                  : myMembership?.isActive
-                  ? 'Extend Pass'
-                  : 'Activate Pass'}
-              </Button>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div className="p-5 rounded-2xl bg-surface-elevated space-y-2 shadow-sm">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-success" />
+              <span className="text-xs uppercase font-bold text-success">
+                Hosteller Gym Access
+              </span>
+            </div>
+            <h4 className="font-bold text-base text-text">Inclusive Campus Residency Pass</h4>
+            <p className="text-xs text-secondary">
+              Gym membership is fully covered by college hostel residency with zero subscription charges.
+            </p>
+          </div>
+        )}
       </Card>
+
 
       {/* Payment Receipts & Transaction Ledger */}
       {user && (

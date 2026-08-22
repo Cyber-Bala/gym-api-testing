@@ -18,7 +18,8 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
   const { user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const isStudent = user?.role === 'student';
+  const isStudent = user?.role === 'student' || user?.personType === 'student';
+  const isStaff = user?.role === 'staff' || user?.personType === 'staff';
   const hasSidebar = user ? ['admin', 'super_admin', 'trainer'].includes(user.role) : false;
 
   const items = useMemo(() => visibleNav(user), [user]);
@@ -109,7 +110,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
               <div className="min-w-0">
                 <p className="font-bold text-xs sm:text-sm text-text leading-tight truncate">REC College Gym</p>
                 <p className="text-[10px] text-muted truncate">
-                  {user?.role === 'student' ? 'Student Portal' : user?.role === 'staff' ? 'Staff Portal' : 'Member Portal'}
+                  {isStudent ? 'Student Portal' : isStaff ? 'Staff Portal' : 'Member Portal'}
                 </p>
               </div>
             </div>
@@ -138,105 +139,108 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
 
       {/* Mobile Drawer Sheet (Only for roles with full sidebar) */}
       {hasSidebar && drawerOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden animate-in fade-in duration-150">
-          <button
-            type="button"
-            className="absolute inset-0 bg-[var(--color-overlay)] backdrop-blur-sm"
-            aria-label="Close menu"
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="fixed inset-0 bg-overlay backdrop-blur-sm transition-opacity"
             onClick={() => setDrawerOpen(false)}
+            aria-hidden="true"
           />
-          <aside className="relative flex h-full w-[min(20rem,86vw)] flex-col border-r border-border bg-surface pt-[var(--safe-top)] shadow-2xl animate-in slide-in-from-left duration-200">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <div className="flex items-center gap-2.5">
+
+          <div className="fixed inset-y-0 left-0 flex w-full max-w-xs flex-col bg-surface p-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-4">
+              <div className="flex items-center gap-3">
                 <img
                   src="/icons/desktop-icon-256x256.png"
                   alt="REC Gym Logo"
-                  className="h-8 w-8 rounded-lg object-contain shadow-sm shrink-0"
+                  className="h-9 w-9 rounded-xl object-contain shadow-sm"
                 />
                 <div>
-                  <p className="font-bold text-xs text-text">REC College Gym</p>
-                  <p className="text-[10px] text-muted">Rajalakshmi</p>
+                  <h2 className="font-bold text-sm text-text leading-tight">REC College Gym</h2>
+                  <p className="text-[11px] text-muted">Operations Menu</p>
                 </div>
               </div>
               <button
                 type="button"
-                aria-label="Close"
+                className="rounded-lg p-1.5 text-muted hover:bg-border-subtle hover:text-text"
                 onClick={() => setDrawerOpen(false)}
-                className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-border-subtle"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+            <nav className="mt-4 flex-1 space-y-6 overflow-y-auto pr-1">
               {groups.map((group) => {
                 const groupItems = items.filter((i) => group.ids.includes(i.id));
-                if (!groupItems.length) return null;
+                if (groupItems.length === 0) return null;
                 return (
-                  <div key={group.title} className="space-y-1">
-                    <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted">
+                  <div key={group.title} className="space-y-1.5">
+                    <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted">
                       {group.title}
                     </p>
-                    {groupItems.map((item) => (
-                      <NavButton key={item.id} item={item} dense />
-                    ))}
+                    <div className="space-y-1">
+                      {groupItems.map((item) => (
+                        <NavButton key={item.id} item={item} />
+                      ))}
+                    </div>
                   </div>
                 );
               })}
             </nav>
-
-            <div className="border-t border-border p-4">
-              <ThemeToggle className="w-full justify-center" />
-            </div>
-          </aside>
+          </div>
         </div>
       )}
 
-      {/* Main Content Layout */}
-      <div className={cn(
-        'flex-1',
-        hasSidebar ? 'lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]' : 'flex flex-col'
-      )}>
-        {/* Desktop Sidebar (Only for admin, super_admin, trainer) */}
+      {/* Main Layout Body */}
+      <div className="flex flex-1">
+        {/* Desktop Sidebar (Only for roles that have sidebar) */}
         {hasSidebar && (
-          <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-surface pt-[var(--safe-top)] lg:flex">
-            <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+          <aside
+            className="hidden w-64 shrink-0 border-r border-border bg-surface lg:flex lg:flex-col"
+            aria-label="Desktop Sidebar"
+          >
+            <div className="flex h-16 items-center gap-3 border-b border-border px-6">
               <img
                 src="/icons/desktop-icon-256x256.png"
                 alt="REC Gym Logo"
-                className="h-9 w-9 rounded-xl object-contain shadow-sm shrink-0"
+                className="h-9 w-9 rounded-xl object-contain shadow-sm"
               />
               <div className="min-w-0">
-                <p className="truncate font-bold text-sm text-text leading-tight">REC College Gym</p>
-                <p className="truncate text-[11px] text-muted">Rajalakshmi Engineering</p>
+                <h2 className="font-bold text-sm text-text leading-tight truncate">REC College Gym</h2>
+                <p className="text-[11px] text-muted truncate">
+                  {user?.role ? user.role.replace('_', ' ').toUpperCase() : 'PORTAL'}
+                </p>
               </div>
             </div>
 
-            <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+            <nav className="flex-1 space-y-6 overflow-y-auto px-4 py-5">
               {groups.map((group) => {
                 const groupItems = items.filter((i) => group.ids.includes(i.id));
-                if (!groupItems.length) return null;
+                if (groupItems.length === 0) return null;
                 return (
-                  <div key={group.title} className="space-y-1">
-                    <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted">
+                  <div key={group.title} className="space-y-1.5">
+                    <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted">
                       {group.title}
                     </p>
-                    {groupItems.map((item) => (
-                      <NavButton key={item.id} item={item} />
-                    ))}
+                    <div className="space-y-1">
+                      {groupItems.map((item) => (
+                        <NavButton key={item.id} item={item} />
+                      ))}
+                    </div>
                   </div>
                 );
               })}
             </nav>
 
-            <div className="border-t border-border p-4">
-              <ThemeToggle className="w-full justify-center" />
+            <div className="border-t border-border p-4 flex items-center justify-between">
+              <span className="text-[10px] text-muted font-mono">REC Gym v2.4</span>
+              <ThemeToggle compact />
             </div>
           </aside>
         )}
 
-        {/* Main Content Area */}
-        <div className="flex min-h-screen min-w-0 flex-col flex-1">
+        {/* Content Viewport */}
+        <div className="flex flex-1 flex-col min-w-0">
+          {/* Top Bar for Desktop (Sidebar mode) */}
           {hasSidebar && (
             <header className="sticky top-0 z-30 hidden items-center justify-between border-b border-border bg-surface px-8 py-3 lg:flex shadow-sm">
               <div className="flex items-center gap-2">
@@ -256,7 +260,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             id="main"
             className={cn(
               'mx-auto w-full max-w-wide flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-8',
-              isStudent ? 'pb-24' : hasSidebar ? 'pb-[calc(5.5rem+var(--safe-bottom))] lg:pb-10' : 'pb-10'
+              (isStudent || isStaff) ? 'pb-24' : hasSidebar ? 'pb-[calc(5.5rem+var(--safe-bottom))] lg:pb-10' : 'pb-10'
             )}
           >
             {children}
@@ -264,18 +268,18 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
         </div>
       </div>
 
-      {/* Floating Rounded Bottom Navigation Bar for Students */}
-      {isStudent && (
+      {/* Floating Rounded Bottom Navigation Bar for Students and Staff */}
+      {(isStudent || isStaff) && (
         <nav
           className="fixed inset-x-0 bottom-5 z-40 flex justify-center pointer-events-none px-4 animate-in fade-in slide-in-from-bottom-4 duration-200"
-          aria-label="Student Floating Navigation"
+          aria-label="Bottom Navigation"
         >
           <div className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-full bg-surface/90 backdrop-blur-xl border border-border shadow-2xl">
             <button
               type="button"
               onClick={() => onNavigate('home')}
               className={cn(
-                'flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold transition-all',
+                'flex items-center gap-2 rounded-full px-4 sm:px-5 py-2 text-xs font-bold transition-all',
                 active === 'home'
                   ? 'bg-primary text-white shadow-md'
                   : 'text-muted hover:text-text hover:bg-border-subtle'
@@ -285,19 +289,21 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
               <span>Home</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => onNavigate('book')}
-              className={cn(
-                'flex items-center gap-2 rounded-full px-4 sm:px-5 py-2 text-xs font-bold transition-all',
-                active === 'book'
-                  ? 'bg-primary text-white shadow-md'
-                  : 'text-muted hover:text-text hover:bg-border-subtle'
-              )}
-            >
-              <CalendarCheck className="w-4 h-4" />
-              <span>Book</span>
-            </button>
+            {isStudent && (
+              <button
+                type="button"
+                onClick={() => onNavigate('book')}
+                className={cn(
+                  'flex items-center gap-2 rounded-full px-4 sm:px-5 py-2 text-xs font-bold transition-all',
+                  active === 'book'
+                    ? 'bg-primary text-white shadow-md'
+                    : 'text-muted hover:text-text hover:bg-border-subtle'
+                )}
+              >
+                <CalendarCheck className="w-4 h-4" />
+                <span>Book</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -315,6 +321,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
           </div>
         </nav>
       )}
+
 
 
       {/* Mobile Bottom Navigation Bar (For trainer / admin on small screens) */}
