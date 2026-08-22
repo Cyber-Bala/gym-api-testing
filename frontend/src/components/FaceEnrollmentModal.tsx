@@ -87,18 +87,29 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         throw new Error('Camera access is not supported on this browser or connection. Please use file upload.');
       }
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode,
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-        },
-        audio: false,
-      });
+      let mediaStream: MediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
+          audio: false,
+        });
+      } catch {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
 
       setStream(mediaStream);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(() => {});
+        };
         videoRef.current.play().catch(() => {});
       }
     } catch (err: unknown) {
@@ -114,6 +125,17 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
       setCameraLoading(false);
     }
   }, [facingMode, stopCamera]);
+
+  useEffect(() => {
+    if (stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.onloadedmetadata = () => {
+        videoRef.current?.play().catch(() => {});
+      };
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream, facingMode]);
+
 
   // Start camera when modal opens and no captured image
   useEffect(() => {
@@ -398,7 +420,16 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           ) : (
             <div className="relative w-full h-[280px] flex items-center justify-center">
               <video
-                ref={videoRef}
+                ref={(el) => {
+                  videoRef.current = el;
+                  if (el && stream && el.srcObject !== stream) {
+                    el.srcObject = stream;
+                    el.onloadedmetadata = () => {
+                      el.play().catch(() => {});
+                    };
+                    el.play().catch(() => {});
+                  }
+                }}
                 autoPlay
                 playsInline
                 muted
@@ -407,6 +438,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
                   facingMode === 'user' && 'scale-x-[-1]'
                 )}
               />
+
 
               {/* Facial Alignment Guideline Overlay */}
               <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">

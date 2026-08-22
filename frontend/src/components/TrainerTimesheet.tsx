@@ -243,7 +243,7 @@ export const TrainerTimesheet: React.FC = () => {
             <Stat
               label="Hours on Floor (This Month)"
               value={`${profile?.totalHoursThisMonth || 0} hrs`}
-              hint="Turnstile biometric logs"
+              hint="Biometric session logs"
               icon={<Award className="w-4 h-4 text-primary" />}
             />
             <Stat
@@ -253,14 +253,14 @@ export const TrainerTimesheet: React.FC = () => {
               icon={<CheckCircle2 className="w-4 h-4 text-success" />}
             />
             <Stat
-              label="Current Turnstile Status"
+              label="Current Floor Status"
               value={profile?.activeShift ? 'Inside (On Floor)' : 'Outside'}
-              hint="Live turnstile session"
+              hint="Live gym session"
               icon={<Activity className={cn('w-4 h-4', profile?.activeShift ? 'text-success' : 'text-muted')} />}
             />
           </div>
 
-          {/* Live Turnstile Status Notice */}
+          {/* Live Biometric Status Notice */}
           <div className="p-4 rounded-2xl bg-surface-elevated flex items-center gap-3 shadow-sm">
             <div className={cn(
               'w-3 h-3 rounded-full shrink-0',
@@ -272,8 +272,8 @@ export const TrainerTimesheet: React.FC = () => {
               </h4>
               <p className="text-[11px] text-secondary">
                 {profile?.activeShift
-                  ? `Turnstile entry scanned at ${new Date(profile.activeShift.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Scan your face or card at the exit turnstile when departing.`
-                  : 'Time is automatically calculated upon scanning through the biometric turnstile.'}
+                  ? `Entry scanned at ${new Date(profile.activeShift.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Scan your face or card at the exit when departing.`
+                  : 'Time is automatically calculated upon scanning through biometric facial recognition.'}
               </p>
             </div>
           </div>
@@ -282,8 +282,9 @@ export const TrainerTimesheet: React.FC = () => {
           {profile && profile.shifts.length > 0 && (
             <div className="space-y-3 pt-2">
               <h4 className="font-bold text-xs text-muted uppercase tracking-wider">
-                Turnstile Shift Logs
+                Biometric Shift Logs
               </h4>
+
 
               <div className="overflow-x-auto rounded-xl bg-surface-elevated shadow-sm">
                 <table className="w-full text-xs text-left">

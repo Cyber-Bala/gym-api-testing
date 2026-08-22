@@ -39,6 +39,9 @@ export const MandatoryFaceEnrollment: React.FC = () => {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setIsCameraActive(false);
   }, []);
 
@@ -52,20 +55,31 @@ export const MandatoryFaceEnrollment: React.FC = () => {
         throw new Error('Camera access not supported on this browser. Please use photo upload.');
       }
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode,
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-        },
-        audio: false,
-      });
+      let mediaStream: MediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
+          audio: false,
+        });
+      } catch {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
 
       streamRef.current = mediaStream;
       setIsCameraActive(true);
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(() => {});
+        };
         videoRef.current.play().catch(() => {});
       }
     } catch (err: unknown) {
@@ -79,6 +93,16 @@ export const MandatoryFaceEnrollment: React.FC = () => {
       setCameraLoading(false);
     }
   }, [facingMode, stopCamera]);
+
+  useEffect(() => {
+    if (isCameraActive && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.onloadedmetadata = () => {
+        videoRef.current?.play().catch(() => {});
+      };
+      videoRef.current.play().catch(() => {});
+    }
+  }, [isCameraActive, facingMode]);
 
   useEffect(() => {
     return () => {
@@ -133,7 +157,7 @@ export const MandatoryFaceEnrollment: React.FC = () => {
     e.preventDefault();
 
     if (!capturedImage) {
-      toast.error('Please capture or upload your face photo to complete turnstile registration.');
+      toast.error('Please capture or upload your face photo to complete biometric registration.');
       return;
     }
 
@@ -143,11 +167,11 @@ export const MandatoryFaceEnrollment: React.FC = () => {
         faceImageBase64: capturedImage,
       });
 
-      toast.success('Face biometric enrolled successfully! Welcome to the gym portal.');
+      toast.success('Face biometric registered successfully! Welcome to the gym portal.');
       await refreshSession();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'Face Enrollment Failed');
+      toast.error(msg, 'Face Registration Failed');
     } finally {
       setEnrolling(false);
     }
@@ -184,9 +208,9 @@ export const MandatoryFaceEnrollment: React.FC = () => {
               className="w-12 h-12 object-contain rounded-xl shadow-sm"
             />
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-text">Biometric Turnstile Registration</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-text">Biometric Face Registration</h1>
           <p className="text-xs text-secondary max-w-md mx-auto leading-relaxed">
-            Institutional security requires a front-facing facial scan for touchless turnstile check-in at the gym gates.
+            Institutional security requires a front-facing facial scan for touchless gym access.
           </p>
         </div>
 
@@ -211,7 +235,7 @@ export const MandatoryFaceEnrollment: React.FC = () => {
 
           <form onSubmit={handleEnrollSubmit} className="space-y-4">
             {/* Camera View / Preview Container */}
-            <div className="rounded-2xl border border-border bg-black/90 overflow-hidden min-h-[260px] max-h-[320px] flex items-center justify-center relative shadow-inner">
+            <div className="rounded-2xl border border-border bg-black overflow-hidden min-h-[260px] max-h-[320px] flex items-center justify-center relative shadow-inner">
               {capturedImage ? (
                 <div className="relative w-full h-[280px] flex items-center justify-center bg-black">
                   <img
@@ -224,9 +248,18 @@ export const MandatoryFaceEnrollment: React.FC = () => {
                   </div>
                 </div>
               ) : isCameraActive ? (
-                <div className="relative w-full h-[280px] flex items-center justify-center">
+                <div className="relative w-full h-[280px] flex items-center justify-center bg-black">
                   <video
-                    ref={videoRef}
+                    ref={(el) => {
+                      videoRef.current = el;
+                      if (el && streamRef.current && el.srcObject !== streamRef.current) {
+                        el.srcObject = streamRef.current;
+                        el.onloadedmetadata = () => {
+                          el.play().catch(() => {});
+                        };
+                        el.play().catch(() => {});
+                      }
+                    }}
                     autoPlay
                     playsInline
                     muted

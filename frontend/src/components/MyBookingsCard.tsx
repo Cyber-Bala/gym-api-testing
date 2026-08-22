@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarCheck, Clock, RefreshCw, CheckCircle2, Ban } from 'lucide-react';
+import { CalendarCheck, Clock, RefreshCw, Ban } from 'lucide-react';
+
 import { useAuth } from '../context/AuthContext';
 import { Card, Badge, Modal, Alert } from '../ui/primitives';
 
@@ -161,13 +162,8 @@ export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged
                     {b.slotDate}
                   </p>
                 </div>
-
-                <div className="text-right">
-                  <span className="text-[11px] text-success font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Turnstile Ready
-                  </span>
-                </div>
               </div>
+
 
               <div className="flex items-center justify-between pt-1">
                 <span className="text-[11px] text-muted">

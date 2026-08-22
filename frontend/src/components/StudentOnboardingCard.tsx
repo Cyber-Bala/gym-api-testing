@@ -74,20 +74,32 @@ export const StudentOnboardingCard: React.FC = () => {
         throw new Error('Camera not supported on this browser. Please use photo upload.');
       }
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode,
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-        },
-        audio: false,
-      });
+      let mediaStream: MediaStream;
+
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
+          audio: false,
+        });
+      } catch {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
 
       streamRef.current = mediaStream;
       setIsCameraActive(true);
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(() => {});
+        };
         videoRef.current.play().catch(() => {});
       }
     } catch (err: unknown) {
@@ -101,6 +113,17 @@ export const StudentOnboardingCard: React.FC = () => {
       setCameraLoading(false);
     }
   }, [facingMode, stopCamera]);
+
+  useEffect(() => {
+    if (isCameraActive && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.onloadedmetadata = () => {
+        videoRef.current?.play().catch(() => {});
+      };
+      videoRef.current.play().catch(() => {});
+    }
+  }, [isCameraActive, facingMode]);
+
 
   useEffect(() => {
     return () => {
@@ -338,7 +361,16 @@ export const StudentOnboardingCard: React.FC = () => {
                 ) : isCameraActive ? (
                   <div className="relative w-full h-[240px] flex items-center justify-center">
                     <video
-                      ref={videoRef}
+                      ref={(el) => {
+                        videoRef.current = el;
+                        if (el && streamRef.current && el.srcObject !== streamRef.current) {
+                          el.srcObject = streamRef.current;
+                          el.onloadedmetadata = () => {
+                            el.play().catch(() => {});
+                          };
+                          el.play().catch(() => {});
+                        }
+                      }}
                       autoPlay
                       playsInline
                       muted
@@ -377,11 +409,12 @@ export const StudentOnboardingCard: React.FC = () => {
                       <Camera className="w-6 h-6" />
                     </div>
                     <div>
-                      <p className="font-bold text-text text-sm">Face Photo Required for Turnstiles</p>
+                      <p className="font-bold text-text text-sm">Biometric Face Photo Required</p>
                       <p className="text-muted text-[11px] mt-0.5">
                         Capture a clear front-facing photo or upload one from your device.
                       </p>
                     </div>
+
 
                     {cameraError && (
                       <div className="p-2 rounded-xl bg-danger-muted/30 border border-danger/30 text-danger text-[11px] flex items-center gap-1.5 justify-center">

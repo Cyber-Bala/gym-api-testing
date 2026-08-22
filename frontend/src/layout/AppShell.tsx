@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Menu, MoreHorizontal, X, Home, CalendarCheck } from 'lucide-react';
+import { Menu, MoreHorizontal, X, Home, CalendarCheck, DoorOpen } from 'lucide-react';
+
 import { useAuth } from '../context/AuthContext';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { UserProfileBadge } from '../components/UserProfileBadge';
@@ -288,7 +289,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
               type="button"
               onClick={() => onNavigate('book')}
               className={cn(
-                'flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold transition-all',
+                'flex items-center gap-2 rounded-full px-4 sm:px-5 py-2 text-xs font-bold transition-all',
                 active === 'book'
                   ? 'bg-primary text-white shadow-md'
                   : 'text-muted hover:text-text hover:bg-border-subtle'
@@ -297,9 +298,24 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
               <CalendarCheck className="w-4 h-4" />
               <span>Book</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigate('my_access')}
+              className={cn(
+                'flex items-center gap-2 rounded-full px-4 sm:px-5 py-2 text-xs font-bold transition-all',
+                active === 'my_access'
+                  ? 'bg-primary text-white shadow-md'
+                  : 'text-muted hover:text-text hover:bg-border-subtle'
+              )}
+            >
+              <DoorOpen className="w-4 h-4" />
+              <span>Entry / Exit</span>
+            </button>
           </div>
         </nav>
       )}
+
 
       {/* Mobile Bottom Navigation Bar (For trainer / admin on small screens) */}
       {hasSidebar && (

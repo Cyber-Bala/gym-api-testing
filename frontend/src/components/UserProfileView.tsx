@@ -368,7 +368,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
         </Card>
       </div>
 
-      {/* Section 3: Biometric Turnstile Access Status */}
+      {/* Section 3: Biometric Access Status */}
       {isStudent && (
         <Card className="p-5 border border-border bg-surface-elevated/40">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -378,16 +378,17 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-sm text-text">Biometric Face Turnstile Access</h4>
+                  <h4 className="font-bold text-sm text-text">Biometric Face Access</h4>
                   <Badge tone="success" className="text-[10px]">
-                    Turnstile Ready
+                    Access Ready
                   </Badge>
                 </div>
                 <p className="text-xs text-secondary mt-0.5">
-                  Your biometric facial recognition profile is active for instant touchless turnstile check-in and check-out.
+                  Your biometric facial recognition profile is active for instant touchless gym check-in and check-out.
                 </p>
               </div>
             </div>
+
 
             <Button
               variant="outline"

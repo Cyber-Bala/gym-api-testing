@@ -76,11 +76,13 @@ export const App: React.FC = () => {
   // 3. ROLE-SPECIFIC CONTENT RENDERING
   // ─────────────────────────────────────────────
   const renderContent = () => {
-    // A. STUDENTS: Home shows active reservation; Book shows normal slot booking; Profile & Payments from top menu
+    // A. STUDENTS: Home shows active reservation; Book shows normal slot booking; Entry/Exit shows access history; Profile & Payments from top menu
     if (user.role === 'student') {
       switch (activeView) {
         case 'book':
           return <SlotBookingView onNavigate={setActiveView} />;
+        case 'my_access':
+          return <MyAccessHistory />;
         case 'profile':
           return <UserProfileView onBack={() => setActiveView('home')} />;
         case 'memberships':
@@ -94,6 +96,7 @@ export const App: React.FC = () => {
           );
       }
     }
+
 
 
     // B. STAFF: Home shows their Profile and Entry/Exit Attendance history
