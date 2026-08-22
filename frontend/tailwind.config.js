@@ -1,4 +1,13 @@
 /** @type {import('tailwindcss').Config} */
+function withOpacity(variableName) {
+  return ({ opacityValue }) => {
+    if (opacityValue !== undefined) {
+      return `rgba(var(${variableName}), ${opacityValue})`;
+    }
+    return `rgb(var(${variableName}))`;
+  };
+}
+
 export default {
   content: [
     './index.html',
@@ -8,41 +17,41 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: 'var(--color-background)',
+        background: withOpacity('--color-background'),
         surface: {
-          DEFAULT: 'var(--color-surface)',
-          elevated: 'var(--color-surface-elevated)',
+          DEFAULT: withOpacity('--color-surface'),
+          elevated: withOpacity('--color-surface-elevated'),
         },
         border: {
-          DEFAULT: 'var(--color-border)',
-          subtle: 'var(--color-border-subtle)',
+          DEFAULT: withOpacity('--color-border'),
+          subtle: withOpacity('--color-border-subtle'),
         },
         text: {
-          DEFAULT: 'var(--color-text)',
-          secondary: 'var(--color-text-secondary)',
-          muted: 'var(--color-text-muted)',
+          DEFAULT: withOpacity('--color-text'),
+          secondary: withOpacity('--color-text-secondary'),
+          muted: withOpacity('--color-text-muted'),
         },
         primary: {
-          DEFAULT: 'var(--color-primary)',
-          hover: 'var(--color-primary-hover)',
-          muted: 'var(--color-primary-muted)',
+          DEFAULT: withOpacity('--color-primary'),
+          hover: withOpacity('--color-primary-hover'),
+          muted: withOpacity('--color-primary-muted'),
         },
         accent: {
-          DEFAULT: 'var(--color-accent)',
-          hover: 'var(--color-accent-hover)',
-          muted: 'var(--color-accent-muted)',
+          DEFAULT: withOpacity('--color-accent'),
+          hover: withOpacity('--color-accent-hover'),
+          muted: withOpacity('--color-accent-muted'),
         },
         success: {
-          DEFAULT: 'var(--color-success)',
-          muted: 'var(--color-success-muted)',
+          DEFAULT: withOpacity('--color-success'),
+          muted: withOpacity('--color-success-muted'),
         },
         warning: {
-          DEFAULT: 'var(--color-warning)',
-          muted: 'var(--color-warning-muted)',
+          DEFAULT: withOpacity('--color-warning'),
+          muted: withOpacity('--color-warning-muted'),
         },
         danger: {
-          DEFAULT: 'var(--color-danger)',
-          muted: 'var(--color-danger-muted)',
+          DEFAULT: withOpacity('--color-danger'),
+          muted: withOpacity('--color-danger-muted'),
         },
         rec: {
           purple: {

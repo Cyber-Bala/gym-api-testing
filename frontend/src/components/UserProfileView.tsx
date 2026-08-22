@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   Building2,
   Calendar,
-  Camera,
   RefreshCw,
   Award,
 } from 'lucide-react';
@@ -19,7 +18,6 @@ import { Button } from '../ui/Button';
 import { Input, Textarea } from '../ui/Input';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
-import { FaceEnrollmentModal, StudentSummary } from './FaceEnrollmentModal';
 import { cn } from '../lib/cn';
 
 interface UserProfileViewProps {
@@ -32,7 +30,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
   const details = user?.studentDetails;
   const staffDetails = user?.staffDetails;
 
-
   // Editable fields state
   const [phone, setPhone] = useState<string>(details?.phone || '');
   const [emergencyContact, setEmergencyContact] = useState<string>(details?.emergencyContact || '');
@@ -42,7 +39,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [faceModalOpen, setFaceModalOpen] = useState<boolean>(false);
 
   // Sync state when user session updates
   useEffect(() => {
@@ -102,46 +98,37 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
 
   const isStudent = user?.role === 'student' || user?.personType === 'student';
 
-  const studentSummary: StudentSummary | null = isStudent && user && details
-    ? {
-        id: user.personId,
-        name: user.name,
-        rollNumber: details.rollNumber,
-        email: user.email,
-        department: details.department,
-        faceEnrollmentStatus: 'enrolled',
-      }
-    : null;
-
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6 min-w-0 w-full overflow-hidden">
       {/* Header Profile Card */}
-      <Card className="p-6 bg-gradient-to-br from-surface to-surface-elevated border border-border shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 border-2 border-primary/30 flex items-center justify-center text-primary font-bold text-2xl shadow-inner shrink-0">
+      <Card className="p-4 sm:p-6 bg-gradient-to-br from-surface to-surface-elevated border border-border shadow-sm min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-0">
+          <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-primary/10 border-2 border-primary/30 flex items-center justify-center text-primary font-bold text-xl sm:text-2xl shadow-inner shrink-0">
               {user?.name?.charAt(0).toUpperCase() || 'U'}
             </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl sm:text-2xl font-bold text-text">{user?.name}</h2>
-                <Badge tone="primary" className="capitalize text-xs font-semibold">
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <h2 className="text-lg sm:text-2xl font-bold text-text break-words leading-tight">
+                  {user?.name}
+                </h2>
+                <Badge tone="primary" className="capitalize text-[11px] font-semibold">
                   {user?.role.replace('_', ' ')}
                 </Badge>
                 {details?.residency && (
-                  <Badge tone={details.residency === 'hosteller' ? 'accent' : 'neutral'} className="capitalize text-xs">
+                  <Badge tone={details.residency === 'hosteller' ? 'accent' : 'neutral'} className="capitalize text-[11px]">
                     {details.residency === 'hosteller' ? 'Hosteller (Free Inclusive)' : 'Day Scholar'}
                   </Badge>
                 )}
               </div>
-              <p className="text-xs sm:text-sm text-secondary font-mono mt-0.5 flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-muted" />
-                <span>{user?.email}</span>
+              <p className="text-xs sm:text-sm text-secondary font-mono flex items-center gap-1.5 min-w-0 break-all">
+                <Mail className="w-3.5 h-3.5 text-muted shrink-0" />
+                <span className="break-all">{user?.email}</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-center">
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-center shrink-0 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-border/50">
             {onBack && (
               <Button
                 variant="secondary"
@@ -173,72 +160,77 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
               </Button>
             )}
           </div>
-
         </div>
       </Card>
 
       {/* Main Grid: Institutional Info & Editable Details */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 min-w-0">
         {/* Section 1: Official Institutional Information (Read-Only / Locked) */}
-        <Card className="space-y-4">
+        <Card className="space-y-4 min-w-0">
           <div className="flex items-center justify-between border-b border-border pb-3">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-border-subtle text-muted">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="p-1.5 rounded-lg bg-border-subtle text-muted shrink-0">
                 <Lock className="w-4 h-4" />
               </div>
-              <div>
-                <h3 className="font-bold text-sm text-text">Institutional Profile</h3>
-                <p className="text-[11px] text-muted">Official college academic records</p>
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm text-text truncate">Institutional Profile</h3>
+                <p className="text-[11px] text-muted truncate">Official college academic records</p>
               </div>
             </div>
-            <Badge tone="neutral" className="text-[10px] flex items-center gap-1">
+            <Badge tone="neutral" className="text-[10px] flex items-center gap-1 shrink-0">
               <Lock className="w-2.5 h-2.5" /> Read-Only
             </Badge>
           </div>
 
-          <div className="space-y-3 text-xs">
+          <div className="space-y-2.5 text-xs min-w-0">
             {isStudent && details && (
               <>
-                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-secondary">
-                    <GraduationCap className="w-4 h-4 text-primary" />
+                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-1 min-w-0">
+                  <div className="flex items-center gap-2 text-secondary shrink-0">
+                    <GraduationCap className="w-4 h-4 text-primary shrink-0" />
                     <span>Roll Number:</span>
                   </div>
-                  <span className="font-mono font-bold text-text text-sm">{details.rollNumber}</span>
+                  <span className="font-mono font-bold text-text text-sm break-all sm:text-right">
+                    {details.rollNumber}
+                  </span>
                 </div>
 
-                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-secondary">
-                    <Building2 className="w-4 h-4 text-accent" />
+                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-1 min-w-0">
+                  <div className="flex items-center gap-2 text-secondary shrink-0">
+                    <Building2 className="w-4 h-4 text-accent shrink-0" />
                     <span>Department:</span>
                   </div>
-                  <span className="font-semibold text-text">{details.department}</span>
+                  <span className="font-semibold text-text break-words sm:text-right">
+                    {details.department}
+                  </span>
                 </div>
 
-                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-secondary">
-                    <Calendar className="w-4 h-4 text-muted" />
+                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-1 min-w-0">
+                  <div className="flex items-center gap-2 text-secondary shrink-0">
+                    <Calendar className="w-4 h-4 text-muted shrink-0" />
                     <span>Joining Year / Batch:</span>
                   </div>
-                  <span className="font-mono font-semibold text-text">{details.joiningYear}</span>
+                  <span className="font-mono font-semibold text-text sm:text-right">
+                    {details.joiningYear}
+                  </span>
                 </div>
 
-                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-secondary">
-                    <Home className="w-4 h-4 text-secondary" />
+                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-1 min-w-0">
+                  <div className="flex items-center gap-2 text-secondary shrink-0">
+                    <Home className="w-4 h-4 text-secondary shrink-0" />
                     <span>Residency Status:</span>
                   </div>
-                  <span className="font-semibold text-text capitalize">
+                  <span className="font-semibold text-text capitalize sm:text-right">
                     {details.residency === 'hosteller' ? 'Hosteller (Inclusive Access)' : 'Day Scholar (Pass Required)'}
                   </span>
                 </div>
 
-                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-secondary">
-                    <Shield className="w-4 h-4 text-success" />
+                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-1 min-w-0">
+                  <div className="flex items-center gap-2 text-secondary shrink-0">
+                    <Shield className="w-4 h-4 text-success shrink-0" />
                     <span>Access Standing:</span>
                   </div>
-                  <Badge tone={details.isBanned ? 'danger' : 'success'}>
+                  <Badge tone={details.isBanned ? 'danger' : 'success'} className="self-start sm:self-auto">
                     {details.isBanned ? 'Access Restricted' : 'Active & In Good Standing'}
                   </Badge>
                 </div>
@@ -247,51 +239,55 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
 
             {staffDetails && (
               <>
-                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-secondary">
-                    <Award className="w-4 h-4 text-primary" />
+                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-1 min-w-0">
+                  <div className="flex items-center gap-2 text-secondary shrink-0">
+                    <Award className="w-4 h-4 text-primary shrink-0" />
                     <span>Staff ID:</span>
                   </div>
-                  <span className="font-mono font-bold text-text">{staffDetails.staffId}</span>
+                  <span className="font-mono font-bold text-text break-all sm:text-right">
+                    {staffDetails.staffId}
+                  </span>
                 </div>
 
-                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-secondary">
-                    <Building2 className="w-4 h-4 text-accent" />
+                <div className="p-3 rounded-xl bg-surface-elevated border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-1 min-w-0">
+                  <div className="flex items-center gap-2 text-secondary shrink-0">
+                    <Building2 className="w-4 h-4 text-accent shrink-0" />
                     <span>Department:</span>
                   </div>
-                  <span className="font-semibold text-text">{staffDetails.department}</span>
+                  <span className="font-semibold text-text break-words sm:text-right">
+                    {staffDetails.department}
+                  </span>
                 </div>
               </>
             )}
 
-            <div className="p-3 rounded-xl bg-surface-elevated/40 border border-dashed border-border flex items-start gap-2 text-[11px] text-muted">
+            <div className="p-3 rounded-xl bg-surface-elevated/40 border border-dashed border-border flex items-start gap-2 text-[11px] text-muted min-w-0">
               <Shield className="w-3.5 h-3.5 text-muted shrink-0 mt-0.5" />
-              <span>
-                To request modifications to your institutional name, roll number, or department, please contact the Physical Education Directorate or Dean Office.
+              <span className="break-words">
+                To request modifications to institutional records, please contact the Physical Education Directorate or Dean Office.
               </span>
             </div>
           </div>
         </Card>
 
         {/* Section 2: Contact & Safety Details (EDITABLE ✏️) */}
-        <Card className="space-y-4">
+        <Card className="space-y-4 min-w-0">
           <div className="flex items-center justify-between border-b border-border pb-3">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-primary-muted text-primary">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="p-1.5 rounded-lg bg-primary-muted text-primary shrink-0">
                 <Pencil className="w-4 h-4" />
               </div>
-              <div>
-                <h3 className="font-bold text-sm text-text">Contact & Medical Details</h3>
-                <p className="text-[11px] text-muted">Self-managed personal & emergency information</p>
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm text-text truncate">Contact & Medical Details</h3>
+                <p className="text-[11px] text-muted truncate">Self-managed personal & emergency information</p>
               </div>
             </div>
-            <Badge tone="success" className="text-[10px] flex items-center gap-1 font-semibold">
+            <Badge tone="success" className="text-[10px] flex items-center gap-1 font-semibold shrink-0">
               <Pencil className="w-2.5 h-2.5" /> Editable
             </Badge>
           </div>
 
-          <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
+          <form onSubmit={handleSaveProfile} className="space-y-4 text-xs min-w-0">
             <div>
               <Input
                 label="Contact Phone Number"
@@ -367,54 +363,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
           </form>
         </Card>
       </div>
-
-      {/* Section 3: Biometric Access Status */}
-      {isStudent && (
-        <Card className="p-5 border border-border bg-surface-elevated/40">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-accent-muted text-accent shrink-0">
-                <Camera className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-sm text-text">Biometric Face Access</h4>
-                  <Badge tone="success" className="text-[10px]">
-                    Access Ready
-                  </Badge>
-                </div>
-                <p className="text-xs text-secondary mt-0.5">
-                  Your biometric facial recognition profile is active for instant touchless gym check-in and check-out.
-                </p>
-              </div>
-            </div>
-
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setFaceModalOpen(true)}
-              className="shrink-0 self-start sm:self-center"
-            >
-              <Camera className="w-3.5 h-3.5 mr-1.5" />
-              <span>Update Face Capture</span>
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {/* Face Enrollment Modal */}
-      {faceModalOpen && studentSummary && (
-        <FaceEnrollmentModal
-          open={faceModalOpen}
-          onClose={() => setFaceModalOpen(false)}
-          initialStudent={studentSummary}
-          onEnrolled={() => {
-            setFaceModalOpen(false);
-            refreshSession();
-          }}
-        />
-      )}
     </div>
   );
 };

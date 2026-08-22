@@ -3,53 +3,53 @@
 @tailwind utilities;
 
 :root {
-  --color-primary: #4A154B;
-  --color-primary-hover: #380E39;
-  --color-primary-muted: #EAD0F7;
-  --color-accent: #B89324;
-  --color-accent-hover: #9C7C1B;
-  --color-accent-muted: #FBF6E5;
-  --color-background: #E6DAF2;
-  --color-surface: #FFFFFF;
-  --color-surface-elevated: #F4EBFB;
-  --color-border: #C9AEDE;
-  --color-border-subtle: #EEE3F8;
-  --color-text: #1C0F24;
-  --color-text-secondary: #584B61;
-  --color-text-muted: #8E7E97;
-  --color-success: #059669;
-  --color-success-muted: #ECFDF5;
-  --color-warning: #D97706;
-  --color-warning-muted: #FFFBEB;
-  --color-danger: #DC2626;
-  --color-danger-muted: #FEF2F2;
-  --color-overlay: rgba(28, 15, 36, 0.5);
+  --color-primary: 74, 21, 75;
+  --color-primary-hover: 56, 14, 57;
+  --color-primary-muted: 234, 208, 247;
+  --color-accent: 184, 147, 36;
+  --color-accent-hover: 156, 124, 27;
+  --color-accent-muted: 251, 246, 229;
+  --color-background: 230, 218, 242;
+  --color-surface: 255, 255, 255;
+  --color-surface-elevated: 244, 235, 251;
+  --color-border: 201, 174, 222;
+  --color-border-subtle: 238, 227, 248;
+  --color-text: 28, 15, 36;
+  --color-text-secondary: 88, 75, 97;
+  --color-text-muted: 142, 126, 151;
+  --color-success: 5, 150, 105;
+  --color-success-muted: 236, 253, 245;
+  --color-warning: 217, 119, 6;
+  --color-warning-muted: 255, 251, 235;
+  --color-danger: 220, 38, 38;
+  --color-danger-muted: 254, 242, 242;
+  --color-overlay: 28, 15, 36;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .dark, [data-theme="dark"] {
-  --color-primary: #701fa6;
-  --color-primary-hover: #892ec9;
-  --color-primary-muted: rgba(112, 31, 166, 0.25);
-  --color-accent: #FACC15;
-  --color-accent-hover: #FDE047;
-  --color-accent-muted: rgba(250, 204, 21, 0.12);
-  --color-background: #09090B;
-  --color-surface: #141417;
-  --color-surface-elevated: #1F1F25;
-  --color-border: #3A3A44;
-  --color-border-subtle: #24242B;
-  --color-text: #F8FAFC;
-  --color-text-secondary: #94A3B8;
-  --color-text-muted: #64748B;
-  --color-success: #10B981;
-  --color-success-muted: rgba(16, 185, 129, 0.12);
-  --color-warning: #F59E0B;
-  --color-warning-muted: rgba(245, 158, 11, 0.12);
-  --color-danger: #EF4444;
-  --color-danger-muted: rgba(239, 68, 68, 0.12);
-  --color-overlay: rgba(0, 0, 0, 0.75);
+  --color-primary: 112, 31, 166;
+  --color-primary-hover: 137, 46, 201;
+  --color-primary-muted: 45, 15, 65;
+  --color-accent: 250, 204, 21;
+  --color-accent-hover: 253, 224, 71;
+  --color-accent-muted: 50, 42, 10;
+  --color-background: 9, 9, 11;
+  --color-surface: 20, 20, 23;
+  --color-surface-elevated: 31, 31, 37;
+  --color-border: 39, 39, 44;
+  --color-border-subtle: 28, 28, 34;
+  --color-text: 248, 250, 252;
+  --color-text-secondary: 148, 163, 184;
+  --color-text-muted: 100, 116, 139;
+  --color-success: 16, 185, 129;
+  --color-success-muted: 6, 45, 30;
+  --color-warning: 245, 158, 11;
+  --color-warning-muted: 50, 35, 8;
+  --color-danger: 239, 68, 68;
+  --color-danger-muted: 55, 15, 15;
+  --color-overlay: 0, 0, 0;
 }
 
 * {
@@ -60,8 +60,8 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--color-background);
-  color: var(--color-text);
+  background-color: rgb(var(--color-background));
+  color: rgb(var(--color-text));
   min-height: 100vh;
 }
 
@@ -69,7 +69,7 @@ body {
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.025em;
-  color: var(--color-text);
+  color: rgb(var(--color-text));
 }
 
 @media (min-width: 640px) {
@@ -89,11 +89,10 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: rgb(var(--color-border));
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted);
+  background: rgb(var(--color-text-muted));
 }
-

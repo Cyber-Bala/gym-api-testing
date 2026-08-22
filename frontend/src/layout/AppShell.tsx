@@ -84,9 +84,10 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
 
       {/* Top Header Bar */}
       <header className={cn(
-        'sticky top-0 z-40 border-b border-border bg-surface pt-[var(--safe-top)]',
+        'sticky top-0 z-40 border-b border-border/60 bg-surface/95 backdrop-blur-md pt-[var(--safe-top)]',
         hasSidebar ? 'lg:hidden' : 'block shadow-sm'
       )}>
+
         <div className="flex h-14 items-center justify-between gap-2 px-4 sm:px-6 max-w-wide mx-auto">
           {hasSidebar ? (
             <button
@@ -274,7 +275,8 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
           className="fixed inset-x-0 bottom-5 z-40 flex justify-center pointer-events-none px-4 animate-in fade-in slide-in-from-bottom-4 duration-200"
           aria-label="Bottom Navigation"
         >
-          <div className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-full bg-surface/90 backdrop-blur-xl border border-border shadow-2xl">
+          <div className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-full bg-surface-elevated/95 backdrop-blur-xl border border-border/70 shadow-2xl">
+
             <button
               type="button"
               onClick={() => onNavigate('home')}
