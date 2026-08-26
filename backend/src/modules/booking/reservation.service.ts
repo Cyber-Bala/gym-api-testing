@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { eq, and, or, inArray, desc, sql, gt } from 'drizzle-orm';
+import { eq, and, or, desc, sql, gt } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { redis } from '../../shared/redis/index.js';
 import { logger } from '../../shared/logging/index.js';
@@ -150,7 +150,7 @@ export class ReservationService {
           throw new ValidationError('Cannot reserve a time slot that has already started or passed');
         }
 
-        // 5. Day Scholar membership pass coverage check for the target slot date
+        // 5. Day Scholar: ACTIVE membership must cover the slot date (no queued)
         const residency = studentRecord.residency || user.studentDetails?.residency;
         if (residency === 'day_scholar') {
           const now = new Date();
@@ -165,7 +165,7 @@ export class ReservationService {
             .where(
               and(
                 or(eq(memberships.studentId, studentTableId), eq(memberships.studentId, user.personId)),
-                inArray(memberships.status, ['active', 'queued']),
+                eq(memberships.status, 'active'),
                 gt(memberships.endDate, now)
               )
             )
@@ -173,18 +173,18 @@ export class ReservationService {
 
           if (userMemberships.length === 0) {
             throw new ForbiddenError(
-              'Day Scholar students require an active gym membership pass to book slots. Please purchase or activate a membership pass.'
+              'Day Scholar students require an active gym membership pass to book slots. Please purchase a membership pass first.'
             );
           }
 
-          // Slot date start in IST
           const slotDayStart = new Date(`${slotDateStr}T00:00:00+05:30`);
-          const maxExpiryDate = userMemberships[0].endDate;
+          const slotDayEnd = new Date(`${slotDateStr}T23:59:59.999+05:30`);
+          const covering = userMemberships.find(
+            (m) => m.startDate <= slotDayEnd && m.endDate >= slotDayStart
+          );
 
-          // Check if slot date is covered by active or queued passes
-          const isCovered = maxExpiryDate >= slotDayStart;
-
-          if (!isCovered) {
+          if (!covering) {
+            const maxExpiryDate = userMemberships[0].endDate;
             const expiryFormatted = new Intl.DateTimeFormat('en-IN', {
               timeZone: 'Asia/Kolkata',
               day: '2-digit',
@@ -193,7 +193,7 @@ export class ReservationService {
             }).format(maxExpiryDate);
 
             throw new ForbiddenError(
-              `Your gym membership pass expires on ${expiryFormatted}. You cannot book slots on ${slotDateStr} unless you extend or renew your pass.`
+              `Your gym membership pass expires on ${expiryFormatted}. You cannot book slots on ${slotDateStr} unless you renew your pass.`
             );
           }
         }

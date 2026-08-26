@@ -1,17 +1,28 @@
-import crypto from 'crypto';
-import { v4 as uuidv4 } from 'uuid';
 import { eq, and, desc, or } from 'drizzle-orm';
+import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError, ValidationError } from '../../shared/errors/index.js';
-import { paymentOrders, membershipPlans, students } from '../../db/schema/index.js';
+import { paymentOrders, membershipPlans, students, people } from '../../db/schema/index.js';
 import { membershipService } from '../membership/membership.service.js';
-import { PaymentOrderDto } from './payment.types.js';
 import { config } from '../../config/index.js';
+import {
+  PayUNotifyOutcome,
+  PayUNotifySource,
+  PaymentOrderDto,
+} from './payment.types.js';
+import {
+  buildPayUParams,
+  formatPayUAmount,
+  generateTxnId,
+  isPayUConfigured,
+  normalizePayUStatus,
+  verifyPayUResponseHash,
+} from './payu.js';
 
 export class PaymentService {
   /**
-   * Helper: Resolve student record ID from students table whether students.id or people.id (personId) was passed
+   * Resolve student record ID from students.id or people.id (personId).
    */
   private async resolveStudentId(studentOrPersonId: string): Promise<string> {
     const [stu] = await db
@@ -27,75 +38,95 @@ export class PaymentService {
     return stu.id;
   }
 
+  private async loadStudentPayee(studentId: string) {
+    const [row] = await db
+      .select({
+        studentId: students.id,
+        rollNumber: students.rollNumber,
+        name: people.name,
+        email: people.email,
+        phone: people.phone,
+      })
+      .from(students)
+      .innerJoin(people, eq(students.personId, people.id))
+      .where(eq(students.id, studentId))
+      .limit(1);
+
+    if (!row) {
+      throw new NotFoundError(`Student payee profile not found for '${studentId}'`);
+    }
+
+    return row;
+  }
+
   /**
-   * Create Razorpay Order (FR-PAY-001)
+   * Create PayU checkout (FR-PAY-001).
+   * Returns form params for client-side POST to PayU, or a simulated order when keys are missing.
    */
   public async createOrder(studentOrPersonId: string, planId: string): Promise<PaymentOrderDto> {
     const studentId = await this.resolveStudentId(studentOrPersonId);
 
     const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, planId)).limit(1);
-
     if (!plan) {
       throw new NotFoundError(`Membership plan '${planId}' not found`);
     }
 
-    const keyId = process.env.RAZORPAY_KEY_ID || config.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET || config.RAZORPAY_KEY_SECRET;
-
-    let orderId = `order_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
     const amountNum = parseFloat(plan.price);
-    const amountPaise = Math.round(amountNum * 100);
-
-    // If Razorpay API credentials are configured, create a real order on Razorpay servers
-    if (keyId && keySecret && !keyId.includes('placeholder') && !keySecret.includes('placeholder')) {
-      try {
-        const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
-        const rzpResponse = await fetch('https://api.razorpay.com/v1/orders', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': authHeader,
-          },
-          body: JSON.stringify({
-            amount: amountPaise,
-            currency: 'INR',
-            receipt: `rcpt_${uuidv4().replace(/-/g, '').slice(0, 10)}`,
-            notes: {
-              studentId,
-              planId,
-              planName: plan.name,
-            },
-          }),
-        });
-
-        if (rzpResponse.ok) {
-          const rzpOrder = (await rzpResponse.json()) as { id: string };
-          if (rzpOrder.id) {
-            orderId = rzpOrder.id;
-            logger.info({ orderId, amountPaise }, 'Created real Razorpay Order on Razorpay gateway');
-          }
-        } else {
-          const errBody = await rzpResponse.text();
-          logger.error({ status: rzpResponse.status, errBody }, 'Failed to create order on Razorpay API');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Error connecting to Razorpay API for order creation');
-      }
+    if (!(amountNum > 0)) {
+      throw new ValidationError('Cannot initiate payment for zero or negative plan price');
     }
+
+    const payee = await this.loadStudentPayee(studentId);
+    const configured = isPayUConfigured();
+    const txnid = configured
+      ? generateTxnId(payee.rollNumber || studentId)
+      : `order_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
 
     const [order] = await db
       .insert(paymentOrders)
       .values({
         studentId,
         planId,
-        orderId,
+        orderId: txnid,
         amount: plan.price,
         currency: 'INR',
         status: 'created',
       })
       .returning();
 
-    logger.info({ orderId, studentId, amount: plan.price }, 'Payment order record saved in database');
+    logger.info({ orderId: txnid, studentId, amount: plan.price, configured }, 'Payment order created');
+
+    if (!configured) {
+      return {
+        id: order.id,
+        orderId: order.orderId,
+        amount: amountNum,
+        currency: order.currency,
+        status: order.status,
+        planId: plan.id,
+        planName: plan.name,
+        simulated: true,
+      };
+    }
+
+    const payuParams = buildPayUParams({
+      txnid,
+      amount: amountNum,
+      productinfo: `Gym Pass - ${plan.name}`,
+      firstname: payee.name,
+      email: payee.email,
+      phone: payee.phone,
+      udf1: order.id,
+      udf2: studentId,
+    });
+
+    await db
+      .update(paymentOrders)
+      .set({
+        gatewayResponse: { hash_sent: payuParams.hash, payu_params: payuParams },
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentOrders.id, order.id));
 
     return {
       id: order.id,
@@ -105,14 +136,22 @@ export class PaymentService {
       status: order.status,
       planId: plan.id,
       planName: plan.name,
-      keyId: keyId || 'rzp_test_rec_college_gym',
+      keyId: payuParams.key,
+      payuUrl: config.PAYU_BASE_URL,
+      payuParams,
+      simulated: false,
     };
   }
 
   /**
-   * Verify Razorpay Payment Signature and activate membership (FR-PAY-002)
+   * Dev/test verification path (and post-redirect client sync with simulated_success when unconfigured).
    */
-  public async verifyPayment(orderId: string, paymentId: string, signature: string, studentOrPersonId: string) {
+  public async verifyPayment(
+    orderId: string,
+    paymentId: string,
+    signature: string,
+    studentOrPersonId: string
+  ) {
     const studentId = await this.resolveStudentId(studentOrPersonId);
 
     const [order] = await db
@@ -125,21 +164,32 @@ export class PaymentService {
       throw new NotFoundError(`Payment order '${orderId}' not found for student`);
     }
 
-    // Razorpay HMAC Verification
-    const secret = process.env.RAZORPAY_KEY_SECRET || config.RAZORPAY_KEY_SECRET || 'rec_gym_razorpay_secret_key';
-    const generatedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(`${orderId}|${paymentId}`)
-      .digest('hex');
-
-    const isSimulated = signature === 'simulated_success' || process.env.NODE_ENV === 'test' || signature === generatedSignature;
-
-    if (!isSimulated && signature !== generatedSignature) {
-      logger.warn({ orderId, paymentId, signature, generatedSignature }, 'Razorpay payment signature mismatch');
-      throw new ValidationError('Invalid payment verification signature');
+    if (order.status === 'paid') {
+      const membership = await membershipService.activateMembership(
+        studentId,
+        order.planId,
+        order.paymentId || paymentId
+      );
+      return {
+        success: true,
+        message: 'Payment already confirmed and gym membership pass is active.',
+        orderId,
+        paymentId: order.paymentId || paymentId,
+        membership,
+      };
     }
 
-    // Update order status
+    const allowSimulated =
+      signature === 'simulated_success' ||
+      process.env.NODE_ENV === 'test' ||
+      !isPayUConfigured();
+
+    if (!allowSimulated) {
+      throw new ValidationError(
+        'Direct verify is only available in simulation mode. Complete payment on PayU; status is confirmed via callback/webhook.'
+      );
+    }
+
     await db
       .update(paymentOrders)
       .set({
@@ -149,10 +199,9 @@ export class PaymentService {
       })
       .where(eq(paymentOrders.id, order.id));
 
-    // Activate membership pass
     const membership = await membershipService.activateMembership(studentId, order.planId, paymentId);
 
-    logger.info({ orderId, paymentId, studentId }, 'Payment verified and membership activated');
+    logger.info({ orderId, paymentId, studentId }, 'Simulated payment verified and membership activated');
 
     return {
       success: true,
@@ -164,76 +213,171 @@ export class PaymentService {
   }
 
   /**
-   * Handle Razorpay Webhooks (payment.captured, order.paid, payment.failed)
+   * Idempotent PayU notification handler (browser surl/furl + S2S webhook).
    */
-  public async handleWebhook(payload: any, signature?: string) {
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || config.RAZORPAY_WEBHOOK_SECRET;
+  public async processPayUNotification(
+    params: Record<string, string>,
+    source: PayUNotifySource
+  ): Promise<PayUNotifyOutcome> {
+    const txnid = (params.txnid || '').trim();
+    const rawStatus = (params.status || '').trim();
+    const payuStatus = normalizePayUStatus(rawStatus);
+    const mihpayid = (params.mihpayid || '').trim();
 
-    // Verify HMAC-SHA256 signature if secret and signature are configured
-    if (signature && webhookSecret && !webhookSecret.includes('placeholder')) {
-      const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
-      const expectedSignature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(payloadString)
-        .digest('hex');
+    logger.info({ source, txnid, rawStatus, payuStatus }, 'PayU notify received');
 
-      if (signature !== expectedSignature) {
-        logger.warn({ signature }, 'Razorpay webhook signature verification failed');
-        throw new ValidationError('Invalid webhook signature');
-      }
+    if (!txnid) {
+      return { result: 'missing_txnid' };
     }
 
-    const event = payload?.event;
-    logger.info({ event }, 'Received Razorpay webhook event');
+    const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderId, txnid)).limit(1);
 
-    if (event === 'payment.captured' || event === 'order.paid') {
-      const paymentEntity = payload?.payload?.payment?.entity;
-      const orderId = paymentEntity?.order_id || payload?.payload?.order?.entity?.id;
-      const paymentId = paymentEntity?.id;
-
-      if (orderId) {
-        const [order] = await db
-          .select()
-          .from(paymentOrders)
-          .where(eq(paymentOrders.orderId, orderId))
-          .limit(1);
-
-        if (order) {
-          await db
-            .update(paymentOrders)
-            .set({
-              status: 'paid',
-              paymentId: paymentId || order.paymentId,
-              gatewayResponse: payload,
-              updatedAt: new Date(),
-            })
-            .where(eq(paymentOrders.id, order.id));
-
-          // Activate membership pass if not already active
-          await membershipService.activateMembership(order.studentId, order.planId, paymentId || order.orderId);
-          logger.info({ orderId, paymentId, studentId: order.studentId }, 'Membership activated via Razorpay webhook');
-        }
-      }
-    } else if (event === 'payment.failed') {
-      const paymentEntity = payload?.payload?.payment?.entity;
-      const orderId = paymentEntity?.order_id;
-      if (orderId) {
-        await db
-          .update(paymentOrders)
-          .set({
-            status: 'failed',
-            gatewayResponse: payload,
-            updatedAt: new Date(),
-          })
-          .where(eq(paymentOrders.orderId, orderId));
-      }
+    if (!order) {
+      logger.error({ txnid, source }, 'PayU notify unknown txnid');
+      return { result: 'transaction_not_found', orderId: txnid };
     }
 
-    return { received: true, event };
+    const hashOk = verifyPayUResponseHash(params);
+    const previousGateway =
+      order.gatewayResponse && typeof order.gatewayResponse === 'object'
+        ? (order.gatewayResponse as Record<string, unknown>)
+        : {};
+
+    const notifications = Array.isArray(previousGateway.notifications)
+      ? [...(previousGateway.notifications as unknown[])]
+      : [];
+    notifications.push({
+      at: new Date().toISOString(),
+      source,
+      rawStatus,
+      payuStatus,
+      hashOk,
+      mihpayid,
+    });
+
+    await db
+      .update(paymentOrders)
+      .set({
+        gatewayResponse: {
+          ...previousGateway,
+          last_payu_params: params,
+          notifications: notifications.slice(-25),
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentOrders.id, order.id));
+
+    if (!hashOk) {
+      logger.warn({ txnid, source }, 'PayU notify invalid hash — keeping pending');
+      return {
+        result: 'invalid_hash',
+        orderId: txnid,
+        studentId: order.studentId,
+      };
+    }
+
+    if (order.status === 'paid') {
+      return {
+        result: 'already_confirmed',
+        orderId: txnid,
+        paymentId: order.paymentId || mihpayid,
+        studentId: order.studentId,
+      };
+    }
+
+    if (payuStatus === 'success') {
+      const expected = formatPayUAmount(order.amount);
+      const received = formatPayUAmount(params.amount || order.amount);
+      if (expected !== received) {
+        logger.error({ txnid, expected, received }, 'PayU amount mismatch');
+        return {
+          result: 'amount_mismatch',
+          orderId: txnid,
+          studentId: order.studentId,
+          details: { expected, received },
+        };
+      }
+
+      await db
+        .update(paymentOrders)
+        .set({
+          status: 'paid',
+          paymentId: mihpayid || order.paymentId,
+          updatedAt: new Date(),
+        })
+        .where(eq(paymentOrders.id, order.id));
+
+      await membershipService.activateMembership(
+        order.studentId,
+        order.planId,
+        mihpayid || order.orderId
+      );
+
+      logger.info({ txnid, mihpayid, studentId: order.studentId, source }, 'PayU success — membership activated');
+
+      return {
+        result: 'success_confirmed',
+        orderId: txnid,
+        paymentId: mihpayid,
+        studentId: order.studentId,
+      };
+    }
+
+    if (payuStatus === 'failure') {
+      await db
+        .update(paymentOrders)
+        .set({
+          status: 'failed',
+          paymentId: mihpayid || order.paymentId,
+          updatedAt: new Date(),
+        })
+        .where(eq(paymentOrders.id, order.id));
+
+      logger.info({ txnid, source }, 'PayU failure marked on order');
+      return {
+        result: 'payment_failed',
+        orderId: txnid,
+        paymentId: mihpayid,
+        studentId: order.studentId,
+      };
+    }
+
+    if (payuStatus === 'pending') {
+      return {
+        result: 'pending_status',
+        orderId: txnid,
+        studentId: order.studentId,
+      };
+    }
+
+    return {
+      result: 'unknown_status',
+      orderId: txnid,
+      studentId: order.studentId,
+      details: { rawStatus },
+    };
   }
 
   /**
-   * Get payment transactions history for a student
+   * @deprecated Razorpay webhook — retained as no-op redirect to PayU processor if payload looks like PayU.
+   */
+  public async handleWebhook(payload: Record<string, unknown>) {
+    const params: Record<string, string> = {};
+    for (const [k, v] of Object.entries(payload || {})) {
+      params[k] = v === undefined || v === null ? '' : String(v);
+    }
+
+    if (params.txnid && params.hash) {
+      const outcome = await this.processPayUNotification(params, 'webhook_s2s');
+      return { received: true, provider: 'payu', ...outcome };
+    }
+
+    logger.warn({ keys: Object.keys(payload || {}) }, 'Ignored non-PayU webhook payload');
+    return { received: true, provider: 'unknown' };
+  }
+
+  /**
+   * Payment history for a student.
    */
   public async getPaymentHistory(studentOrPersonId: string) {
     const studentId = await this.resolveStudentId(studentOrPersonId);

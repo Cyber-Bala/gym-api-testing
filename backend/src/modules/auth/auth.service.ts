@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { eq, and, gt, desc } from 'drizzle-orm';
+import { eq, and, gt, lte, desc } from 'drizzle-orm';
 import { db } from '../../shared/database/index.js';
 import { redis } from '../../shared/redis/index.js';
 import { config } from '../../config/index.js';
@@ -273,6 +273,7 @@ export class AuthService {
     let studentDetails: SessionUser['studentDetails'];
     let hasActiveMembership = true;
     let activeMembershipEndDate: string | null = null;
+    let hasCompletedOnboarding = true;
 
     if (personRecord.personType === 'student') {
       const [studentRec] = await db
@@ -286,6 +287,9 @@ export class AuthService {
           faceReferenceId = studentRec.faceReferenceId || faceReferenceId;
         }
 
+        const phone = personRecord.phone || null;
+        const emergencyContact = studentRec.emergencyContact || null;
+
         studentDetails = {
           rollNumber: studentRec.rollNumber,
           department: studentRec.department,
@@ -295,13 +299,20 @@ export class AuthService {
           violationCount: studentRec.violationCount,
           faceEnrollmentStatus,
           faceReferenceId,
-          phone: personRecord.phone || null,
-          emergencyContact: studentRec.emergencyContact || null,
+          phone,
+          emergencyContact,
           address: studentRec.address || null,
           healthConcerns: studentRec.healthConcerns || null,
         };
 
-        // Determine active membership for day scholars
+        // Personal details + face — required for all students before app access
+        hasCompletedOnboarding = Boolean(
+          phone?.trim() &&
+            emergencyContact?.trim() &&
+            (faceEnrollmentStatus === 'enrolled' || studentRec.faceEnrollmentStatus === 'enrolled')
+        );
+
+        // Day scholars need a currently ACTIVE pass (started now, not queued/future)
         if (studentRec.residency === 'day_scholar') {
           const now = new Date();
           const [activeMem] = await db
@@ -311,6 +322,7 @@ export class AuthService {
               and(
                 eq(memberships.studentId, studentRec.id),
                 eq(memberships.status, 'active'),
+                lte(memberships.startDate, now),
                 gt(memberships.endDate, now)
               )
             )
@@ -325,7 +337,7 @@ export class AuthService {
             activeMembershipEndDate = null;
           }
         } else {
-          // Hostellers have inclusive access
+          // Hostellers: inclusive access, no payment
           hasActiveMembership = true;
         }
       }
@@ -359,6 +371,7 @@ export class AuthService {
       faceReferenceId,
       hasActiveMembership,
       activeMembershipEndDate,
+      hasCompletedOnboarding,
       permissions,
       isProtectedSuperAdmin,
       studentDetails,

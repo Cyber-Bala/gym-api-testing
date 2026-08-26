@@ -9,6 +9,7 @@ import {
   SwitchCamera,
   ShieldCheck,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { Card, Badge } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
@@ -18,8 +19,15 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
-export const StudentOnboardingCard: React.FC = () => {
-  const { user, refreshSession } = useAuth();
+interface StudentOnboardingCardProps {
+  /** Full-screen gate before app access (after membership for day scholars). */
+  mandatoryMode?: boolean;
+}
+
+export const StudentOnboardingCard: React.FC<StudentOnboardingCardProps> = ({
+  mandatoryMode = false,
+}) => {
+  const { user, refreshSession, logout } = useAuth();
   const toast = useToast();
   const details = user?.studentDetails;
 
@@ -28,13 +36,11 @@ export const StudentOnboardingCard: React.FC = () => {
   const [address, setAddress] = useState(details?.address || '');
   const [healthConcerns, setHealthConcerns] = useState(details?.healthConcerns || '');
 
-  // Face capture state
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
-  const [cameraLoading, setCameraLoading] = useState<boolean>(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
-
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
@@ -52,8 +58,9 @@ export const StudentOnboardingCard: React.FC = () => {
     }
   }, [details]);
 
-  const isFaceEnrolled = details?.faceEnrollmentStatus === 'enrolled';
-  const isContactFilled = Boolean(details?.phone && details?.emergencyContact);
+  const isFaceEnrolled =
+    details?.faceEnrollmentStatus === 'enrolled' || user?.faceEnrollmentStatus === 'enrolled';
+  const isContactFilled = Boolean(details?.phone?.trim() && details?.emergencyContact?.trim());
   const incomplete = (!isContactFilled || !isFaceEnrolled) && !justSaved;
 
   const stopCamera = useCallback(() => {
@@ -70,12 +77,11 @@ export const StudentOnboardingCard: React.FC = () => {
     setCameraError(null);
 
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('Camera not supported on this browser. Please use photo upload.');
       }
 
       let mediaStream: MediaStream;
-
       try {
         mediaStream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -86,10 +92,7 @@ export const StudentOnboardingCard: React.FC = () => {
           audio: false,
         });
       } catch {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false,
-        });
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
 
       streamRef.current = mediaStream;
@@ -124,41 +127,28 @@ export const StudentOnboardingCard: React.FC = () => {
     }
   }, [isCameraActive, facingMode]);
 
-
-  useEffect(() => {
-    return () => {
-      stopCamera();
-    };
-  }, [stopCamera]);
-
-  if (!incomplete) return null;
+  useEffect(() => () => stopCamera(), [stopCamera]);
 
   const handleCapture = () => {
     if (!videoRef.current) return;
-
     const video = videoRef.current;
     const canvas = canvasRef.current || document.createElement('canvas');
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     if (facingMode === 'user') {
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
     }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const base64 = canvas.toDataURL('image/jpeg', 0.9);
-    setCapturedImage(base64);
+    setCapturedImage(canvas.toDataURL('image/jpeg', 0.9));
     stopCamera();
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       if (typeof event.target?.result === 'string') {
@@ -179,6 +169,11 @@ export const StudentOnboardingCard: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!phone.trim() || !emergencyContact.trim()) {
+      toast.error('Personal and emergency contact numbers are required.');
+      return;
+    }
+
     if (!isFaceEnrolled && !capturedImage) {
       toast.error('Please capture or upload your face photo for touchless turnstile check-in.');
       return;
@@ -186,7 +181,6 @@ export const StudentOnboardingCard: React.FC = () => {
 
     setSaving(true);
     try {
-      // 1. Update contact and emergency details
       await api.patch('/api/v1/people/students/me', {
         phone: phone.trim(),
         emergencyContact: emergencyContact.trim(),
@@ -194,7 +188,6 @@ export const StudentOnboardingCard: React.FC = () => {
         healthConcerns: healthConcerns.trim(),
       });
 
-      // 2. If new face image provided, enroll face biometric
       if (capturedImage) {
         await api.post('/api/v1/biometrics/face-enroll', {
           faceImageBase64: capturedImage,
@@ -212,12 +205,23 @@ export const StudentOnboardingCard: React.FC = () => {
     }
   };
 
-  return (
-    <Card className="space-y-5 border-2 border-primary/40 bg-gradient-to-br from-surface via-surface-elevated to-surface shadow-lg relative overflow-hidden">
-      {/* Decorative top accent */}
+  if (!incomplete && !mandatoryMode) return null;
+  if (!incomplete && mandatoryMode) return null;
+
+  const isHosteller = details?.residency === 'hosteller';
+  const subtitle = isHosteller
+    ? 'Complete your safety contacts and face photo to start booking gym slots.'
+    : 'Your pass is active. Finish personal details and face enrollment to enter the app.';
+
+  const formCard = (
+    <Card
+      className={cn(
+        'space-y-5 border-2 border-primary/40 bg-gradient-to-br from-surface via-surface-elevated to-surface shadow-lg relative overflow-hidden',
+        mandatoryMode && 'shadow-xl'
+      )}
+    >
       <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-accent to-primary" />
 
-      {/* Hidden elements for capture */}
       <canvas ref={canvasRef} className="hidden" />
       <input
         ref={fileInputRef}
@@ -227,7 +231,6 @@ export const StudentOnboardingCard: React.FC = () => {
         onChange={handleFileUpload}
       />
 
-      {/* Card Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-2xl bg-primary-muted text-primary shrink-0 shadow-inner">
@@ -235,14 +238,14 @@ export const StudentOnboardingCard: React.FC = () => {
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-bold text-base sm:text-lg text-text">Complete Your Gym Profile</h3>
+              <h3 className="font-bold text-base sm:text-lg text-text">
+                {mandatoryMode ? 'Complete Onboarding' : 'Complete Your Gym Profile'}
+              </h3>
               <Badge tone="warning" className="text-[11px] animate-pulse">
                 Action Required
               </Badge>
             </div>
-            <p className="text-xs text-secondary mt-0.5">
-              Provide safety emergency contacts and enroll your face photo for instant turnstile gym check-in
-            </p>
+            <p className="text-xs text-secondary mt-0.5">{subtitle}</p>
           </div>
         </div>
 
@@ -261,7 +264,6 @@ export const StudentOnboardingCard: React.FC = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Section 1: Contact Information */}
         <div className="space-y-3">
           <h4 className="font-semibold text-xs text-secondary uppercase tracking-wider">
             1. Contact & Emergency Details
@@ -286,7 +288,6 @@ export const StudentOnboardingCard: React.FC = () => {
               hint="Parent, local guardian, or hostel warden"
             />
           </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Textarea
               label="Hostel Block / Home Address (Optional)"
@@ -303,14 +304,12 @@ export const StudentOnboardingCard: React.FC = () => {
           </div>
         </div>
 
-        {/* Section 2: Face Biometric Photo */}
         <div className="space-y-3 pt-2 border-t border-border">
           <div className="flex items-center justify-between">
             <h4 className="font-semibold text-xs text-secondary uppercase tracking-wider flex items-center gap-1.5">
               <span>2. Biometric Turnstile Photo</span>
               <Sparkles className="w-3.5 h-3.5 text-accent" />
             </h4>
-
             {isFaceEnrolled && !capturedImage && (
               <Badge tone="success" className="text-[11px] flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5" /> Face Photo Enrolled
@@ -318,7 +317,6 @@ export const StudentOnboardingCard: React.FC = () => {
             )}
           </div>
 
-          {/* If already enrolled and no change requested */}
           {isFaceEnrolled && !capturedImage && !isCameraActive && (
             <div className="p-3.5 rounded-2xl bg-success-muted/20 border border-success/30 flex items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2.5">
@@ -330,20 +328,13 @@ export const StudentOnboardingCard: React.FC = () => {
                   </p>
                 </div>
               </div>
-
-              <Button
-                variant="outline"
-                size="xs"
-                type="button"
-                onClick={() => startCamera()}
-              >
+              <Button variant="outline" size="xs" type="button" onClick={() => startCamera()}>
                 <Camera className="w-3.5 h-3.5 mr-1" />
                 <span>Update Photo</span>
               </Button>
             </div>
           )}
 
-          {/* Photo Capture / Upload UI if not enrolled or updating */}
           {(!isFaceEnrolled || capturedImage || isCameraActive) && (
             <div className="space-y-3">
               <div className="rounded-2xl border border-border bg-black/90 overflow-hidden min-h-[220px] max-h-[300px] flex items-center justify-center relative">
@@ -379,18 +370,14 @@ export const StudentOnboardingCard: React.FC = () => {
                         facingMode === 'user' && 'scale-x-[-1]'
                       )}
                     />
-
-                    {/* Facial Guideline */}
                     <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                      <div className="w-36 h-44 rounded-[50%] border-2 border-dashed border-primary/70 flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                      <div className="w-36 h-44 rounded-[50%] border-2 border-dashed border-primary/70 flex items-center justify-center">
                         <div className="w-32 h-40 rounded-[50%] border border-primary/30" />
                       </div>
                       <p className="mt-1.5 text-[10px] font-medium text-white bg-black/60 px-2 py-0.5 rounded-full">
                         Align face within oval
                       </p>
                     </div>
-
-                    {/* Switch Camera */}
                     <div className="absolute top-2 right-2">
                       <IconButton
                         label="Switch Camera"
@@ -414,15 +401,12 @@ export const StudentOnboardingCard: React.FC = () => {
                         Capture a clear front-facing photo or upload one from your device.
                       </p>
                     </div>
-
-
                     {cameraError && (
                       <div className="p-2 rounded-xl bg-danger-muted/30 border border-danger/30 text-danger text-[11px] flex items-center gap-1.5 justify-center">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                         <span>{cameraError}</span>
                       </div>
                     )}
-
                     <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                       <Button
                         variant="primary"
@@ -434,7 +418,6 @@ export const StudentOnboardingCard: React.FC = () => {
                         <Camera className="w-3.5 h-3.5 mr-1.5" />
                         <span>Open Camera</span>
                       </Button>
-
                       <Button
                         variant="outline"
                         size="sm"
@@ -449,13 +432,11 @@ export const StudentOnboardingCard: React.FC = () => {
                 )}
               </div>
 
-              {/* Camera Action Controls */}
               {isCameraActive && (
                 <div className="flex items-center justify-between gap-2">
                   <Button variant="secondary" size="xs" type="button" onClick={stopCamera}>
                     Cancel Camera
                   </Button>
-
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
@@ -474,7 +455,6 @@ export const StudentOnboardingCard: React.FC = () => {
                 </div>
               )}
 
-              {/* Captured Photo Actions */}
               {capturedImage && (
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="text-secondary text-[11px]">
@@ -509,18 +489,63 @@ export const StudentOnboardingCard: React.FC = () => {
           )}
         </div>
 
-        {/* Submit Button */}
-        <div className="flex items-center justify-between pt-2 border-t border-border">
+        <div className="flex items-center justify-between pt-2 border-t border-border gap-3">
           <p className="text-[11px] text-muted">
             All details are securely stored according to college gym compliance rules.
           </p>
-
-          <Button variant="primary" size="md" loading={saving} type="submit">
+          <Button variant="primary" size="md" loading={saving} type="submit" className="shrink-0">
             <CheckCircle2 className="w-4 h-4 mr-1.5" />
-            <span>Save & Complete Profile</span>
+            <span>{mandatoryMode ? 'Save & Enter App' : 'Save & Complete Profile'}</span>
           </Button>
         </div>
       </form>
     </Card>
   );
+
+  if (mandatoryMode) {
+    return (
+      <div className="min-h-screen bg-background text-text flex flex-col items-center justify-center p-4 sm:p-6">
+        <div className="w-full max-w-3xl space-y-5">
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-surface-elevated border border-border shadow-sm mb-1">
+              <img
+                src="/icons/desktop-icon-256x256.png"
+                alt="REC Gym Logo"
+                className="w-12 h-12 object-contain rounded-xl shadow-sm"
+              />
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold text-text">
+              {isHosteller ? 'Hosteller Onboarding' : 'Final Step — Personal Details'}
+            </h1>
+            <p className="text-xs text-secondary max-w-md mx-auto leading-relaxed">
+              {isHosteller
+                ? 'No membership purchase needed. Complete your profile to book workout slots.'
+                : 'Membership is active. Add contacts and your face photo to finish setup.'}
+            </p>
+            {user && (
+              <p className="text-[11px] text-muted font-mono truncate">
+                {user.name}
+                {details?.rollNumber ? ` · ${details.rollNumber}` : ''}
+              </p>
+            )}
+          </div>
+
+          {formCard}
+
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={logout}
+              className="text-danger hover:underline inline-flex items-center gap-1.5 text-[11px] font-medium"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return formCard;
 };

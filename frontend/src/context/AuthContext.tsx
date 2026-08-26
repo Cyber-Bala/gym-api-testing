@@ -14,6 +14,7 @@ export interface SessionUser {
   faceReferenceId?: string | null;
   hasActiveMembership?: boolean;
   activeMembershipEndDate?: string | null;
+  hasCompletedOnboarding?: boolean;
   permissions: string[];
   isProtectedSuperAdmin?: boolean;
 

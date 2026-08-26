@@ -425,7 +425,7 @@ export class BookingService {
         userBookedSlotIds.push(...userBookings.map((b) => b.slotId));
       }
 
-      // Day Scholar membership coverage check across active & queued passes
+      // Day Scholar: currently ACTIVE membership must cover the slot date (no queued passes)
       if (studentRec && studentRec.residency === 'day_scholar') {
         const userMemberships = await db
           .select({
@@ -438,7 +438,7 @@ export class BookingService {
           .where(
             and(
               or(eq(memberships.studentId, resolvedStudentId), eq(memberships.studentId, studentId)),
-              inArray(memberships.status, ['active', 'queued']),
+              eq(memberships.status, 'active'),
               gt(memberships.endDate, new Date())
             )
           )
@@ -449,9 +449,11 @@ export class BookingService {
         } else {
           const maxExpiry = userMemberships[0].endDate;
           passExpiryDate = maxExpiry.toISOString();
-          // Check if slot date in IST is covered by active or queued membership
           const slotDayStart = new Date(`${dateStr}T00:00:00+05:30`);
-          isPassValidOnDate = maxExpiry >= slotDayStart;
+          const slotDayEnd = new Date(`${dateStr}T23:59:59.999+05:30`);
+          isPassValidOnDate = userMemberships.some(
+            (m) => m.startDate <= slotDayEnd && m.endDate >= slotDayStart
+          );
         }
       }
     }

@@ -17,7 +17,7 @@ export const memberships = membershipSchema.table('memberships', {
   id: uuid('id').primaryKey().defaultRandom(),
   studentId: uuid('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
   planId: uuid('plan_id').notNull().references(() => membershipPlans.id),
-  status: varchar('status', { length: 50 }).notNull().default('active'), // active, queued, expired, cancelled
+  status: varchar('status', { length: 50 }).notNull().default('active'), // active, expired, cancelled (no queued)
   startDate: timestamp('start_date', { withTimezone: true }).notNull(),
   endDate: timestamp('end_date', { withTimezone: true }).notNull(),
   paymentId: varchar('payment_id', { length: 255 }),

@@ -12,6 +12,8 @@ export interface SessionUser {
   faceReferenceId?: string | null;
   hasActiveMembership?: boolean;
   activeMembershipEndDate?: string | null;
+  /** Students: phone + emergency contact + face enrolled */
+  hasCompletedOnboarding?: boolean;
   permissions: string[];
   isProtectedSuperAdmin?: boolean;
 

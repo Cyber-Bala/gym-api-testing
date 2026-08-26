@@ -54,7 +54,7 @@ describe('Sprint 15: Full End-to-End System Integration Workflows (FLOW-001..012
           name: 'Day Scholar Membership Checkout & Webhook Verification',
           category: 'Payment',
           status: 'passed',
-          details: 'Simulated Razorpay order creation and HMAC SHA-256 webhook.',
+          details: 'Simulated PayU checkout hash and response-hash webhook.',
           latencyMs: 4,
         },
         {

@@ -37,10 +37,14 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().default('placeholder_client_secret'),
   GOOGLE_REDIRECT_URI: z.string().default('http://localhost:4000/api/v1/auth/google/callback'),
 
-  // Razorpay
-  RAZORPAY_KEY_ID: z.string().default('placeholder_key_id'),
-  RAZORPAY_KEY_SECRET: z.string().default('placeholder_key_secret'),
-  RAZORPAY_WEBHOOK_SECRET: z.string().default('placeholder_webhook_secret'),
+  // PayU Payment Gateway
+  PAYU_MERCHANT_KEY: z.string().default('placeholder_payu_key'),
+  PAYU_MERCHANT_SALT: z.string().default('placeholder_payu_salt'),
+  PAYU_VERIFICATION_SALT: z.string().default(''),
+  PAYU_ENV: z.enum(['TEST', 'PRODUCTION']).default('TEST'),
+  PAYU_BASE_URL: z.string().default('https://test.payu.in/_payment'),
+  PAYU_BACKEND_URL: z.string().default('http://localhost:4000'),
+  FRONTEND_URL: z.string().default('http://localhost:5173'),
 
   // Access WebSocket
   ACCESS_WS_PORT: z.coerce.number().default(4001),

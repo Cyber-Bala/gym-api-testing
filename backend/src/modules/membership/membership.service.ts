@@ -60,8 +60,11 @@ export class MembershipService {
     const now = new Date();
 
     const dtos: UserMembershipDto[] = records.map((r) => {
+      const start = new Date(r.membership.startDate);
       const end = new Date(r.membership.endDate);
-      const isCurrentlyActive = r.membership.status === 'active' && end >= now;
+      // ACTIVE only — no queued / future-start passes
+      const isCurrentlyActive =
+        r.membership.status === 'active' && start <= now && end > now;
       const msDiff = end.getTime() - now.getTime();
       const daysRemaining = isCurrentlyActive ? Math.max(1, Math.ceil(msDiff / (1000 * 60 * 60 * 24))) : 0;
 
@@ -91,7 +94,8 @@ export class MembershipService {
   }
 
   /**
-   * Activate or extend a membership pass for a student (FR-MEM-002)
+   * Activate or extend a membership pass (ACTIVE only — never queued).
+   * If a currently-active pass exists, extend its endDate; otherwise create a new active pass starting now.
    */
   public async activateMembership(studentOrPersonId: string, planId: string, paymentId?: string): Promise<UserMembershipDto> {
     const studentId = await this.resolveStudentId(studentOrPersonId);
@@ -103,8 +107,9 @@ export class MembershipService {
     }
 
     const now = new Date();
+    const durationMs = plan.durationDays * 24 * 60 * 60 * 1000;
 
-    // Check if student has an existing active pass
+    // Currently ACTIVE only (started and not yet expired) — no future-start / queued rows
     const [currentActive] = await db
       .select()
       .from(memberships)
@@ -112,51 +117,67 @@ export class MembershipService {
         and(
           eq(memberships.studentId, studentId),
           eq(memberships.status, 'active'),
+          lte(memberships.startDate, now),
           gt(memberships.endDate, now)
         )
       )
       .orderBy(desc(memberships.endDate))
       .limit(1);
 
-    let startDate = now;
-    if (currentActive && new Date(currentActive.endDate) > now) {
-      // Chain extension from current expiry date
-      startDate = new Date(currentActive.endDate);
+    let record = currentActive;
+    let startDate: Date;
+    let endDate: Date;
+
+    if (currentActive) {
+      startDate = new Date(currentActive.startDate);
+      endDate = new Date(new Date(currentActive.endDate).getTime() + durationMs);
+      const [updated] = await db
+        .update(memberships)
+        .set({
+          planId,
+          endDate,
+          paymentId: paymentId || currentActive.paymentId,
+          updatedAt: new Date(),
+        })
+        .where(eq(memberships.id, currentActive.id))
+        .returning();
+      record = updated;
+      logger.info({ studentId, planId, endDate }, 'Active membership pass extended (no queue)');
+    } else {
+      startDate = now;
+      endDate = new Date(now.getTime() + durationMs);
+      const [inserted] = await db
+        .insert(memberships)
+        .values({
+          studentId,
+          planId,
+          status: 'active',
+          startDate,
+          endDate,
+          paymentId,
+        })
+        .returning();
+      record = inserted;
+      logger.info({ studentId, planId, startDate, endDate }, 'Membership pass activated successfully');
     }
-
-    const endDate = new Date(startDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
-
-    const [inserted] = await db
-      .insert(memberships)
-      .values({
-        studentId,
-        planId,
-        status: 'active',
-        startDate,
-        endDate,
-        paymentId,
-      })
-      .returning();
-
-    logger.info({ studentId, planId, startDate, endDate }, 'Membership pass activated successfully');
 
     const msDiff = endDate.getTime() - now.getTime();
     const daysRemaining = Math.max(1, Math.ceil(msDiff / (1000 * 60 * 60 * 24)));
 
     return {
-      id: inserted.id,
-      studentId: inserted.studentId,
-      planId: inserted.planId,
+      id: record.id,
+      studentId: record.studentId,
+      planId: record.planId,
       planName: plan.name,
       price: plan.price,
       durationDays: plan.durationDays,
-      status: inserted.status,
-      startDate: inserted.startDate.toISOString(),
-      endDate: inserted.endDate.toISOString(),
+      status: record.status,
+      startDate: record.startDate.toISOString(),
+      endDate: record.endDate.toISOString(),
       daysRemaining,
       isActive: true,
-      paymentId: inserted.paymentId || undefined,
-      createdAt: inserted.createdAt.toISOString(),
+      paymentId: record.paymentId || undefined,
+      createdAt: record.createdAt.toISOString(),
     };
   }
 

@@ -45,6 +45,13 @@ services:
       - SESSION_SECRET=dev_session_secret_replace_in_production_32chars
       - CORS_ORIGIN=http://localhost:5173,http://localhost:80,http://localhost
       - TIMEZONE=Asia/Kolkata
+      - FRONTEND_URL=http://localhost
+      - PAYU_BACKEND_URL=http://localhost
+      - PAYU_ENV=TEST
+      - PAYU_BASE_URL=https://test.payu.in/_payment
+      - PAYU_MERCHANT_KEY=${PAYU_MERCHANT_KEY:-placeholder_payu_key}
+      - PAYU_MERCHANT_SALT=${PAYU_MERCHANT_SALT:-placeholder_payu_salt}
+      - PAYU_VERIFICATION_SALT=${PAYU_VERIFICATION_SALT:-}
     depends_on:
       postgres:
         condition: service_healthy

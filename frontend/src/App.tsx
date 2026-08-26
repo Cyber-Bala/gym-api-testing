@@ -4,6 +4,7 @@ import { AppShell } from './layout/AppShell';
 import { AppView } from './layout/nav';
 import { LoginPage } from './components/LoginPage';
 import { MandatoryFaceEnrollment } from './components/MandatoryFaceEnrollment';
+import { StudentOnboardingCard } from './components/StudentOnboardingCard';
 import { HomeDashboard } from './components/HomeDashboard';
 import { SlotBookingView } from './components/SlotBookingView';
 import { MyBookingsCard } from './components/MyBookingsCard';
@@ -49,31 +50,37 @@ export const App: React.FC = () => {
   }
 
   // ─────────────────────────────────────────────
-  // 1. DAY SCHOLAR PAYMENT GATEKEEPER
-  // Day scholars MUST complete payment for a gym pass before entering the app
+  // 1. DAY SCHOLAR: ACTIVE membership required first (no queued passes)
   // ─────────────────────────────────────────────
+  const isStudent = user.role === 'student';
   const isDayScholar =
-    user.role === 'student' && user.studentDetails?.residency === 'day_scholar';
+    isStudent && user.studentDetails?.residency === 'day_scholar';
 
   if (isDayScholar && user.hasActiveMembership === false) {
     return <MembershipStore mandatoryMode />;
   }
 
   // ─────────────────────────────────────────────
-  // 2. MANDATORY FACE BIOMETRIC ENROLLMENT GATEKEEPER
-  // Face scan is mandatory to enter the app for student, staff, and trainer
+  // 2. STUDENTS: personal details + face LAST (hostellers skip payment)
   // ─────────────────────────────────────────────
-  const isMemberRole = ['student', 'staff', 'trainer'].includes(user.role);
+  if (isStudent && user.hasCompletedOnboarding === false) {
+    return <StudentOnboardingCard mandatoryMode />;
+  }
+
+  // ─────────────────────────────────────────────
+  // 3. STAFF / TRAINER: face enrollment only
+  // ─────────────────────────────────────────────
+  const isStaffOrTrainer = ['staff', 'trainer'].includes(user.role);
   const isFaceEnrolled =
     user.faceEnrollmentStatus === 'enrolled' ||
     user.studentDetails?.faceEnrollmentStatus === 'enrolled';
 
-  if (isMemberRole && !isFaceEnrolled) {
+  if (isStaffOrTrainer && !isFaceEnrolled) {
     return <MandatoryFaceEnrollment />;
   }
 
   // ─────────────────────────────────────────────
-  // 3. ROLE-SPECIFIC CONTENT RENDERING
+  // 4. ROLE-SPECIFIC CONTENT RENDERING
   // ─────────────────────────────────────────────
   const renderContent = () => {
     // A. STUDENTS: Home shows active reservation; Book shows normal slot booking; Entry/Exit shows access history; Profile & Payments from top menu

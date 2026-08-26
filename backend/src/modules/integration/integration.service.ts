@@ -80,7 +80,7 @@ export class IntegrationService {
         'FLOW-002',
         'Day Scholar Membership Checkout & Webhook Verification',
         'Payment',
-        'Simulated Razorpay order creation and HMAC SHA-256 webhook signature verification. Activated 1-Month student pass.',
+        'Simulated PayU checkout hash generation and response-hash webhook verification. Activated 1-Month student pass.',
         t0
       );
     } catch (err: any) {

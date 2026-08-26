@@ -15,6 +15,12 @@ import { Card, Badge, Alert, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { MembershipPlanManager } from './MembershipPlanManager';
 import { cn } from '../lib/cn';
+import {
+  clearPaymentQueryFromUrl,
+  clearPayUCheckoutSession,
+  readPaymentQueryResult,
+  startPayUCheckout,
+} from '../lib/payu';
 
 interface MembershipPlan {
   id: string;
@@ -66,16 +72,31 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
   const isAdmin = user && ['admin', 'super_admin'].includes(user.role);
 
 
-  // Load Razorpay Checkout Script
+  // Handle return from PayU (surl/furl redirect → FRONTEND_URL/?payment=…)
   useEffect(() => {
-    const scriptId = 'razorpay-checkout-script';
-    if (!document.getElementById(scriptId)) {
-      const script = document.createElement('script');
-      script.id = scriptId;
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.async = true;
-      document.body.appendChild(script);
+    const result = readPaymentQueryResult();
+    if (!result) return;
+
+    clearPaymentQueryFromUrl();
+    clearPayUCheckoutSession();
+
+    if (result === 'success') {
+      const msg = 'Payment confirmed via PayU. Your gym pass is now active.';
+      setSuccessMessage(msg);
+      toast.success(msg, 'Payment Verified');
+      void refreshSession().then(() => fetchData());
+      return;
     }
+
+    if (result === 'cancelled') {
+      toast.error('Payment was cancelled or failed on PayU. You can try again.');
+      return;
+    }
+
+    toast.info(
+      'Payment is still pending confirmation. Refresh in a moment if your pass does not activate.'
+    );
+    void refreshSession().then(() => fetchData());
   }, []);
 
   const fetchData = async () => {
@@ -131,85 +152,20 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
     setSuccessMessage(null);
 
     try {
-      // 1. Create order on backend
-      const orderData = await api.post<{
-        orderId: string;
-        amount: number;
-        currency: string;
-        keyId: string;
-      }>('/api/v1/payment/create-order', { planId: plan.id });
+      const mode = await startPayUCheckout(plan.id);
 
-      const keyId = orderData.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_rec_college_gym';
-
-      // 2. If Razorpay checkout script is loaded, launch real Razorpay popup
-      const RazorpayConstructor = (window as unknown as { Razorpay?: any }).Razorpay;
-
-      if (RazorpayConstructor) {
-        const rzp = new RazorpayConstructor({
-          key: keyId,
-          amount: Math.round(orderData.amount * 100),
-          currency: orderData.currency || 'INR',
-          name: 'Rajalakshmi Engineering College Gym',
-          description: `Gym Membership Pass: ${plan.name}`,
-          image: '/favicon.svg',
-          order_id: orderData.orderId,
-          prefill: {
-            name: user.name,
-            email: user.email,
-            contact: user.studentDetails?.phone || '',
-          },
-          theme: {
-            color: '#4A154B',
-          },
-          handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
-            try {
-              await api.post('/api/v1/payment/verify', {
-                orderId: orderData.orderId,
-                paymentId: response.razorpay_payment_id,
-                signature: response.razorpay_signature,
-              });
-              const msg = `Payment confirmed! Your ${plan.name} pass is now active.`;
-              setSuccessMessage(msg);
-              toast.success(msg, 'Payment Verified');
-              await refreshSession();
-              fetchData();
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : String(err);
-              toast.error(msg, 'Payment Verification Failed');
-            } finally {
-              setPurchasingPlanId(null);
-            }
-          },
-          modal: {
-            ondismiss: () => {
-              toast.info('Payment window closed.');
-              setPurchasingPlanId(null);
-            },
-          },
-        });
-
-        rzp.on('payment.failed', (response: { error: { description: string } }) => {
-          toast.error(response.error?.description || 'Payment transaction failed');
-          setPurchasingPlanId(null);
-        });
-
-        rzp.open();
-      } else {
-        // Fallback simulated payment verification for automated testing & sandbox
-        await api.post('/api/v1/payment/verify', {
-          orderId: orderData.orderId,
-          paymentId: `pay_${Date.now()}`,
-          signature: 'simulated_success',
-        });
-
-        const msg = `Payment confirmed! Your ${plan.name} is now active.`;
+      if (mode === 'simulated') {
+        const msg = `Payment confirmed! Your ${plan.name} pass is now active.`;
         setSuccessMessage(msg);
         toast.success(msg, 'Payment Completed');
         await refreshSession();
         fetchData();
         setPurchasingPlanId(null);
+        return;
       }
 
+      // Real PayU: browser navigates away via form POST — leave loading state.
+      toast.info('Opening PayU secure checkout…');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(msg, 'Order Initiation Failed');
@@ -232,7 +188,7 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-text">Institutional Gym Pass Required</h1>
             <p className="text-xs text-secondary max-w-md mx-auto leading-relaxed">
-              As a Day Scholar student, an active gym membership pass is required to enter the facility and book workout sessions.
+              As a Day Scholar, buy an active gym pass first. Personal details and face enrollment come after payment.
             </p>
           </div>
 
@@ -315,7 +271,7 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
 
             <div className="pt-3 border-t border-border flex items-center justify-between text-xs text-muted">
               <span className="text-[11px]">
-                Payments are securely processed via Razorpay.
+                Payments are securely processed via PayU.
               </span>
 
               <button
@@ -466,7 +422,7 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
             <EmptyState
               icon={<FileText className="w-6 h-6" />}
               title="No transactions found"
-              description="Your membership payment history and Razorpay payment IDs will appear here."
+              description="Your membership payment history and PayU transaction IDs will appear here."
             />
           ) : (
             <div className="overflow-x-auto">

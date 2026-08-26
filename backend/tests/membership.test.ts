@@ -7,7 +7,7 @@ import { authService } from '../src/modules/auth/auth.service.js';
 import { SESSION_COOKIE_NAME } from '../src/modules/auth/auth.middleware.js';
 import { SessionUser } from '../src/modules/auth/auth.types.js';
 
-describe('Day Scholar Membership Passes & Razorpay Payments', () => {
+describe('Day Scholar Membership Passes & PayU Payments', () => {
   const app = createApp();
 
   const mockDayScholar: SessionUser = {
@@ -59,13 +59,13 @@ describe('Day Scholar Membership Passes & Razorpay Payments', () => {
 
     vi.spyOn(paymentService, 'createOrder').mockResolvedValue({
       id: 'order-rec-1',
-      orderId: 'order_987654321',
+      orderId: 'GYM-2024IT042-abc123def456',
       amount: 500.0,
       currency: 'INR',
       status: 'created',
       planId: '11111111-1111-1111-1111-111111111111',
       planName: '1-Month Student Pass',
-      keyId: 'rzp_test_rec_college_gym',
+      simulated: true,
     });
 
     const res = await request(app)
@@ -75,7 +75,7 @@ describe('Day Scholar Membership Passes & Razorpay Payments', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.orderId).toBe('order_987654321');
+    expect(res.body.data.orderId).toBe('GYM-2024IT042-abc123def456');
   });
 
   it('POST /api/v1/payment/verify verifies payment and activates membership pass', async () => {
