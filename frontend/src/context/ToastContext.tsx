@@ -34,14 +34,17 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const showToast = useCallback(
     (type: ToastType, message: string, title?: string, duration = 4500) => {
       const id = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const newToast: Toast = { id, type, title, message, duration };
+      // Give longer duration for multi-line validation messages
+      const isMultiline = message.includes('\n');
+      const finalDuration = isMultiline ? Math.max(duration, 6500) : duration;
+      const newToast: Toast = { id, type, title, message, duration: finalDuration };
 
       setToasts((prev) => [...prev, newToast]);
 
-      if (duration > 0) {
+      if (finalDuration > 0) {
         setTimeout(() => {
           dismissToast(id);
-        }, duration);
+        }, finalDuration);
       }
     },
     [dismissToast]
@@ -99,7 +102,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             <div className="mt-0.5">{getIcon(toast.type)}</div>
             <div className="flex-1 min-w-0">
               {toast.title && <p className="font-bold text-xs leading-tight mb-0.5">{toast.title}</p>}
-              <p className="text-xs text-secondary leading-snug break-words">{toast.message}</p>
+              <p className="text-xs text-secondary leading-snug break-words whitespace-pre-line">{toast.message}</p>
             </div>
             <button
               type="button"
@@ -114,6 +117,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       </div>
     </ToastContext.Provider>
   );
+
 };
 
 export const useToast = (): ToastContextType => {
