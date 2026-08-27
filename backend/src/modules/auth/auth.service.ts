@@ -305,13 +305,8 @@ export class AuthService {
           healthConcerns: studentRec.healthConcerns || null,
         };
 
-        // Personal details + face — required for all students before app access
-        hasCompletedOnboarding = Boolean(
-          phone?.trim() &&
-            emergencyContact?.trim() &&
-            studentRec.address?.trim() &&
-            (faceEnrollmentStatus === 'enrolled' || studentRec.faceEnrollmentStatus === 'enrolled')
-        );
+        // Onboarding contact fields are optional; face is enrolled on the gym machine
+        hasCompletedOnboarding = true;
 
         // Day scholars need a currently ACTIVE pass (started now, not queued/future)
         if (studentRec.residency === 'day_scholar') {

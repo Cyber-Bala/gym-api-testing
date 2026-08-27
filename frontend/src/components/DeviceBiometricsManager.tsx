@@ -6,7 +6,6 @@ import {
   Zap,
   CheckCircle2,
   RotateCcw,
-  Plus,
   Radio,
 } from 'lucide-react';
 import { Card, Badge, Alert, EmptyState } from '../ui/primitives';
@@ -14,7 +13,6 @@ import { Button, IconButton } from '../ui/Button';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
-import { FaceEnrollmentModal } from './FaceEnrollmentModal';
 
 interface AccessDevice {
   deviceId: string;
@@ -45,9 +43,6 @@ export const DeviceBiometricsManager: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [processing, setProcessing] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
-
-  // Enroll Face Modal
-  const [showEnrollModal, setShowEnrollModal] = useState<boolean>(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -117,15 +112,6 @@ export const DeviceBiometricsManager: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setShowEnrollModal(true)}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Enroll Face Biometric</span>
-            </Button>
-
             <IconButton
               label="Refresh devices"
               size="sm"
@@ -266,13 +252,6 @@ export const DeviceBiometricsManager: React.FC = () => {
           </div>
         )}
       </Card>
-
-      {/* Real Live Camera Face Enrollment Modal */}
-      <FaceEnrollmentModal
-        open={showEnrollModal}
-        onClose={() => setShowEnrollModal(false)}
-        onEnrolled={fetchData}
-      />
     </div>
   );
 };

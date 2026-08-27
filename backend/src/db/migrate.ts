@@ -74,9 +74,9 @@ export const runMigrations = async (): Promise<void> => {
       residency VARCHAR(50) NOT NULL DEFAULT 'day_scholar',
       face_enrollment_status VARCHAR(50) NOT NULL DEFAULT 'not_enrolled',
       face_reference_id VARCHAR(255),
-      emergency_contact VARCHAR(20),
-      address TEXT,
-      health_concerns TEXT,
+      emergency_contact VARCHAR(20), -- optional
+      address TEXT, -- optional
+      health_concerns TEXT, -- optional
       is_banned BOOLEAN NOT NULL DEFAULT false,
       ban_expires_at TIMESTAMPTZ,
       violation_count INTEGER NOT NULL DEFAULT 0,

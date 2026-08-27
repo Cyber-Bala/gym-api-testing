@@ -7,14 +7,12 @@ import {
   AlertCircle,
   FileSpreadsheet,
   Award,
-  Camera,
   UserPlus,
 } from 'lucide-react';
 import { Card, Badge, Alert, Modal } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { SearchInput, Select, Input } from '../ui/Input';
 import { ExcelImportModal } from './ExcelImportModal';
-import { FaceEnrollmentModal } from './FaceEnrollmentModal';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
@@ -68,7 +66,6 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   const [totalCount, setTotalCount] = useState<number>(0);
   const [importOpen, setImportOpen] = useState<boolean>(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [enrollStudent, setEnrollStudent] = useState<StudentItem | null>(null);
 
   // Add Single Student Modal State
   const [addModalOpen, setAddModalOpen] = useState<boolean>(false);
@@ -317,33 +314,9 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                     </button>
                   </td>
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <Badge tone={stu.faceEnrollmentStatus === 'enrolled' ? 'success' : 'warning'}>
-                        {stu.faceEnrollmentStatus === 'enrolled' ? 'Enrolled' : 'Pending'}
-                      </Badge>
-                      {stu.faceEnrollmentStatus === 'enrolled' ? (
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={() => setEnrollStudent(stu)}
-                          className="text-[10px] py-0.5 px-2 text-secondary hover:text-text"
-                          title="Re-enroll facial biometric scan"
-                        >
-                          <Camera className="w-3 h-3 text-muted" />
-                          <span>Re-enroll</span>
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="secondary"
-                          size="xs"
-                          onClick={() => setEnrollStudent(stu)}
-                          className="text-[10px] py-0.5 px-2"
-                        >
-                          <Camera className="w-3 h-3 text-primary" />
-                          <span>Enroll Face</span>
-                        </Button>
-                      )}
-                    </div>
+                    <Badge tone={stu.faceEnrollmentStatus === 'enrolled' ? 'success' : 'warning'}>
+                      {stu.faceEnrollmentStatus === 'enrolled' ? 'Enrolled' : 'Pending'}
+                    </Badge>
                   </td>
                   <td className="py-3 px-4">
                     {stu.isBanned ? (
@@ -506,16 +479,6 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
         onClose={() => setImportOpen(false)}
         onSuccess={() => {
           setImportOpen(false);
-          fetchStudents();
-        }}
-      />
-
-      <FaceEnrollmentModal
-        open={Boolean(enrollStudent)}
-        initialStudent={enrollStudent}
-        onClose={() => setEnrollStudent(null)}
-        onEnrolled={() => {
-          setEnrollStudent(null);
           fetchStudents();
         }}
       />

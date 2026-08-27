@@ -59,15 +59,7 @@ describe('Biometrics & ZKBio Turnstile Hardware Sync', () => {
     expect(res.body.data.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('POST /api/v1/biometrics/face-enroll enrolls face image and queues sync task', async () => {
-    vi.spyOn(authService, 'getSession').mockResolvedValue({
-      id: 'sess-adm-1',
-      user: mockAdminUser,
-      createdAt: new Date().toISOString(),
-      lastActivityAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 86400000).toISOString(),
-    });
-
+  it('POST /api/v1/biometrics/device/face-enroll enrolls face from the gym machine', async () => {
     vi.spyOn(biometricsService, 'enrollStudentFace').mockResolvedValue({
       id: 'sync-1',
       studentId: '11111111-1111-1111-1111-111111111111',
@@ -81,6 +73,28 @@ describe('Biometrics & ZKBio Turnstile Hardware Sync', () => {
     });
 
     const res = await request(app)
+      .post('/api/v1/biometrics/device/face-enroll')
+      .send({
+        deviceId: 'turnstile-entry-01',
+        personIdentifier: '11111111-1111-1111-1111-111111111111',
+        faceImageBase64: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD...',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.status).toBe('pending');
+  });
+
+  it('POST /api/v1/biometrics/face-enroll rejects in-app enrollment even for admins', async () => {
+    vi.spyOn(authService, 'getSession').mockResolvedValue({
+      id: 'sess-adm-1',
+      user: mockAdminUser,
+      createdAt: new Date().toISOString(),
+      lastActivityAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    });
+
+    const res = await request(app)
       .post('/api/v1/biometrics/face-enroll')
       .set('Cookie', [`${SESSION_COOKIE_NAME}=sess-adm-1`])
       .send({
@@ -88,9 +102,7 @@ describe('Biometrics & ZKBio Turnstile Hardware Sync', () => {
         faceImageBase64: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD...',
       });
 
-    expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.status).toBe('pending');
+    expect(res.status).toBe(403);
   });
 
   it('POST /api/v1/biometrics/sync-process advances queue to synced', async () => {

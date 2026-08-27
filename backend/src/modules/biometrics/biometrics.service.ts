@@ -82,6 +82,10 @@ export class BiometricsService {
     return Array.from(this.devices.values());
   }
 
+  public getDevice(deviceId: string): AccessDeviceDto | undefined {
+    return this.devices.get(deviceId);
+  }
+
   /**
    * Enroll a person's face biometric (student, staff, trainer) and queue for hardware sync (ADR-011, ACINT-011)
    */

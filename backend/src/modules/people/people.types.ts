@@ -11,11 +11,11 @@ export const studentRowSchema = z.object({
 
 export type StudentRowInput = z.infer<typeof studentRowSchema>;
 
-// Self-onboarding fields that students complete themselves (not admin import)
+// Optional self-managed fields (not required for app access)
 export const studentSelfUpdateSchema = z.object({
-  phone: z.string().min(7, 'Enter a valid contact number').max(20).optional(),
-  emergencyContact: z.string().min(7, 'Enter a valid emergency contact').max(20).optional(),
-  address: z.string().trim().min(3, 'Address is required').max(500),
+  phone: z.string().max(20).optional(),
+  emergencyContact: z.string().max(20).optional(),
+  address: z.string().max(500).optional(),
   healthConcerns: z.string().max(1000).optional(),
 });
 

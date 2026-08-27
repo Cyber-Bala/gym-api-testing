@@ -3,11 +3,10 @@ import { useAuth } from './context/AuthContext';
 import { AppShell } from './layout/AppShell';
 import { AppView } from './layout/nav';
 import { LoginPage } from './components/LoginPage';
-import { MandatoryFaceEnrollment } from './components/MandatoryFaceEnrollment';
-import { StudentOnboardingCard } from './components/StudentOnboardingCard';
 import { HomeDashboard } from './components/HomeDashboard';
 import { SlotBookingView } from './components/SlotBookingView';
 import { MyBookingsCard } from './components/MyBookingsCard';
+import { FaceRegistrationStatus } from './components/FaceRegistrationStatus';
 import { MembershipStore } from './components/MembershipStore';
 import { MyAccessHistory } from './components/MyAccessHistory';
 import { LiveOccupancyMonitor } from './components/LiveOccupancyMonitor';
@@ -61,26 +60,7 @@ export const App: React.FC = () => {
   }
 
   // ─────────────────────────────────────────────
-  // 2. STUDENTS: personal details + face LAST (hostellers skip payment)
-  // ─────────────────────────────────────────────
-  if (isStudent && user.hasCompletedOnboarding === false) {
-    return <StudentOnboardingCard mandatoryMode />;
-  }
-
-  // ─────────────────────────────────────────────
-  // 3. STAFF / TRAINER: face enrollment only
-  // ─────────────────────────────────────────────
-  const isStaffOrTrainer = ['staff', 'trainer'].includes(user.role);
-  const isFaceEnrolled =
-    user.faceEnrollmentStatus === 'enrolled' ||
-    user.studentDetails?.faceEnrollmentStatus === 'enrolled';
-
-  if (isStaffOrTrainer && !isFaceEnrolled) {
-    return <MandatoryFaceEnrollment />;
-  }
-
-  // ─────────────────────────────────────────────
-  // 4. ROLE-SPECIFIC CONTENT RENDERING
+  // 2. ROLE-SPECIFIC CONTENT RENDERING
   // ─────────────────────────────────────────────
   const renderContent = () => {
     // A. STUDENTS: Home shows active reservation; Book shows normal slot booking; Entry/Exit shows access history; Profile & Payments from top menu
@@ -96,6 +76,7 @@ export const App: React.FC = () => {
         default:
           return (
             <div className="space-y-6">
+              <FaceRegistrationStatus />
               <MyBookingsCard onNavigateToBook={() => setActiveView('book')} />
             </div>
           );
@@ -108,6 +89,7 @@ export const App: React.FC = () => {
     if (user.role === 'staff') {
       return (
         <div className="space-y-6">
+          <FaceRegistrationStatus />
           <UserProfileView />
           <MyAccessHistory />
         </div>

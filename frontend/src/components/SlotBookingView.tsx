@@ -27,6 +27,7 @@ import { Input, Textarea } from '../ui/Input';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
+import { FaceRegistrationStatus } from './FaceRegistrationStatus';
 
 interface OperatingWindow {
   startTime: string;
@@ -537,6 +538,8 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
           </Button>
         </div>
       </div>
+
+      {(isStudent || isStaff || isTrainer) && <FaceRegistrationStatus />}
 
       {/* Informational Banner for Trainers */}
       {isTrainer && (

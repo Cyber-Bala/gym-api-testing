@@ -12,7 +12,7 @@ export interface SessionUser {
   faceReferenceId?: string | null;
   hasActiveMembership?: boolean;
   activeMembershipEndDate?: string | null;
-  /** Students: phone + emergency contact + face enrolled */
+  /** Always true; contact details and face capture are not app onboarding steps */
   hasCompletedOnboarding?: boolean;
   permissions: string[];
   isProtectedSuperAdmin?: boolean;

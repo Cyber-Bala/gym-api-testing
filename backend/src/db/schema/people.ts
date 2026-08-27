@@ -27,9 +27,9 @@ export const students = peopleSchema.table('students', {
   residency: varchar('residency', { length: 50 }).notNull().default('day_scholar'), // hosteller, day_scholar
   faceEnrollmentStatus: varchar('face_enrollment_status', { length: 50 }).notNull().default('not_enrolled'),
   faceReferenceId: varchar('face_reference_id', { length: 255 }),
-  emergencyContact: varchar('emergency_contact', { length: 20 }),
-  address: text('address'),
-  healthConcerns: text('health_concerns'),
+  emergencyContact: varchar('emergency_contact', { length: 20 }), // optional
+  address: text('address'), // optional
+  healthConcerns: text('health_concerns'), // optional
   isBanned: boolean('is_banned').notNull().default(false),
   banExpiresAt: timestamp('ban_expires_at', { withTimezone: true }),
   violationCount: integer('violation_count').notNull().default(0),

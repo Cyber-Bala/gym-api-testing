@@ -13,6 +13,13 @@ export const enrollFaceSchema = z.object({
   faceImageBase64: z.string().min(10, 'Face image data is required'),
 });
 
+/** Face capture is performed only on the gym biometric machine. */
+export const deviceEnrollFaceSchema = z.object({
+  deviceId: z.string().min(1, 'Device ID is required'),
+  personIdentifier: z.string().min(1, 'Person identifier is required'),
+  faceImageBase64: z.string().min(10, 'Face image data is required'),
+});
+
 export const retrySyncSchema = z.object({
   syncId: z.string().uuid('Valid syncId UUID is required'),
 });

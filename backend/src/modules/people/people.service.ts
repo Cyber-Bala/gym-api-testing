@@ -739,7 +739,7 @@ const items = await db
   }
 
   /**
-   * Student self-onboarding: fill contact, emergency contact, address, health concerns (FR-STU-005)
+   * Optional student profile fields (phone, emergency contact, address, health)
    */
   public async updateMyStudentProfile(personId: string, input: StudentSelfUpdateInput) {
     const parseResult = studentSelfUpdateSchema.safeParse(input);

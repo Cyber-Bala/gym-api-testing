@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Mail,
   Shield,
   GraduationCap,
   Home,
   Lock,
-  Pencil,
-  CheckCircle2,
   Building2,
   Calendar,
   RefreshCw,
@@ -15,10 +13,9 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { Card, Badge } from '../ui/primitives';
 import { Button } from '../ui/Button';
-import { Input, Textarea } from '../ui/Input';
-import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
+import { FaceIdIcon } from './FaceIdIcon';
 
 interface UserProfileViewProps {
   onBack?: () => void;
@@ -29,26 +26,10 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
   const toast = useToast();
   const details = user?.studentDetails;
   const staffDetails = user?.staffDetails;
-
-  // Editable fields state
-  const [phone, setPhone] = useState<string>(details?.phone || '');
-  const [emergencyContact, setEmergencyContact] = useState<string>(details?.emergencyContact || '');
-  const [address, setAddress] = useState<string>(details?.address || '');
-  const [healthConcerns, setHealthConcerns] = useState<string>(details?.healthConcerns || '');
-
-  const [isEditing, setIsEditing] = useState<boolean>(false);
-  const [saving, setSaving] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
-  // Sync state when user session updates
-  useEffect(() => {
-    if (details) {
-      setPhone(details.phone || '');
-      setEmergencyContact(details.emergencyContact || '');
-      setAddress(details.address || '');
-      setHealthConcerns(details.healthConcerns || '');
-    }
-  }, [details]);
+  const faceEnrolled =
+    user?.faceEnrollmentStatus === 'enrolled' || details?.faceEnrollmentStatus === 'enrolled';
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -60,48 +41,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
     } finally {
       setRefreshing(false);
     }
-  };
-
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!phone.trim() || !emergencyContact.trim()) {
-      toast.error('Personal and emergency contact numbers are required.');
-      return;
-    }
-    if (!address.trim()) {
-      toast.error('Address is required.');
-      return;
-    }
-    setSaving(true);
-    try {
-      if (user?.role === 'student' || user?.personType === 'student') {
-        await api.patch('/api/v1/people/students/me', {
-          phone: phone.trim(),
-          emergencyContact: emergencyContact.trim(),
-          address: address.trim(),
-          healthConcerns: healthConcerns.trim(),
-        });
-      }
-
-      toast.success('Your profile details have been updated successfully!');
-      setIsEditing(false);
-      await refreshSession();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'Update Failed');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    if (details) {
-      setPhone(details.phone || '');
-      setEmergencyContact(details.emergencyContact || '');
-      setAddress(details.address || '');
-      setHealthConcerns(details.healthConcerns || '');
-    }
-    setIsEditing(false);
   };
 
   const isStudent = user?.role === 'student' || user?.personType === 'student';
@@ -155,23 +94,12 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
               <RefreshCw className={cn('w-3.5 h-3.5 mr-1.5', refreshing && 'animate-spin')} />
               <span>Refresh</span>
             </Button>
-
-            {isStudent && (
-              <Button
-                variant={isEditing ? 'secondary' : 'primary'}
-                size="sm"
-                onClick={() => setIsEditing(!isEditing)}
-              >
-                <Pencil className="w-3.5 h-3.5 mr-1.5" />
-                <span>{isEditing ? 'Viewing Mode' : 'Edit Contact Details'}</span>
-              </Button>
-            )}
           </div>
         </div>
       </Card>
 
-      {/* Main Grid: Institutional Info & Editable Details */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 min-w-0">
+      {/* Main Grid: Institutional Info */}
+      <div className="grid grid-cols-1 gap-6 min-w-0">
         {/* Section 1: Official Institutional Information (Read-Only / Locked) */}
         <Card className="space-y-4 min-w-0">
           <div className="flex items-center justify-between border-b border-border pb-3">
@@ -268,6 +196,16 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
               </>
             )}
 
+            <div className="p-3 rounded-xl bg-surface-elevated border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-1 min-w-0">
+              <div className="flex items-center gap-2 text-secondary shrink-0">
+                <FaceIdIcon className="w-4 h-4 text-primary" />
+                <span>Face ID:</span>
+              </div>
+              <Badge tone={faceEnrolled ? 'success' : 'warning'} className="self-start sm:self-auto">
+                {faceEnrolled ? 'Registered at turnstile' : 'Not registered'}
+              </Badge>
+            </div>
+
             <div className="p-3 rounded-xl bg-surface-elevated/40 border border-dashed border-border flex items-start gap-2 text-[11px] text-muted min-w-0">
               <Shield className="w-3.5 h-3.5 text-muted shrink-0 mt-0.5" />
               <span className="break-words">
@@ -275,100 +213,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
               </span>
             </div>
           </div>
-        </Card>
-
-        {/* Section 2: Contact & Safety Details (EDITABLE ✏️) */}
-        <Card className="space-y-4 min-w-0">
-          <div className="flex items-center justify-between border-b border-border pb-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="p-1.5 rounded-lg bg-primary-muted text-primary shrink-0">
-                <Pencil className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="font-bold text-sm text-text truncate">Contact & Medical Details</h3>
-                <p className="text-[11px] text-muted truncate">Self-managed personal & emergency information</p>
-              </div>
-            </div>
-            <Badge tone="success" className="text-[10px] flex items-center gap-1 font-semibold shrink-0">
-              <Pencil className="w-2.5 h-2.5" /> Editable
-            </Badge>
-          </div>
-
-          <form onSubmit={handleSaveProfile} className="space-y-4 text-xs min-w-0">
-            <div>
-              <Input
-                label="Contact Phone Number"
-                type="tel"
-                required
-                disabled={!isEditing}
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+91 98765 43210"
-                hint="Your active personal mobile number"
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Emergency Contact Number"
-                type="tel"
-                required
-                disabled={!isEditing}
-                value={emergencyContact}
-                onChange={(e) => setEmergencyContact(e.target.value)}
-                placeholder="+91 98765 00000"
-                hint="Parent, guardian, or hostel warden phone"
-              />
-            </div>
-
-            <div>
-              <Textarea
-                label="Hostel Block / Home Address"
-                required
-                disabled={!isEditing}
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="e.g. Block C, Room 304 / Residential Address"
-                hint="Current campus or residential address"
-              />
-            </div>
-
-            <div>
-              <Textarea
-                label="Health Concerns & Medical Notes"
-                disabled={!isEditing}
-                value={healthConcerns}
-                onChange={(e) => setHealthConcerns(e.target.value)}
-                placeholder="e.g. Asthma, cardiac precautions, joint injuries — leave blank if none"
-                hint="Shared confidentially with gym trainers for safety"
-              />
-            </div>
-
-            {isEditing ? (
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
-                <Button variant="secondary" size="sm" type="button" onClick={handleCancel}>
-                  Cancel
-                </Button>
-                <Button variant="primary" size="sm" loading={saving} type="submit">
-                  <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                  <span>Save Changes</span>
-                </Button>
-              </div>
-            ) : (
-              <div className="pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="w-full"
-                >
-                  <Pencil className="w-3.5 h-3.5 mr-1.5" />
-                  <span>Edit Contact & Medical Info</span>
-                </Button>
-              </div>
-            )}
-          </form>
         </Card>
       </div>
     </div>
