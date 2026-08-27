@@ -64,6 +64,14 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!phone.trim() || !emergencyContact.trim()) {
+      toast.error('Personal and emergency contact numbers are required.');
+      return;
+    }
+    if (!address.trim()) {
+      toast.error('Address is required.');
+      return;
+    }
     setSaving(true);
     try {
       if (user?.role === 'student' || user?.personType === 'student') {
@@ -316,6 +324,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
             <div>
               <Textarea
                 label="Hostel Block / Home Address"
+                required
                 disabled={!isEditing}
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}

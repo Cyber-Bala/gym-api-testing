@@ -218,7 +218,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-bold text-text">
-          {formatTime12h(slot.startTime)} – {formatTime12h(slot.endTime)}
+          {formatTime12h(slot.startTime)} - {formatTime12h(slot.endTime)}
         </span>
         {slot.isBookedByCurrentUser ? (
           <Badge tone="success">Your slot</Badge>
@@ -409,7 +409,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
                 Workout confirmed for {upcomingBooking.slotDate}
               </p>
               <p className="text-[11px] font-semibold text-success">
-                {formatTime12h(upcomingBooking.startTime)} – {formatTime12h(upcomingBooking.endTime)}
+                {formatTime12h(upcomingBooking.startTime)} - {formatTime12h(upcomingBooking.endTime)}
               </p>
             </div>
           </div>

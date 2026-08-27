@@ -15,7 +15,7 @@ export type StudentRowInput = z.infer<typeof studentRowSchema>;
 export const studentSelfUpdateSchema = z.object({
   phone: z.string().min(7, 'Enter a valid contact number').max(20).optional(),
   emergencyContact: z.string().min(7, 'Enter a valid emergency contact').max(20).optional(),
-  address: z.string().min(3, 'Address is too short').max(500).optional(),
+  address: z.string().trim().min(3, 'Address is required').max(500),
   healthConcerns: z.string().max(1000).optional(),
 });
 

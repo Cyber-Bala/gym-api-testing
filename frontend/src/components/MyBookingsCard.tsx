@@ -148,7 +148,7 @@ export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged
                   <Badge tone="success">Confirmed Batch</Badge>
                   <h5 className="font-bold text-sm text-text mt-1.5 flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-success" />
-                    <span>{formatTime12h(b.startTime)} – {formatTime12h(b.endTime)}</span>
+                    <span>{formatTime12h(b.startTime)} - {formatTime12h(b.endTime)}</span>
                   </h5>
                   <p className="text-xs text-muted font-mono mt-0.5">
                     {b.slotDate}

@@ -113,17 +113,19 @@ export const UserProfileBadge: React.FC<UserProfileBadgeProps> = ({
             <User className="w-4 h-4" />
             Profile
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setDropdownOpen(false);
-              if (onNavigate) onNavigate('memberships');
-            }}
-            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-surface-elevated"
-          >
-            <CreditCard className="w-4 h-4" />
-            Payments
-          </button>
+          {(user.role === 'admin' || user.role === 'super_admin') && (
+            <button
+              type="button"
+              onClick={() => {
+                setDropdownOpen(false);
+                if (onNavigate) onNavigate('memberships');
+              }}
+              className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-surface-elevated"
+            >
+              <CreditCard className="w-4 h-4" />
+              Payments
+            </button>
+          )}
           <div className="my-1" />
           <button
             type="button"

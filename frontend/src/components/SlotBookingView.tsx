@@ -11,7 +11,6 @@ import {
   Sun,
   Moon,
   BookmarkCheck,
-  CreditCard,
   Plus,
   Trash2,
   Sparkles,
@@ -100,7 +99,7 @@ interface SlotBookingViewProps {
   onNavigate?: (view: any) => void;
 }
 
-export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSuccess, onNavigate }) => {
+export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSuccess }) => {
   const { user } = useAuth();
   const toast = useToast();
   const [data, setData] = useState<RollingWindowData | null>(null);
@@ -191,6 +190,15 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const hour12 = hour % 12 || 12;
     return `${hour12}:${mm} ${ampm}`;
+  };
+
+  const formatTimeRange = (start: string, end: string) => {
+    const from = formatTime12h(start);
+    const to = formatTime12h(end);
+    const fromPeriod = from.slice(-2);
+    const toPeriod = to.slice(-2);
+    if (fromPeriod === toPeriod) return `${from.slice(0, -3)}-${to}`;
+    return `${from}-${to}`;
   };
 
   const handleReserveSlot = async (slotId: string) => {
@@ -339,11 +347,6 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
   const anyDayQuotaReached = Boolean(
     isStudent && data?.days.some((d) => (d.userBookedCountOnDate || 0) >= 3)
   );
-  const anyPassExpired = Boolean(
-    isStudent &&
-      user?.studentDetails?.residency === 'day_scholar' &&
-      data?.days.some((d) => !d.isLocked && d.isPassValidOnDate === false)
-  );
 
   const renderSlotCard = (slot: SlotItem, day: DaySlots) => {
     const isMorning = parseInt(slot.startTime.split(':')[0], 10) < 12;
@@ -364,16 +367,18 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
       <div
         key={slot.id}
         className={cn(
-          'p-2 sm:p-3 rounded-lg bg-surface-elevated flex flex-col gap-2 min-w-0',
+          'h-[108px] sm:h-[120px] p-2 sm:p-2.5 rounded-lg bg-surface-elevated flex flex-col justify-between min-w-0 overflow-hidden',
+          !isStudent && 'h-[132px] sm:h-[148px]',
+          isAdmin && 'h-[164px] sm:h-[180px]',
           isStudent && slot.isBookedByCurrentUser
-            ? 'border-success/40 bg-success-muted/20'
+            ? 'bg-success-muted/20'
             : !slot.isActive || slot.isPast || (isStudent && !isPassValid)
               ? 'opacity-60'
               : ''
         )}
       >
-        <div className="flex items-start justify-between gap-1 min-w-0">
-          <div className="min-w-0">
+        <div className="flex items-start justify-between gap-1 min-w-0 overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-hidden">
             <div className="flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground">
               {isMorning ? (
                 <Sun className="w-3 h-3 text-warning shrink-0" />
@@ -382,12 +387,12 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
               )}
               <span className="truncate">{isMorning ? 'Morning' : 'Evening'}</span>
             </div>
-            <h5 className="text-[11px] sm:text-sm font-semibold text-card-foreground mt-0.5 leading-tight">
-              {formatTime12h(slot.startTime)} â€“ {formatTime12h(slot.endTime)}
+            <h5 className="text-[10px] sm:text-xs font-semibold text-card-foreground mt-0.5 leading-tight truncate whitespace-nowrap">
+              {formatTimeRange(slot.startTime, slot.endTime)}
             </h5>
           </div>
           <Badge
-            className="text-[9px] sm:text-[10px] px-1.5 shrink-0"
+            className="text-[9px] px-1.5 max-w-[3.5rem] truncate"
             tone={
               isStudent && slot.isBookedByCurrentUser
                 ? 'success'
@@ -411,7 +416,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                 : slot.isPast
                   ? 'Past'
                   : isStudent && !isPassValid
-                    ? 'Pass'
+                    ? 'Expired'
                     : slot.isFull
                       ? 'Full'
                       : !isStudent
@@ -421,13 +426,13 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </div>
 
         {!isStudent && (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px] sm:text-xs">
-              <span className="text-muted-foreground flex items-center gap-1">
-                <Users className="w-3 h-3" />
-                <span className="hidden sm:inline">Capacity</span>
+          <div className="space-y-1 min-w-0 overflow-hidden shrink-0">
+            <div className="flex items-center justify-between text-[10px] sm:text-xs gap-1">
+              <span className="text-muted-foreground flex items-center gap-1 min-w-0">
+                <Users className="w-3 h-3 shrink-0" />
+                <span className="hidden sm:inline truncate">Capacity</span>
               </span>
-              <span className="font-medium text-card-foreground">
+              <span className="font-medium text-card-foreground shrink-0">
                 {slot.bookedCount}/{slot.capacity}
               </span>
             </div>
@@ -435,40 +440,29 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
           </div>
         )}
 
-        <div className="pt-1.5 flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1 shrink-0 overflow-hidden">
           {isStudent && slot.isBookedByCurrentUser ? (
-            <span className="text-[10px] sm:text-xs font-medium text-success flex items-center justify-center gap-1">
-              <BookmarkCheck className="w-3.5 h-3.5" /> Reserved
+            <span className="text-[10px] sm:text-xs font-medium text-success flex items-center justify-center gap-1 truncate">
+              <BookmarkCheck className="w-3.5 h-3.5 shrink-0" /> Reserved
             </span>
           ) : canBook ? (
             <Button
               variant="primary"
               size="xs"
-              className="w-full h-7 text-[10px] sm:text-xs"
+              className="w-full h-7 text-[10px] sm:text-xs shrink-0"
               loading={reservingSlotId === slot.id}
               onClick={() => handleReserveSlot(slot.id)}
             >
               Book
             </Button>
           ) : isStudent && !isPassValid ? (
-            onNavigate ? (
-              <Button
-                variant="outline"
-                size="xs"
-                className="w-full h-7 text-[10px] sm:text-xs"
-                onClick={() => onNavigate('memberships')}
-              >
-                Extend
-              </Button>
-            ) : (
-              <span className="text-[10px] font-medium text-warning text-center">Pass expired</span>
-            )
+            <span className="text-[10px] font-medium text-warning text-center truncate">Pass expired</span>
           ) : isTrainer ? (
-            <span className="text-[10px] text-muted-foreground text-center">Supervision</span>
+            <span className="text-[10px] text-muted-foreground text-center truncate">Supervision</span>
           ) : isStaff ? (
-            <span className="text-[10px] text-muted-foreground text-center">Direct access</span>
+            <span className="text-[10px] text-muted-foreground text-center truncate">Direct access</span>
           ) : isStudent ? (
-            <span className="text-[10px] text-muted-foreground text-center">
+            <span className="text-[10px] text-muted-foreground text-center truncate">
               {slot.isFull ? 'Full' : slot.isPast ? 'Past' : 'Unavailable'}
             </span>
           ) : null}
@@ -618,42 +612,6 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </Alert>
       )}
 
-      {isStudent && user?.studentDetails?.residency === 'day_scholar' && (
-        <Alert tone="info">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-primary shrink-0" />
-              <span className="text-xs text-secondary">
-                Day Scholar Account: Workout slot reservations require an active gym pass.
-              </span>
-            </div>
-            {onNavigate && (
-              <Button variant="outline" size="xs" onClick={() => onNavigate('memberships')}>
-                Gym Passes
-              </Button>
-            )}
-          </div>
-        </Alert>
-      )}
-
-      {anyPassExpired && (
-        <Alert tone="warning">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-warning shrink-0" />
-              <span className="text-xs text-secondary">
-                Your gym pass expires before some of the dates below. Extend your pass to book those days.
-              </span>
-            </div>
-            {onNavigate && (
-              <Button variant="accent" size="xs" onClick={() => onNavigate('memberships')}>
-                Extend Pass
-              </Button>
-            )}
-          </div>
-        </Alert>
-      )}
-
       {anyDayLocked && (
         <Alert tone="danger">
           <div className="flex items-start gap-2">
@@ -712,7 +670,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 items-start">
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 items-start min-w-0">
             {data.days.map((day) => {
               const daySlots = filterSlots(day.slots);
               return (
@@ -770,7 +728,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                     )}
                   </div>
 
-                  <div className="p-1.5 sm:p-3 flex flex-col gap-1.5 sm:gap-2">
+                  <div className="p-1.5 sm:p-3 flex flex-col gap-1.5 sm:gap-2 min-w-0 overflow-hidden">
                     {day.isLocked ? (
                       <div className="py-6 px-1 text-center space-y-1">
                         <Lock className="w-5 h-5 text-danger mx-auto" />
@@ -821,7 +779,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
             <div className="p-3 rounded-xl bg-surface-elevated text-xs space-y-1">
               <p className="text-muted">Selected Time Batch:</p>
               <p className="font-bold text-text">
-                {editSlot.date} ({formatTime12h(editSlot.startTime)} - {formatTime12h(editSlot.endTime)})
+                {editSlot.date} ({formatTimeRange(editSlot.startTime, editSlot.endTime)})
               </p>
             </div>
 

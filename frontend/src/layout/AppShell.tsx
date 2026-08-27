@@ -6,7 +6,6 @@ import { ThemeToggle } from '../components/ThemeToggle';
 import { UserProfileBadge } from '../components/UserProfileBadge';
 import { NotificationCenter } from '../components/NotificationCenter';
 import { RecLogo } from '../components/RecLogo';
-import { AppFooter } from '../components/AppFooter';
 import { cn } from '../lib/cn';
 import { AppView, NavItem, visibleNav, getMobilePrimary } from './nav';
 import { Button } from '../ui/Button';
@@ -127,7 +126,6 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
               onClick={() => onNavigate('home')}
             >
               <RecLogo alt="REC Gym Logo" className="h-8 w-32" />
-              <span className="text-xl font-bold truncate">REC Gym</span>
             </button>
           </div>
 
@@ -151,7 +149,6 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             <div className="flex h-16 items-center justify-between bg-surface-elevated px-4">
               <div className="flex items-center gap-2 min-w-0">
                 <RecLogo alt="REC Gym Logo" className="h-8 w-24" />
-                <span className="text-xl font-bold truncate">REC Gym</span>
               </div>
               <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setDrawerOpen(false)}>
                 <X className="h-5 w-5" />
@@ -221,7 +218,6 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
           >
             {children}
           </main>
-          <AppFooter />
         </div>
       </div>
 

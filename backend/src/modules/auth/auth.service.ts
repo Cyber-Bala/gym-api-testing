@@ -309,6 +309,7 @@ export class AuthService {
         hasCompletedOnboarding = Boolean(
           phone?.trim() &&
             emergencyContact?.trim() &&
+            studentRec.address?.trim() &&
             (faceEnrollmentStatus === 'enrolled' || studentRec.faceEnrollmentStatus === 'enrolled')
         );
 

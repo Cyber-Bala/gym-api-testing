@@ -61,7 +61,9 @@ export const StudentOnboardingCard: React.FC<StudentOnboardingCardProps> = ({
 
   const isFaceEnrolled =
     details?.faceEnrollmentStatus === 'enrolled' || user?.faceEnrollmentStatus === 'enrolled';
-  const isContactFilled = Boolean(details?.phone?.trim() && details?.emergencyContact?.trim());
+  const isContactFilled = Boolean(
+    details?.phone?.trim() && details?.emergencyContact?.trim() && details?.address?.trim()
+  );
   const incomplete = (!isContactFilled || !isFaceEnrolled) && !justSaved;
 
   const stopCamera = useCallback(() => {
@@ -172,6 +174,11 @@ export const StudentOnboardingCard: React.FC<StudentOnboardingCardProps> = ({
 
     if (!phone.trim() || !emergencyContact.trim()) {
       toast.error('Personal and emergency contact numbers are required.');
+      return;
+    }
+
+    if (!address.trim()) {
+      toast.error('Address is required.');
       return;
     }
 
@@ -290,7 +297,8 @@ export const StudentOnboardingCard: React.FC<StudentOnboardingCardProps> = ({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Textarea
-              label="Hostel Block / Home Address (Optional)"
+              label="Hostel Block / Home Address"
+              required
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               placeholder="e.g. Block C, Room 304 / Residential Address"

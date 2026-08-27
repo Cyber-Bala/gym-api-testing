@@ -92,8 +92,6 @@ export const App: React.FC = () => {
           return <MyAccessHistory />;
         case 'profile':
           return <UserProfileView onBack={() => setActiveView('home')} />;
-        case 'memberships':
-          return <MembershipStore />;
         case 'home':
         default:
           return (

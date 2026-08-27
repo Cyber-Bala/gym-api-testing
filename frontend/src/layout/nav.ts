@@ -67,7 +67,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Gym passes',
     shortLabel: 'Passes',
     icon: CreditCard,
-    roles: ['student', 'admin', 'super_admin'],
+    roles: ['admin', 'super_admin'],
   },
   {
     id: 'my_access',
@@ -167,8 +167,8 @@ export function canSee(item: NavItem, user?: SessionUser | null): boolean {
     return item.roles === 'all';
   }
 
-  // Hosteller students have inclusive gym access and do not require passes
-  if (item.id === 'memberships' && user.studentDetails?.residency === 'hosteller') {
+  // Pass purchase is gated at login, not from in-app navigation
+  if (item.id === 'memberships' && user.role === 'student') {
     return false;
   }
 
@@ -192,7 +192,7 @@ export function visibleNav(user?: SessionUser | null): NavItem[] {
 }
 
 export const MOBILE_PRIMARY: Record<string, AppView[]> = {
-  student: ['home', 'profile', 'book', 'memberships'],
+  student: ['home', 'profile', 'book', 'my_access'],
   trainer: ['home', 'profile', 'floor_management', 'trainer_shifts'],
   staff: ['home', 'profile', 'book', 'my_access'],
   authorized_person: ['home', 'profile'],
@@ -203,12 +203,6 @@ export const MOBILE_PRIMARY: Record<string, AppView[]> = {
 
 export function getMobilePrimary(user?: SessionUser | null): AppView[] {
   if (!user) return ['home'];
-  if (user.role === 'student') {
-    if (user.studentDetails?.residency === 'hosteller') {
-      return ['home', 'profile', 'book', 'my_access'];
-    }
-    return ['home', 'profile', 'book', 'memberships'];
-  }
   return MOBILE_PRIMARY[user.role] ?? ['home'];
 }
 
