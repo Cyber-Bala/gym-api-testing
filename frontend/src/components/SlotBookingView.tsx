@@ -18,7 +18,9 @@ import {
   ShieldAlert,
   Award,
   ShieldCheck,
+  X,
 } from 'lucide-react';
+
 import { useAuth } from '../context/AuthContext';
 import { Badge, ProgressBar, Modal, Alert } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
@@ -102,7 +104,6 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
   const { user } = useAuth();
   const toast = useToast();
   const [data, setData] = useState<RollingWindowData | null>(null);
-  const [selectedDateIdx, setSelectedDateIdx] = useState<number>(0);
   const [sessionFilter, setSessionFilter] = useState<'all' | 'morning' | 'evening'>('all');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -327,13 +328,180 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
     );
   };
 
-  const currentDay = data?.days[selectedDateIdx];
+  const filterSlots = (slots: SlotItem[]) =>
+    slots.filter((slot) => {
+      if (sessionFilter === 'all') return true;
+      const hour = parseInt(slot.startTime.split(':')[0], 10);
+      return sessionFilter === 'morning' ? hour < 12 : hour >= 12;
+    });
 
-  const filteredSlots = (currentDay?.slots || []).filter((slot) => {
-    if (sessionFilter === 'all') return true;
-    const hour = parseInt(slot.startTime.split(':')[0], 10);
-    return sessionFilter === 'morning' ? hour < 12 : hour >= 12;
-  });
+  const anyDayLocked = Boolean(data?.days.some((d) => d.isLocked));
+  const anyDayQuotaReached = Boolean(
+    isStudent && data?.days.some((d) => (d.userBookedCountOnDate || 0) >= 3)
+  );
+  const anyPassExpired = Boolean(
+    isStudent &&
+      user?.studentDetails?.residency === 'day_scholar' &&
+      data?.days.some((d) => !d.isLocked && d.isPassValidOnDate === false)
+  );
+
+  const renderSlotCard = (slot: SlotItem, day: DaySlots) => {
+    const isMorning = parseInt(slot.startTime.split(':')[0], 10) < 12;
+    const isDayLimitReached = (day.userBookedCountOnDate || 0) >= 3;
+    const isWindowLimitReached = (data?.totalUserBookingsInWindow || 0) >= 3;
+    const isPassValid = slot.isPassCovered !== false && day.isPassValidOnDate !== false;
+    const canBook =
+      isStudent &&
+      !slot.isPast &&
+      slot.isActive &&
+      !slot.isFull &&
+      !slot.isBookedByCurrentUser &&
+      !isDayLimitReached &&
+      !isWindowLimitReached &&
+      isPassValid;
+
+    return (
+      <div
+        key={slot.id}
+        className={cn(
+          'p-2 sm:p-3 rounded-lg border border-border bg-card flex flex-col gap-2 min-w-0',
+          isStudent && slot.isBookedByCurrentUser
+            ? 'border-success/40 bg-success-muted/20'
+            : !slot.isActive || slot.isPast || (isStudent && !isPassValid)
+              ? 'opacity-60'
+              : ''
+        )}
+      >
+        <div className="flex items-start justify-between gap-1 min-w-0">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground">
+              {isMorning ? (
+                <Sun className="w-3 h-3 text-warning shrink-0" />
+              ) : (
+                <Moon className="w-3 h-3 text-primary shrink-0" />
+              )}
+              <span className="truncate">{isMorning ? 'Morning' : 'Evening'}</span>
+            </div>
+            <h5 className="text-[11px] sm:text-sm font-semibold text-card-foreground mt-0.5 leading-tight">
+              {formatTime12h(slot.startTime)} â€“ {formatTime12h(slot.endTime)}
+            </h5>
+          </div>
+          <Badge
+            className="text-[9px] sm:text-[10px] px-1.5 shrink-0"
+            tone={
+              isStudent && slot.isBookedByCurrentUser
+                ? 'success'
+                : !slot.isActive
+                  ? 'neutral'
+                  : slot.isPast
+                    ? 'neutral'
+                    : isStudent && !isPassValid
+                      ? 'warning'
+                      : slot.isFull
+                        ? 'danger'
+                        : slot.occupancyPercentage >= 75
+                          ? 'warning'
+                          : 'primary'
+            }
+          >
+            {isStudent && slot.isBookedByCurrentUser
+              ? 'Yours'
+              : !slot.isActive
+                ? 'Closed'
+                : slot.isPast
+                  ? 'Past'
+                  : isStudent && !isPassValid
+                    ? 'Pass'
+                    : slot.isFull
+                      ? 'Full'
+                      : !isStudent
+                        ? `${slot.availableSpots}`
+                        : 'Open'}
+          </Badge>
+        </div>
+
+        {!isStudent && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[10px] sm:text-xs">
+              <span className="text-muted-foreground flex items-center gap-1">
+                <Users className="w-3 h-3" />
+                <span className="hidden sm:inline">Capacity</span>
+              </span>
+              <span className="font-medium text-card-foreground">
+                {slot.bookedCount}/{slot.capacity}
+              </span>
+            </div>
+            <ProgressBar value={slot.occupancyPercentage} />
+          </div>
+        )}
+
+        <div className="pt-1.5 border-t border-border flex flex-col gap-1.5">
+          {isStudent && slot.isBookedByCurrentUser ? (
+            <span className="text-[10px] sm:text-xs font-medium text-success flex items-center justify-center gap-1">
+              <BookmarkCheck className="w-3.5 h-3.5" /> Reserved
+            </span>
+          ) : canBook ? (
+            <Button
+              variant="primary"
+              size="xs"
+              className="w-full h-7 text-[10px] sm:text-xs"
+              loading={reservingSlotId === slot.id}
+              onClick={() => handleReserveSlot(slot.id)}
+            >
+              Book
+            </Button>
+          ) : isStudent && !isPassValid ? (
+            onNavigate ? (
+              <Button
+                variant="outline"
+                size="xs"
+                className="w-full h-7 text-[10px] sm:text-xs"
+                onClick={() => onNavigate('memberships')}
+              >
+                Extend
+              </Button>
+            ) : (
+              <span className="text-[10px] font-medium text-warning text-center">Pass expired</span>
+            )
+          ) : isTrainer ? (
+            <span className="text-[10px] text-muted-foreground text-center">Supervision</span>
+          ) : isStaff ? (
+            <span className="text-[10px] text-muted-foreground text-center">Direct access</span>
+          ) : isStudent ? (
+            <span className="text-[10px] text-muted-foreground text-center">
+              {slot.isFull ? 'Full' : slot.isPast ? 'Past' : 'Unavailable'}
+            </span>
+          ) : null}
+
+          {isAdmin && (
+            <div className="flex items-center justify-center gap-1">
+              <IconButton
+                label="Admin Capacity Override"
+                size="sm"
+                className="h-7 w-7"
+                onClick={() => {
+                  setEditSlot(slot);
+                  setEditCapacity(slot.capacity);
+                  setEditReason('');
+                }}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                label={slot.isActive ? 'Close Slot' : 'Reopen Slot'}
+                size="sm"
+                className="h-7 w-7"
+                variant={slot.isActive ? 'default' : 'danger'}
+                onClick={() => handleAdminToggleStatus(slot)}
+              >
+                <Lock className="w-3.5 h-3.5" />
+              </IconButton>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-8">
@@ -422,109 +590,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </Alert>
       )}
 
-      {/* Date Window Tabs (Includes Locked Dates with dynamic extension) */}
-      {data && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {data.days.map((day, idx) => {
-            const isSelected = selectedDateIdx === idx;
-            const isLocked = day.isLocked;
-
-            return (
-              <button
-                key={day.date}
-                type="button"
-                onClick={() => setSelectedDateIdx(idx)}
-                className={cn(
-                  'p-4 rounded-2xl text-left transition-all relative shadow-sm border',
-                  isSelected
-                    ? isLocked
-                      ? 'bg-danger text-white border-danger shadow-md'
-                      : 'bg-primary text-white border-primary shadow-md'
-                    : isLocked
-                    ? 'bg-danger-muted/15 border-danger/30 hover:bg-danger-muted/25'
-                    : 'bg-surface-elevated border-white/5 hover:bg-surface-elevated/80'
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span
-                    className={cn(
-                      'text-[10px] uppercase font-bold tracking-wider',
-                      isSelected ? 'text-accent' : isLocked ? 'text-danger' : 'text-primary'
-                    )}
-                  >
-                    {isLocked ? `${day.dayLabel || day.date} (Locked)` : day.dayLabel}
-                  </span>
-
-                  {isLocked ? (
-                    <Badge tone="danger">
-                      <Lock className="w-3 h-3 mr-1" />
-                      Locked
-                    </Badge>
-                  ) : isStudent && day.userBookedCountOnDate && day.userBookedCountOnDate > 0 ? (
-                    <Badge tone={day.userBookedCountOnDate >= 3 ? 'warning' : 'success'}>
-                      <CheckCircle2 className="w-3 h-3" /> {day.userBookedCountOnDate}/3 Booked
-                    </Badge>
-                  ) : null}
-                </div>
-
-                <h4
-                  className={cn(
-                    'font-bold text-base mt-1',
-                    isSelected ? 'text-white' : isLocked ? 'text-danger' : 'text-text'
-                  )}
-                >
-                  {day.dayOfWeek}
-                </h4>
-                <p
-                  className={cn(
-                    'text-xs font-mono mt-0.5',
-                    isSelected ? 'text-white/80' : 'text-muted'
-                  )}
-                >
-                  {day.date}
-                </p>
-
-                <div
-                  className={cn(
-                    'mt-3 pt-2 flex items-center justify-between text-xs',
-                    isSelected
-                      ? 'text-white/80 border-t border-white/20'
-                      : isLocked
-                      ? 'text-danger border-t border-danger/20'
-                      : 'text-secondary border-t border-border'
-                  )}
-                >
-                  <span>{isLocked ? 'Status' : 'Occupancy'}</span>
-                  <span className={cn('font-semibold', isSelected ? 'text-white' : 'text-text')}>
-                    {isLocked ? 'Facility Closed' : `${day.totalBooked} / ${day.totalCapacity}`}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Locked Date Notice Banner */}
-      {currentDay?.isLocked && (
-        <Alert tone="danger">
-          <div className="flex items-start gap-3">
-            <ShieldAlert className="w-5 h-5 text-danger shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-bold text-sm">Gym Facility Closed on {currentDay.date}</p>
-              <p className="text-xs text-secondary leading-relaxed">
-                <strong>Reason:</strong> {currentDay.lockReason || 'Scheduled Maintenance / Blackout'}.
-              </p>
-              <p className="text-[11px] text-muted">
-                All reservations on this date have been cancelled and your booking quota has been restored. Please select another open day from the tabs above.
-              </p>
-            </div>
-          </div>
-        </Alert>
-      )}
-
-      {/* Quota Indicators and Reminders (Students Only) */}
-      {isStudent && !currentDay?.isLocked && (data?.totalUserBookingsInWindow || 0) >= 3 ? (
+      {isStudent && (data?.totalUserBookingsInWindow || 0) >= 3 && (
         <Alert tone="warning">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
@@ -536,21 +602,22 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
             </div>
           </div>
         </Alert>
-      ) : isStudent && !currentDay?.isLocked && (currentDay?.userBookedCountOnDate || 0) >= 3 ? (
+      )}
+
+      {isStudent && anyDayQuotaReached && (data?.totalUserBookingsInWindow || 0) < 3 && (
         <Alert tone="warning">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold">Daily Slot Quota Reached for {currentDay?.dayLabel} (3/3 Booked)</p>
+              <p className="font-bold">Daily slot quota reached on one or more days</p>
               <p className="mt-0.5 text-xs text-secondary">
-                You have booked the maximum limit of 3 slots on this day. You can book remaining slots on the other available window dates.
+                You can still book remaining slots on other available window dates.
               </p>
             </div>
           </div>
         </Alert>
-      ) : null}
+      )}
 
-      {/* Day Scholar Pass Reminder (Students Only) */}
       {isStudent && user?.studentDetails?.residency === 'day_scholar' && (
         <Alert tone="info">
           <div className="flex items-center justify-between gap-3">
@@ -569,14 +636,13 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </Alert>
       )}
 
-      {/* Day Scholar Pass Expired on Date Notice */}
-      {isStudent && user?.studentDetails?.residency === 'day_scholar' && !currentDay?.isLocked && currentDay?.isPassValidOnDate === false && (
+      {anyPassExpired && (
         <Alert tone="warning">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-warning shrink-0" />
               <span className="text-xs text-secondary">
-                Your gym pass expires before {currentDay.dayLabel} ({currentDay.date}). To book slots on this date, please extend or renew your pass.
+                Your gym pass expires before some of the dates below. Extend your pass to book those days.
               </span>
             </div>
             {onNavigate && (
@@ -588,36 +654,44 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </Alert>
       )}
 
-      {/* Session Filter & Slot Grid (Hidden if day is locked) */}
-      {currentDay && !currentDay.isLocked && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-muted flex items-center gap-2">
-              <Clock className="w-4 h-4 text-primary" />
-              <span>Available Batches ({currentDay.slots.length} Slots Generated)</span>
-            </h4>
+      {anyDayLocked && (
+        <Alert tone="danger">
+          <div className="flex items-start gap-2">
+            <ShieldAlert className="w-4 h-4 text-danger shrink-0 mt-0.5" />
+            <p className="text-xs text-secondary">
+              One or more dates are locked. Closed days show in the calendar below.
+            </p>
+          </div>
+        </Alert>
+      )}
 
-            {/* Session Tabs */}
-            <div className="flex items-center gap-1 bg-border-subtle p-1 rounded-xl border border-border text-xs">
+      {data && (
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Clock className="w-4 h-4 text-primary" />
+              <span>Calendar ({data.days.length} days)</span>
+            </h4>
+            <div className="flex items-center gap-1 bg-surface-elevated p-1 rounded-md border border-border text-xs">
               <button
                 type="button"
                 onClick={() => setSessionFilter('all')}
                 className={cn(
-                  'px-3 py-1 rounded-lg font-medium transition-colors',
+                  'px-3 py-1 rounded-md font-medium transition-colors',
                   sessionFilter === 'all'
-                    ? 'bg-surface text-primary shadow-sm font-semibold'
+                    ? 'bg-background text-primary shadow-xs'
                     : 'text-secondary hover:text-text'
                 )}
               >
-                All ({currentDay.slots.length})
+                All
               </button>
               <button
                 type="button"
                 onClick={() => setSessionFilter('morning')}
                 className={cn(
-                  'px-3 py-1 rounded-lg font-medium transition-colors',
+                  'px-3 py-1 rounded-md font-medium transition-colors',
                   sessionFilter === 'morning'
-                    ? 'bg-surface text-primary shadow-sm font-semibold'
+                    ? 'bg-background text-primary shadow-xs'
                     : 'text-secondary hover:text-text'
                 )}
               >
@@ -627,9 +701,9 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                 type="button"
                 onClick={() => setSessionFilter('evening')}
                 className={cn(
-                  'px-3 py-1 rounded-lg font-medium transition-colors',
+                  'px-3 py-1 rounded-md font-medium transition-colors',
                   sessionFilter === 'evening'
-                    ? 'bg-surface text-primary shadow-sm font-semibold'
+                    ? 'bg-background text-primary shadow-xs'
                     : 'text-secondary hover:text-text'
                 )}
               >
@@ -638,173 +712,80 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredSlots.map((slot) => {
-              const isMorning = parseInt(slot.startTime.split(':')[0], 10) < 12;
-              const isDayLimitReached = (currentDay.userBookedCountOnDate || 0) >= 3;
-              const isWindowLimitReached = (data?.totalUserBookingsInWindow || 0) >= 3;
-              const isPassValid = slot.isPassCovered !== false && currentDay.isPassValidOnDate !== false;
-              const canBook =
-                isStudent &&
-                !slot.isPast &&
-                slot.isActive &&
-                !slot.isFull &&
-                !slot.isBookedByCurrentUser &&
-                !isDayLimitReached &&
-                !isWindowLimitReached &&
-                isPassValid;
-
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 items-start">
+            {data.days.map((day) => {
+              const daySlots = filterSlots(day.slots);
               return (
                 <div
-                  key={slot.id}
+                  key={day.date}
                   className={cn(
-                    'p-5 rounded-2xl bg-surface-elevated flex flex-col justify-between space-y-4 shadow-sm transition-all hover:shadow-md',
-                    isStudent && slot.isBookedByCurrentUser
-                      ? 'bg-success-muted/25'
-                      : !slot.isActive || slot.isPast || (isStudent && !isPassValid)
-                      ? 'opacity-60 bg-surface-elevated/40'
-                      : ''
+                    'min-w-0 rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col',
+                    day.isLocked ? 'border-danger/40' : 'border-border'
                   )}
                 >
-                  {/* Slot Header */}
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-1.5 text-xs text-muted">
-                        {isMorning ? (
-                          <Sun className="w-3.5 h-3.5 text-warning" />
-                        ) : (
-                          <Moon className="w-3.5 h-3.5 text-primary" />
-                        )}
-                        <span>{isMorning ? 'Morning Batch' : 'Evening Batch'}</span>
-                      </div>
-                      <h5 className="text-sm sm:text-base font-bold text-text mt-1">
-                        {formatTime12h(slot.startTime)} – {formatTime12h(slot.endTime)}
-                      </h5>
-                    </div>
-
-                    <Badge
-                      tone={
-                        isStudent && slot.isBookedByCurrentUser
-                          ? 'success'
-                          : !slot.isActive
-                          ? 'neutral'
-                          : slot.isPast
-                          ? 'neutral'
-                          : isStudent && !isPassValid
-                          ? 'warning'
-                          : slot.isFull
-                          ? 'danger'
-                          : slot.occupancyPercentage >= 75
-                          ? 'warning'
-                          : 'primary'
-                      }
+                  <div
+                    className={cn(
+                      'px-1.5 py-2 sm:px-3 sm:py-3 text-center border-b',
+                      day.isLocked
+                        ? 'bg-danger-muted/30 border-danger/20'
+                        : day.isToday
+                          ? 'bg-primary/10 border-border'
+                          : 'bg-surface-elevated border-border'
+                    )}
+                  >
+                    <p
+                      className={cn(
+                        'text-[10px] sm:text-xs font-semibold uppercase tracking-wide truncate',
+                        day.isLocked ? 'text-danger' : 'text-primary'
+                      )}
                     >
-                      {isStudent && slot.isBookedByCurrentUser
-                        ? 'Your Slot'
-                        : !slot.isActive
-                        ? 'Closed'
-                        : slot.isPast
-                        ? 'Past'
-                        : isStudent && !isPassValid
-                        ? 'Pass Expired'
-                        : slot.isFull
-                        ? 'Full'
-                        : !isStudent
-                        ? `${slot.availableSpots} Spots Open`
-                        : 'Available'}
-                    </Badge>
+                      {day.isToday ? 'Today' : day.dayLabel || day.dayOfWeek}
+                    </p>
+                    <p
+                      className={cn(
+                        'text-xs sm:text-base font-bold leading-tight mt-0.5 truncate',
+                        day.isLocked ? 'text-danger' : 'text-card-foreground'
+                      )}
+                    >
+                      {day.dayOfWeek}
+                    </p>
+                    <p className="text-[10px] sm:text-xs font-mono text-muted-foreground mt-0.5 truncate">
+                      {day.date}
+                    </p>
+                    {day.isLocked ? (
+                      <Badge tone="danger" className="mt-1.5 text-[9px] sm:text-[10px]">
+                        <Lock className="w-3 h-3" /> Closed
+                      </Badge>
+                    ) : isStudent && (day.userBookedCountOnDate || 0) > 0 ? (
+                      <Badge
+                        tone={(day.userBookedCountOnDate || 0) >= 3 ? 'warning' : 'success'}
+                        className="mt-1.5 text-[9px] sm:text-[10px]"
+                      >
+                        {day.userBookedCountOnDate}/3
+                      </Badge>
+                    ) : (
+                      <p className="text-[10px] sm:text-xs text-muted-foreground mt-1.5">
+                        {day.totalBooked}/{day.totalCapacity}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Occupancy Progress (Visible to Staff, Trainer, and Admin) */}
-                  {!isStudent && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted flex items-center gap-1">
-                          <Users className="w-3.5 h-3.5" />
-                          <span>Capacity</span>
-                        </span>
-                        <span className="font-semibold text-text">
-                          {slot.bookedCount} / {slot.capacity}
-                        </span>
+                  <div className="p-1.5 sm:p-3 flex flex-col gap-1.5 sm:gap-2">
+                    {day.isLocked ? (
+                      <div className="py-6 px-1 text-center space-y-1">
+                        <Lock className="w-5 h-5 text-danger mx-auto" />
+                        <p className="text-[10px] sm:text-xs font-medium text-danger">Facility closed</p>
+                        <p className="text-[10px] text-muted-foreground leading-snug">
+                          {day.lockReason || 'Scheduled closure'}
+                        </p>
                       </div>
-                      <ProgressBar value={slot.occupancyPercentage} />
-                    </div>
-                  )}
-
-                  {/* Actions & Admin Controls */}
-                  <div className="pt-2 border-t border-border flex items-center justify-between gap-2">
-                    {!isStudent ? (
-                      <span className="text-xs text-muted">
-                        {slot.availableSpots} spots open
-                      </span>
+                    ) : daySlots.length === 0 ? (
+                      <p className="py-6 text-center text-[10px] sm:text-xs text-muted-foreground">
+                        No slots
+                      </p>
                     ) : (
-                      <span className="text-xs text-secondary font-medium">
-                        {slot.isBookedByCurrentUser ? 'Confirmed booking' : slot.isFull ? 'Batch full' : 'Available for booking'}
-                      </span>
+                      daySlots.map((slot) => renderSlotCard(slot, day))
                     )}
-
-
-                    <div className="flex items-center gap-1.5">
-                      {isStudent && slot.isBookedByCurrentUser ? (
-                        <span className="text-xs font-bold text-success flex items-center gap-1">
-                          <BookmarkCheck className="w-4 h-4" /> Reserved
-                        </span>
-                      ) : canBook ? (
-                        <Button
-                          variant="primary"
-                          size="xs"
-                          loading={reservingSlotId === slot.id}
-                          onClick={() => handleReserveSlot(slot.id)}
-                        >
-                          Book Slot
-                        </Button>
-                      ) : isStudent && !isPassValid ? (
-                        onNavigate ? (
-                          <Button
-                            variant="outline"
-                            size="xs"
-                            onClick={() => onNavigate('memberships')}
-                          >
-                            Extend Pass
-                          </Button>
-                        ) : (
-                          <span className="text-[11px] font-medium text-warning">Pass Expired</span>
-                        )
-                      ) : isTrainer ? (
-                        <span className="text-[11px] font-medium text-secondary">
-                          Floor Supervision
-                        </span>
-                      ) : isStaff ? (
-                        <span className="text-[11px] font-medium text-secondary">
-                          Direct Access
-                        </span>
-                      ) : null}
-
-                      {isAdmin && (
-                        <IconButton
-                          label="Admin Capacity Override"
-                          size="sm"
-                          onClick={() => {
-                            setEditSlot(slot);
-                            setEditCapacity(slot.capacity);
-                            setEditReason('');
-                          }}
-                        >
-                          <Sliders className="w-3.5 h-3.5" />
-                        </IconButton>
-                      )}
-
-                      {isAdmin && (
-                        <IconButton
-                          label={slot.isActive ? 'Close Slot' : 'Reopen Slot'}
-                          size="sm"
-                          variant={slot.isActive ? 'default' : 'danger'}
-                          onClick={() => handleAdminToggleStatus(slot)}
-                        >
-                          <Lock className="w-3.5 h-3.5" />
-                        </IconButton>
-                      )}
-                    </div>
                   </div>
                 </div>
               );
@@ -812,6 +793,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
           </div>
         </div>
       )}
+
 
       {/* Admin Slot Capacity Override Modal */}
       <Modal
@@ -889,8 +871,9 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                 onClick={() => setConfigModalOpen(false)}
                 className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-surface"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
+
             </div>
 
             {/* Sub-tabs */}
