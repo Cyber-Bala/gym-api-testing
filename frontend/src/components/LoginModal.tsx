@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, ShieldAlert, UserCheck, Sparkles } from 'lucide-react';
+import { X, ShieldAlert, Sparkles, UserCheck } from 'lucide-react';
+import { RecLogo } from './RecLogo';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -121,26 +122,21 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4 animate-in fade-in duration-150" role="dialog" aria-modal="true">
-      <button type="button" className="absolute inset-0 bg-[var(--color-overlay)] backdrop-blur-sm" aria-label="Close" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-surface-elevated shadow-2xl p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-white/5">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true">
+      <button type="button" className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-lg rounded-t-xl sm:rounded-xl border border-border bg-card shadow-lg p-6 space-y-5 max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between pb-4 border-b border-border">
           <div className="flex items-center gap-3">
-            <img
-              src="/icons/desktop-icon-256x256.png"
-              alt="REC Gym Logo"
-              className="w-10 h-10 rounded-xl object-contain shadow-sm shrink-0"
-            />
+            <RecLogo alt="REC Gym Logo" className="h-8 w-32" />
             <div>
-              <h3 className="font-bold text-base sm:text-lg text-text">Sign In to REC Gym</h3>
-              <p className="text-xs text-muted">Rajalakshmi Engineering College</p>
+              <h3 className="font-semibold text-lg text-card-foreground">Login</h3>
+              <p className="text-sm text-muted-foreground">Sign in with your college Google account</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-muted hover:text-text hover:bg-border-subtle transition-colors"
+            className="p-2 rounded-md text-muted-foreground hover:text-text hover:bg-surface-elevated transition-colors"
             aria-label="Close"
           >
             <X className="w-5 h-5" />

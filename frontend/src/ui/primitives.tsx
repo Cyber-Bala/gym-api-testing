@@ -21,9 +21,9 @@ export const Card: React.FC<CardProps> = ({
   <section
     onClick={onClick}
     className={cn(
-      'rounded-2xl bg-surface text-text shadow-md transition-all duration-200',
-      padded && 'p-5 sm:p-6',
-      interactive && 'cursor-pointer hover:shadow-xl hover:bg-surface-elevated',
+      'rounded-xl border border-border bg-card text-card-foreground shadow-sm transition-all duration-300',
+      padded && 'p-6',
+      interactive && 'cursor-pointer hover:shadow-xl hover:-translate-y-1',
       className
     )}
   >
@@ -38,18 +38,18 @@ interface BadgeProps {
 }
 
 const badgeTone: Record<NonNullable<BadgeProps['tone']>, string> = {
-  neutral: 'bg-surface-elevated text-secondary',
-  primary: 'bg-primary-muted text-primary',
-  success: 'bg-success-muted text-success',
-  warning: 'bg-warning-muted text-warning',
-  danger: 'bg-danger-muted text-danger',
-  accent: 'bg-accent-muted text-accent',
+  neutral: 'border-transparent bg-surface-elevated text-secondary',
+  primary: 'border-transparent bg-primary text-primary-foreground',
+  success: 'border-transparent bg-success-muted text-success',
+  warning: 'border-transparent bg-warning-muted text-warning',
+  danger: 'border-transparent bg-danger text-white',
+  accent: 'border-primary/50 bg-background text-primary',
 };
 
 export const Badge: React.FC<BadgeProps> = ({ children, tone = 'neutral', className }) => (
   <span
     className={cn(
-      'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide',
+      'inline-flex items-center justify-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0',
       badgeTone[tone],
       className
     )}
@@ -61,7 +61,7 @@ export const Badge: React.FC<BadgeProps> = ({ children, tone = 'neutral', classN
 export const Avatar: React.FC<{ name: string; className?: string }> = ({ name, className }) => (
   <div
     className={cn(
-      'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-white shadow-sm',
+      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground',
       className
     )}
     aria-hidden
@@ -78,14 +78,17 @@ interface AlertProps {
 }
 
 const alertTone = {
-  success: 'bg-success-muted text-success',
-  warning: 'bg-warning-muted text-warning',
-  danger: 'bg-danger-muted text-danger',
-  info: 'bg-primary-muted text-text',
+  success: 'border-success/30 bg-success-muted text-success',
+  warning: 'border-warning/40 bg-warning-muted text-warning',
+  danger: 'border-danger/30 bg-danger-muted text-danger',
+  info: 'border-primary/20 bg-primary/5 text-text',
 };
 
 export const Alert: React.FC<AlertProps> = ({ tone = 'info', children, onDismiss, className }) => (
-  <div className={cn('flex items-start gap-3 rounded-xl p-4 text-xs shadow-sm', alertTone[tone], className)} role="status">
+  <div
+    className={cn('flex items-start gap-3 rounded-md border px-4 py-3 text-sm shadow-xs', alertTone[tone], className)}
+    role="status"
+  >
     <div className="min-w-0 flex-1">{children}</div>
     {onDismiss && (
       <button type="button" onClick={onDismiss} className="shrink-0 opacity-70 hover:opacity-100" aria-label="Dismiss">
@@ -104,16 +107,16 @@ interface EmptyStateProps {
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, description, action, className }) => (
-  <div className={cn('flex flex-col items-center justify-center gap-2 rounded-2xl bg-surface-elevated/40 px-4 py-12 text-center shadow-sm', className)}>
-    {icon && <div className="mb-1 text-muted">{icon}</div>}
-    <p className="text-sm font-bold text-text">{title}</p>
-    {description && <p className="max-w-sm text-xs text-muted leading-relaxed">{description}</p>}
-    {action && <div className="mt-3">{action}</div>}
+  <div className={cn('flex flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-12 text-center shadow-sm', className)}>
+    {icon && <div className="mb-1 text-muted-foreground">{icon}</div>}
+    <p className="text-2xl font-semibold text-card-foreground">{title}</p>
+    {description && <p className="max-w-sm text-sm text-muted-foreground leading-relaxed">{description}</p>}
+    {action && <div className="mt-4">{action}</div>}
   </div>
 );
 
 export const Skeleton: React.FC<{ className?: string }> = ({ className }) => (
-  <div className={cn('animate-pulse rounded-xl bg-border-subtle', className)} />
+  <div className={cn('animate-pulse rounded-md bg-surface-elevated', className)} />
 );
 
 interface PageHeaderProps {
@@ -124,13 +127,13 @@ interface PageHeaderProps {
 }
 
 export const PageHeader: React.FC<PageHeaderProps> = ({ title, description, actions, badge }) => (
-  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-    <div className="min-w-0 space-y-1">
-      <div className="flex items-center gap-2.5">
+  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
+    <div className="min-w-0 space-y-2">
+      <div className="flex flex-wrap items-center gap-2.5">
         <h1 className="page-title">{title}</h1>
         {badge}
       </div>
-      {description && <p className="max-w-2xl text-xs text-secondary leading-relaxed">{description}</p>}
+      {description && <p className="max-w-2xl text-lg text-muted-foreground">{description}</p>}
     </div>
     {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
   </div>
@@ -145,13 +148,13 @@ interface StatProps {
 }
 
 export const Stat: React.FC<StatProps> = ({ label, value, hint, icon, className }) => (
-  <div className={cn('rounded-2xl border border-border bg-surface p-4 sm:p-5 shadow-sm', className)}>
+  <div className={cn('rounded-xl border border-border bg-card p-4 sm:p-5 shadow-lg', className)}>
     <div className="flex items-center justify-between">
-      <p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>
+      <p className="text-sm text-muted-foreground">{label}</p>
       {icon && <div className="text-primary">{icon}</div>}
     </div>
-    <p className="mt-2 text-2xl font-black tracking-tight text-text">{value}</p>
-    {hint && <p className="mt-1 text-xs text-secondary">{hint}</p>}
+    <p className="mt-2 text-2xl font-semibold tracking-tight text-card-foreground">{value}</p>
+    {hint && <p className="mt-1 text-sm text-muted-foreground">{hint}</p>}
   </div>
 );
 
@@ -182,18 +185,18 @@ export const Modal: React.FC<ModalProps> = ({ open, title, onClose, children, fo
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <button type="button" className="absolute inset-0 bg-[var(--color-overlay)] backdrop-blur-sm" aria-label="Close" onClick={onClose} />
+      <button type="button" className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
       <div
         className={cn(
-          'relative z-10 flex max-h-[92vh] w-full flex-col rounded-t-3xl border border-border bg-surface shadow-2xl sm:rounded-3xl',
+          'relative z-10 flex max-h-[92vh] w-full flex-col rounded-t-xl border border-border bg-card shadow-lg sm:rounded-xl',
           wide ? 'sm:max-w-3xl' : 'sm:max-w-lg'
         )}
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-6 py-4">
-          <h2 id="modal-title" className="text-base font-bold text-text">
+          <h2 id="modal-title" className="text-lg font-semibold text-card-foreground">
             {title}
           </h2>
-          <IconButton label="Close" onClick={onClose} className="h-8 w-8 border-0">
+          <IconButton label="Close" onClick={onClose} variant="ghost" className="h-8 w-8">
             <X className="h-4 w-4" />
           </IconButton>
         </div>
@@ -224,10 +227,10 @@ export function Tabs<T extends string>({ value, onChange, items, className }: Ta
             aria-selected={isSelected}
             onClick={() => onChange(item.id)}
             className={cn(
-              'inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors',
+              'inline-flex shrink-0 items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors',
               isSelected
-                ? 'bg-primary text-white shadow-sm'
-                : 'border border-border bg-surface text-secondary hover:bg-primary-muted hover:text-text'
+                ? 'bg-primary text-primary-foreground shadow-xs'
+                : 'border border-input bg-background text-secondary hover:bg-surface-elevated hover:text-text'
             )}
           >
             {item.icon}
@@ -250,9 +253,8 @@ export const ProgressBar: React.FC<{ value: number; tone?: 'success' | 'warning'
         ? 'bg-warning'
         : 'bg-success';
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-border-subtle">
+    <div className="h-2 w-full overflow-hidden rounded-full bg-surface-elevated">
       <div className={cn('h-full rounded-full transition-all duration-300', color)} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
     </div>
   );
 };
-

@@ -28,7 +28,7 @@ export default defineConfig({
         name: 'REC College Gym Management System',
         short_name: 'REC Gym',
         description: 'Gym slot booking, membership, and automated turnstile access for Rajalakshmi Engineering College',
-        theme_color: '#4A154B',
+        theme_color: '#7c3aed',
         background_color: '#09090B',
         display: 'standalone',
         orientation: 'portrait-primary',

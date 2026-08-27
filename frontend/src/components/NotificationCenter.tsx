@@ -132,8 +132,8 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
         type="button"
         onClick={handleToggle}
         className={cn(
-          'relative inline-flex items-center justify-center rounded-xl bg-surface-elevated text-secondary hover:text-text transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20',
-          compact ? 'h-9 w-9' : 'h-10 w-10'
+          'relative inline-flex items-center justify-center rounded-full text-secondary hover:bg-surface-elevated hover:text-text transition-all outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+          compact ? 'h-8 w-8' : 'h-9 w-9'
         )}
         aria-label="Notifications"
         title="Notification Center"
@@ -148,7 +148,7 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
 
       {/* Popover Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-surface-elevated shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-md border border-border bg-card shadow-lg p-4 space-y-3 z-50">
           <div className="flex items-center justify-between pb-2.5 border-b border-border">
             <div className="flex items-center gap-2">
               <Bell className="w-4 h-4 text-primary" />

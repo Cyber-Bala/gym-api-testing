@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Calendar,
   Clock,
   Users,
   CheckCircle2,
@@ -21,7 +20,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Card, Badge, ProgressBar, Modal, Alert } from '../ui/primitives';
+import { Badge, ProgressBar, Modal, Alert } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input, Textarea } from '../ui/Input';
 import { api } from '../lib/api';
@@ -337,27 +336,21 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
   });
 
   return (
-    <Card className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-2xl bg-primary/10 text-primary shrink-0">
-            <Calendar className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="font-bold text-base sm:text-lg text-text">
-              {isStudent ? 'Gym Slot Booking' : 'Gym Schedule & Batches'}
-            </h3>
-            <p className="text-xs text-secondary mt-0.5">
-              {isStudent
-                ? 'Reserve your daily workout slots up to 3 days in advance'
-                : isTrainer
-                ? 'Gym batch operational hours, slot capacities, and real-time occupancy'
-                : isStaff
-                ? 'Daily facility operating schedule and student batch capacities'
-                : 'Gym operating schedule and slot capacities'}
-            </p>
-          </div>
+    <div className="space-y-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-4xl font-bold text-foreground mb-2">
+            {isStudent ? 'Available Slots' : 'Gym Schedule & Batches'}
+          </h1>
+          <p className="text-lg text-muted-foreground">
+            {isStudent
+              ? 'Reserve your daily workout slots up to 3 days in advance'
+              : isTrainer
+              ? 'Gym batch operational hours, slot capacities, and real-time occupancy'
+              : isStaff
+              ? 'Daily facility operating schedule and student batch capacities'
+              : 'Gym operating schedule and slot capacities'}
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1172,6 +1165,6 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
           </div>
         </div>
       )}
-    </Card>
+    </div>
   );
 };

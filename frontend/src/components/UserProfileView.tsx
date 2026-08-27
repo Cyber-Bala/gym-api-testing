@@ -99,17 +99,16 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ onBack }) => {
   const isStudent = user?.role === 'student' || user?.personType === 'student';
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 min-w-0 w-full overflow-hidden">
-      {/* Header Profile Card */}
-      <Card className="p-4 sm:p-6 bg-gradient-to-br from-surface to-surface-elevated border border-border shadow-sm min-w-0">
+    <div className="space-y-8 min-w-0 w-full overflow-hidden">
+      <Card className="p-6 shadow-lg min-w-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-0">
           <div className="flex items-start sm:items-center gap-3.5 min-w-0">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-primary/10 border-2 border-primary/30 flex items-center justify-center text-primary font-bold text-xl sm:text-2xl shadow-inner shrink-0">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-medium text-xl sm:text-2xl shrink-0">
               {user?.name?.charAt(0).toUpperCase() || 'U'}
             </div>
             <div className="min-w-0 flex-1 space-y-1">
               <div className="flex flex-wrap items-center gap-1.5">
-                <h2 className="text-lg sm:text-2xl font-bold text-text break-words leading-tight">
+                <h2 className="text-2xl font-bold text-card-foreground break-words leading-tight">
                   {user?.name}
                 </h2>
                 <Badge tone="primary" className="capitalize text-[11px] font-semibold">

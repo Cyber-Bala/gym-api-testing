@@ -23,14 +23,14 @@ function applyTheme(resolved: ResolvedTheme) {
   root.dataset.theme = resolved;
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
-    meta.setAttribute('content', resolved === 'dark' ? '#17141A' : '#4A154B');
+    meta.setAttribute('content', resolved === 'dark' ? '#09090b' : '#7c3aed');
   }
 }
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [preference, setPreferenceState] = useState<ThemePreference>(() => {
     const saved = localStorage.getItem(STORAGE_KEY) as ThemePreference | null;
-    return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'system';
+    return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'dark';
   });
 
   const resolved: ResolvedTheme = useMemo(() => {

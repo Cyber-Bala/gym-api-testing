@@ -34,17 +34,14 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const showToast = useCallback(
     (type: ToastType, message: string, title?: string, duration = 4500) => {
       const id = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      // Give longer duration for multi-line validation messages
-      const isMultiline = message.includes('\n');
-      const finalDuration = isMultiline ? Math.max(duration, 6500) : duration;
-      const newToast: Toast = { id, type, title, message, duration: finalDuration };
+      const newToast: Toast = { id, type, title, message, duration };
 
       setToasts((prev) => [...prev, newToast]);
 
-      if (finalDuration > 0) {
+      if (duration > 0) {
         setTimeout(() => {
           dismissToast(id);
-        }, finalDuration);
+        }, duration);
       }
     },
     [dismissToast]
@@ -95,14 +92,14 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           <div
             key={toast.id}
             className={cn(
-              'pointer-events-auto flex items-start gap-3 p-3.5 rounded-2xl border transition-all animate-in slide-in-from-bottom-2 fade-in duration-200',
+            'pointer-events-auto flex items-start gap-3 p-4 rounded-md border bg-background text-foreground shadow-lg transition-all',
               getStyles(toast.type)
             )}
           >
             <div className="mt-0.5">{getIcon(toast.type)}</div>
             <div className="flex-1 min-w-0">
               {toast.title && <p className="font-bold text-xs leading-tight mb-0.5">{toast.title}</p>}
-              <p className="text-xs text-secondary leading-snug break-words whitespace-pre-line">{toast.message}</p>
+              <p className="text-xs text-secondary leading-snug break-words">{toast.message}</p>
             </div>
             <button
               type="button"
@@ -117,7 +114,6 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       </div>
     </ToastContext.Provider>
   );
-
 };
 
 export const useToast = (): ToastContextType => {

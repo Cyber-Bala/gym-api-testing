@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Loader2, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Card } from '../ui/primitives';
+import { RecLogo } from './RecLogo';
 import { ThemeToggle } from './ThemeToggle';
+
+const carouselImages = [
+  '/images/banner-1.jpg',
+  '/images/banner-2.jpg',
+  '/images/banner-3.jpg',
+];
 
 export const LoginPage: React.FC = () => {
   const { loginWithGoogle } = useAuth();
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  // Auto-dismiss snackbar after 7 seconds
   useEffect(() => {
     if (!error) return;
     const timer = setTimeout(() => {
@@ -19,21 +25,32 @@ export const LoginPage: React.FC = () => {
   }, [error]);
 
   useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentImageIndex((prevIndex) =>
+        prevIndex === carouselImages.length - 1 ? 0 : prevIndex + 1
+      );
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     const scriptId = 'google-gsi-script-login-page';
     let script = document.getElementById(scriptId) as HTMLScriptElement | null;
 
     const initGsi = () => {
-      const g = (window as unknown as {
-        google?: {
-          accounts?: {
-            id?: {
-              initialize: (cfg: unknown) => void;
-              renderButton: (el: HTMLElement, opts: unknown) => void;
-              prompt: () => void;
+      const g = (
+        window as unknown as {
+          google?: {
+            accounts?: {
+              id?: {
+                initialize: (cfg: unknown) => void;
+                renderButton: (el: HTMLElement, opts: unknown) => void;
+                prompt: () => void;
+              };
             };
           };
-        };
-      }).google;
+        }
+      ).google;
 
       if (g?.accounts?.id) {
         const clientId =
@@ -64,9 +81,9 @@ export const LoginPage: React.FC = () => {
           g.accounts.id.renderButton(btnContainer, {
             theme: 'outline',
             size: 'large',
-            width: '280',
+            width: '320',
             text: 'continue_with',
-            shape: 'pill',
+            shape: 'rectangular',
           });
         }
       }
@@ -86,63 +103,82 @@ export const LoginPage: React.FC = () => {
   }, [loginWithGoogle]);
 
   return (
-    <div className="min-h-screen bg-background text-text flex items-center justify-center p-4 relative">
-      {/* Top Right Theme Toggle */}
-      <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
+    <div className="flex h-screen relative">
+      <div className="absolute top-4 right-4 z-30">
         <ThemeToggle compact />
       </div>
 
-      {/* Centered Sign In Card */}
-      <main className="w-full max-w-sm flex items-center justify-center">
-        <Card className="w-full p-8 sm:p-9 space-y-6 shadow-xl text-center flex flex-col items-center justify-center">
-          <img
-            src="/icons/desktop-icon-256x256.png"
-            alt="REC Gym Logo"
-            className="w-16 h-16 rounded-2xl object-contain shadow-md"
-          />
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0">
+          <div
+            className="absolute inset-0 transition-opacity duration-1000 opacity-100 z-10"
+            style={{
+              backgroundImage: `url(${carouselImages[currentImageIndex]})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+          >
+            <div className="absolute inset-0 bg-black/40 dark:bg-black/60" />
+          </div>
+        </div>
+      </div>
 
-          <div className="space-y-1">
-            <h1 className="text-xl font-bold text-text">REC College Gym</h1>
-            <p className="text-xs text-muted">Rajalakshmi Engineering College</p>
+      <div className="flex-1 flex items-center justify-center p-4 relative z-20">
+        <div className="relative w-full max-w-md shadow-lg bg-background/80 backdrop-blur-sm border border-border/50 rounded-xl py-6 flex flex-col gap-6">
+          <div className="text-center space-y-4 px-6 pt-4">
+            <RecLogo alt="REC Gym Logo" className="w-60 h-24 mx-auto" />
+            <div className="space-y-2">
+              <h1 className="text-2xl font-bold leading-none">Login</h1>
+              <p className="text-base text-muted-foreground">
+                Sign in with your college Google account to access REC Gym
+              </p>
+            </div>
           </div>
 
-          {/* Centered Google Sign In Button */}
-          <div className="w-full pt-1 flex flex-col items-center justify-center space-y-3">
-            <div
-              id="google-signin-btn-main"
-              className="w-full flex items-center justify-center min-h-[44px]"
-            ></div>
-
-            {loading && (
-              <div className="flex items-center justify-center gap-2 text-xs font-medium text-muted">
-                <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                <span>Verifying session...</span>
-              </div>
-            )}
+          <div className="space-y-6 px-6">
+            <div className="w-full flex flex-col items-center justify-center space-y-3 min-h-[44px]">
+              <div
+                id="google-signin-btn-main"
+                className="w-full flex items-center justify-center min-h-[44px]"
+              />
+              {loading && (
+                <div className="flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                  <span>Signing in...</span>
+                </div>
+              )}
+            </div>
           </div>
-        </Card>
-      </main>
 
-      {/* Floating Error Snackbar */}
+          <div className="flex flex-col space-y-4 px-6 mt-2">
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">
+                Official gym portal for Rajalakshmi Engineering College
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {error && (
         <div
           role="alert"
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[min(92vw,28rem)] animate-in fade-in slide-in-from-bottom-5 duration-200"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[min(92vw,28rem)]"
         >
-          <div className="flex items-start gap-3 p-4 rounded-2xl bg-[#18181b] text-white shadow-2xl border border-red-500/20">
-            <div className="w-8 h-8 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center shrink-0 mt-0.5">
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-card text-card-foreground shadow-lg border border-danger/30">
+            <div className="w-8 h-8 rounded-md bg-danger/20 text-danger flex items-center justify-center shrink-0 mt-0.5">
               <ShieldAlert className="w-4 h-4" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-xs text-red-200">Sign-in Failed</p>
-              <p className="text-[11px] text-zinc-300 mt-0.5 leading-relaxed break-words">
+              <p className="font-medium text-sm text-danger">Sign-in Failed</p>
+              <p className="text-sm text-muted-foreground mt-1 leading-relaxed break-words">
                 {error}
               </p>
             </div>
             <button
               type="button"
               onClick={() => setError(null)}
-              className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+              className="p-1 rounded-md text-muted-foreground hover:text-text hover:bg-surface-elevated transition-colors shrink-0"
               aria-label="Dismiss notification"
             >
               <X className="w-4 h-4" />

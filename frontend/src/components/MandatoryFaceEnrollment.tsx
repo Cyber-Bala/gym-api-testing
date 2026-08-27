@@ -17,6 +17,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
+import { RecLogo } from './RecLogo';
 
 export const MandatoryFaceEnrollment: React.FC = () => {
   const { user, refreshSession, logout } = useAuth();
@@ -201,22 +202,15 @@ export const MandatoryFaceEnrollment: React.FC = () => {
       <div className="w-full max-w-lg space-y-6">
         {/* Header Branding */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-surface-elevated border border-border shadow-sm mb-1">
-            <img
-              src="/icons/desktop-icon-256x256.png"
-              alt="REC Gym Logo"
-              className="w-12 h-12 object-contain rounded-xl shadow-sm"
-            />
-          </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-text">Biometric Face Registration</h1>
-          <p className="text-xs text-secondary max-w-md mx-auto leading-relaxed">
+          <RecLogo alt="REC Gym Logo" className="h-24 w-60 mx-auto mb-2" />
+          <h1 className="text-2xl font-bold text-foreground">Biometric Face Registration</h1>
+          <p className="text-base text-muted-foreground max-w-md mx-auto leading-relaxed">
             Institutional security requires a front-facing facial scan for touchless gym access.
           </p>
         </div>
 
         {/* Main Card */}
-        <Card className="space-y-5 border-2 border-primary/40 bg-surface shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-accent to-primary" />
+        <Card className="space-y-5 shadow-lg relative overflow-hidden">
 
           {/* User Info Strip */}
           <div className="flex items-center justify-between p-3 rounded-xl bg-surface-elevated border border-border text-xs">

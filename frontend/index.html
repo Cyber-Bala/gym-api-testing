@@ -2,14 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" href="/images/rec_logo.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180x180.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#4A154B" />
+    <meta name="theme-color" content="#09090b" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
@@ -19,7 +19,11 @@
       (function() {
         try {
           var saved = localStorage.getItem('theme');
-          var isDark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var isDark;
+          if (saved === 'light') isDark = false;
+          else if (saved === 'dark') isDark = true;
+          else if (saved === 'system') isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          else isDark = true;
           if (isDark) {
             document.documentElement.classList.add('dark');
             document.documentElement.dataset.theme = 'dark';

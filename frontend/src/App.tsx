@@ -33,13 +33,13 @@ export const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 space-y-4">
         <img
-          src="/icons/desktop-icon-256x256.png"
+          src="/images/rec_logo.png"
           alt="REC Gym Logo"
-          className="w-14 h-14 rounded-2xl object-contain shadow-md animate-pulse"
+          className="w-60 h-24 object-contain"
         />
-        <div className="flex items-center gap-2 text-xs font-semibold text-muted">
+        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin text-primary" />
-          <span>Verifying institutional session...</span>
+          <span>Verifying session...</span>
         </div>
       </div>
     );

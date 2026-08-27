@@ -95,54 +95,46 @@ export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged
   const activeBookings = bookings.filter((b) => b.bookingStatus === 'booked');
 
   return (
-    <Card className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8">
+      <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <div className="p-2 rounded-xl bg-primary-muted text-primary border border-primary/20">
-            <CalendarCheck className="w-4 h-4" />
-          </div>
-          <div>
-            <h4 className="font-bold text-sm text-text">
-              My Active Gym Reservations
-            </h4>
-          </div>
+          <h1 className="text-3xl font-bold text-foreground">Your Bookings</h1>
         </div>
 
-        <IconButton
-          label="Refresh bookings"
-          size="sm"
-          onClick={fetchBookings}
-          disabled={loading}
-        >
-          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-        </IconButton>
+        <div className="flex items-center gap-2">
+          {onNavigateToBook && (
+            <Button onClick={onNavigateToBook}>
+              Book a Slot
+            </Button>
+          )}
+          <IconButton
+            label="Refresh bookings"
+            size="sm"
+            onClick={fetchBookings}
+            disabled={loading}
+          >
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          </IconButton>
+        </div>
       </div>
 
       {activeBookings.length === 0 ? (
-        <div className="p-8 text-center space-y-4 rounded-2xl bg-surface-elevated/60 border border-border">
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto shadow-inner">
-            <CalendarCheck className="w-6 h-6" />
-          </div>
-          <div className="space-y-1">
-            <h4 className="font-bold text-base text-text">No Active Gym Reservations</h4>
-            <p className="text-xs text-muted max-w-sm mx-auto">
-              You don't have any workout slots booked for today. Reserve your batch to work out at REC Gym.
+        <Card className="p-8">
+          <div className="flex flex-col items-center justify-center text-center space-y-4">
+            <CalendarCheck className="h-12 w-12 text-muted-foreground" />
+            <h2 className="text-2xl font-semibold text-card-foreground">No Bookings Found</h2>
+            <p className="text-muted-foreground max-w-sm">
+              You haven't booked any workout slots yet. Browse available batches and reserve your gym session.
             </p>
+            {onNavigateToBook && (
+              <div className="pt-2">
+                <Button onClick={onNavigateToBook}>
+                  Book a Slot
+                </Button>
+              </div>
+            )}
           </div>
-          {onNavigateToBook && (
-            <div className="pt-2">
-              <Button
-                variant="primary"
-                size="md"
-                onClick={onNavigateToBook}
-                className="shadow-md"
-              >
-                <CalendarCheck className="w-4 h-4 mr-2" />
-                <span>Book a Slot</span>
-              </Button>
-            </div>
-          )}
-        </div>
+        </Card>
       ) : (
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -250,7 +242,7 @@ export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged
           </div>
         )}
       </Modal>
-    </Card>
+    </div>
   );
 };
 

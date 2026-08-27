@@ -19,11 +19,11 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ compact = false, class
         aria-label="Toggle theme"
         title={`Current: ${preference} mode. Click to toggle.`}
         className={cn(
-          'inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface text-secondary hover:bg-border-subtle hover:text-text transition-colors',
+          'inline-flex h-8 w-8 items-center justify-center rounded-md text-secondary hover:bg-surface-elevated hover:text-text transition-colors',
           className
         )}
       >
-        {resolved === 'dark' ? <Sun className="h-4 w-4 text-accent" /> : <Moon className="h-4 w-4 text-primary" />}
+        {resolved === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </button>
     );
   }
@@ -31,7 +31,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ compact = false, class
   return (
     <div
       className={cn(
-        'inline-flex items-center gap-1 rounded-xl border border-border bg-border-subtle p-1 text-xs',
+        'inline-flex items-center gap-1 rounded-md border border-border bg-surface-elevated p-1 text-xs',
         className
       )}
       role="radiogroup"
@@ -46,7 +46,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ compact = false, class
         className={cn(
           'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors',
           preference === 'light'
-            ? 'bg-surface text-primary shadow-sm font-semibold'
+            ? 'bg-background text-primary shadow-xs'
             : 'text-secondary hover:text-text'
         )}
       >
@@ -63,7 +63,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ compact = false, class
         className={cn(
           'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors',
           preference === 'dark'
-            ? 'bg-surface text-primary shadow-sm font-semibold'
+            ? 'bg-background text-primary shadow-xs'
             : 'text-secondary hover:text-text'
         )}
       >
@@ -80,7 +80,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ compact = false, class
         className={cn(
           'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors',
           preference === 'system'
-            ? 'bg-surface text-primary shadow-sm font-semibold'
+            ? 'bg-background text-primary shadow-xs'
             : 'text-secondary hover:text-text'
         )}
       >
