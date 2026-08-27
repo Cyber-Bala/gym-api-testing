@@ -141,7 +141,7 @@ export const MyBookingsCard: React.FC<MyBookingsCardProps> = ({ onBookingChanged
           {activeBookings.map((b) => (
             <div
               key={b.id}
-              className="p-4 rounded-2xl bg-success-muted/30 border border-success/30 flex flex-col justify-between space-y-3"
+              className="p-4 rounded-2xl bg-success-muted/40 flex flex-col justify-between space-y-3"
             >
               <div className="flex items-start justify-between">
                 <div>

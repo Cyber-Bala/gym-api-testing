@@ -124,8 +124,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true">
       <button type="button" className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg rounded-t-xl sm:rounded-xl border border-border bg-card shadow-lg p-6 space-y-5 max-h-[92vh] overflow-y-auto">
-        <div className="flex items-center justify-between pb-4 border-b border-border">
+      <div className="relative z-10 w-full max-w-lg rounded-t-xl sm:rounded-xl bg-card shadow-2xl p-6 space-y-5 max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between pb-4">
           <div className="flex items-center gap-3">
             <RecLogo alt="REC Gym Logo" className="h-8 w-32" />
             <div>
@@ -162,14 +162,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             type="button"
             onClick={handleMockGoogleLogin}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-border-subtle hover:bg-border/60 border border-dashed border-border text-text font-medium text-xs transition-colors disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 text-text font-medium text-xs transition-colors disabled:opacity-50"
           >
             <span>Quick Mock Sign-In (Karthik Raja - Hosteller)</span>
           </button>
         </div>
 
         {/* Development Persona Selector */}
-        <div className="space-y-3 pt-2 border-t border-border">
+        <div className="space-y-3 pt-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted">
               <Sparkles className="w-3.5 h-3.5 text-accent" />

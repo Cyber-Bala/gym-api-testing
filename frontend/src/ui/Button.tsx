@@ -17,7 +17,7 @@ const variants: Record<ButtonVariant, string> = {
   secondary:
     'bg-surface-elevated text-text shadow-xs hover:bg-surface-elevated/80 disabled:opacity-50 font-medium',
   outline:
-    'border border-input bg-background shadow-xs hover:bg-surface-elevated hover:text-text disabled:opacity-50 font-medium',
+    'bg-surface-elevated text-text shadow-xs hover:bg-surface-elevated/80 disabled:opacity-50 font-medium',
   ghost:
     'bg-transparent text-secondary hover:bg-surface-elevated hover:text-text disabled:opacity-50',
   danger:
@@ -82,7 +82,7 @@ export const IconButton: React.FC<IconButtonProps> = ({
   };
 
   const variantClasses = {
-    default: 'border border-input bg-background shadow-xs text-secondary hover:bg-surface-elevated hover:text-text',
+    default: 'bg-surface-elevated text-secondary hover:bg-surface-elevated/80 hover:text-text shadow-xs',
     ghost: 'bg-transparent text-secondary hover:bg-surface-elevated hover:text-text border-0',
     danger: 'bg-danger-muted text-danger hover:bg-danger/20 shadow-xs',
   };

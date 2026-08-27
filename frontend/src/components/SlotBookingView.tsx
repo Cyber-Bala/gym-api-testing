@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import {
   Clock,
   Users,
@@ -364,7 +364,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
       <div
         key={slot.id}
         className={cn(
-          'p-2 sm:p-3 rounded-lg border border-border bg-card flex flex-col gap-2 min-w-0',
+          'p-2 sm:p-3 rounded-lg bg-surface-elevated flex flex-col gap-2 min-w-0',
           isStudent && slot.isBookedByCurrentUser
             ? 'border-success/40 bg-success-muted/20'
             : !slot.isActive || slot.isPast || (isStudent && !isPassValid)
@@ -435,7 +435,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
           </div>
         )}
 
-        <div className="pt-1.5 border-t border-border flex flex-col gap-1.5">
+        <div className="pt-1.5 flex flex-col gap-1.5">
           {isStudent && slot.isBookedByCurrentUser ? (
             <span className="text-[10px] sm:text-xs font-medium text-success flex items-center justify-center gap-1">
               <BookmarkCheck className="w-3.5 h-3.5" /> Reserved
@@ -546,7 +546,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
 
       {/* Informational Banner for Trainers */}
       {isTrainer && (
-        <div className="p-4 rounded-2xl bg-accent-muted/25 border border-accent/30 flex items-center gap-3 text-xs">
+        <div className="p-4 rounded-2xl bg-accent-muted/40 flex items-center gap-3 text-xs">
           <Award className="w-5 h-5 text-accent shrink-0" />
           <div>
             <p className="font-bold text-text">Trainer Floor Supervision Access</p>
@@ -559,7 +559,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
 
       {/* Informational Banner for Staff */}
       {isStaff && (
-        <div className="p-4 rounded-2xl bg-primary-muted/20 border border-primary/30 flex items-center gap-3 text-xs">
+        <div className="p-4 rounded-2xl bg-primary-muted/40 flex items-center gap-3 text-xs">
           <ShieldCheck className="w-5 h-5 text-primary shrink-0" />
           <div>
             <p className="font-bold text-text">Staff Inclusive Facility Access</p>
@@ -672,7 +672,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
               <Clock className="w-4 h-4 text-primary" />
               <span>Calendar ({data.days.length} days)</span>
             </h4>
-            <div className="flex items-center gap-1 bg-surface-elevated p-1 rounded-md border border-border text-xs">
+            <div className="flex items-center gap-1 bg-surface-elevated p-1 rounded-full text-xs">
               <button
                 type="button"
                 onClick={() => setSessionFilter('all')}
@@ -719,18 +719,18 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                 <div
                   key={day.date}
                   className={cn(
-                    'min-w-0 rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col',
-                    day.isLocked ? 'border-danger/40' : 'border-border'
+                    'min-w-0 rounded-xl bg-card shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col',
+                    day.isLocked && 'ring-2 ring-danger/40'
                   )}
                 >
                   <div
                     className={cn(
-                      'px-1.5 py-2 sm:px-3 sm:py-3 text-center border-b',
+                      'px-1.5 py-2 sm:px-3 sm:py-3 text-center',
                       day.isLocked
-                        ? 'bg-danger-muted/30 border-danger/20'
+                        ? 'bg-danger-muted/30'
                         : day.isToday
-                          ? 'bg-primary/10 border-border'
-                          : 'bg-surface-elevated border-border'
+                          ? 'bg-primary/15'
+                          : 'bg-surface-elevated'
                     )}
                   >
                     <p
@@ -818,7 +818,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
       >
         {editSlot && (
           <form onSubmit={handleAdminUpdateCapacity} className="space-y-4">
-            <div className="p-3 rounded-xl border border-border bg-border-subtle text-xs space-y-1">
+            <div className="p-3 rounded-xl bg-surface-elevated text-xs space-y-1">
               <p className="text-muted">Selected Time Batch:</p>
               <p className="font-bold text-text">
                 {editSlot.date} ({formatTime12h(editSlot.startTime)} - {formatTime12h(editSlot.endTime)})
@@ -854,7 +854,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="relative w-full max-w-2xl rounded-3xl bg-surface-elevated shadow-2xl p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-white/5">
+            <div className="flex items-center justify-between pb-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shadow-sm shrink-0">
                   <Sliders className="w-5 h-5" />
@@ -877,7 +877,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
             </div>
 
             {/* Sub-tabs */}
-            <div className="flex items-center gap-2 border-b border-white/5 pb-2 text-xs">
+            <div className="flex items-center gap-2 pb-2 text-xs">
               <button
                 type="button"
                 onClick={() => setConfigTab('schedule')}
@@ -974,7 +974,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                 </div>
 
                 {/* Operating Sessions (Allows leaving in-between hours closed) */}
-                <div className="space-y-2 pt-2 border-t border-white/5">
+                <div className="space-y-2 pt-2">
                   <div className="flex items-center justify-between">
                     <label className="font-bold text-text flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-primary" />
@@ -1040,7 +1040,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                   </p>
                 </div>
 
-                <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-white/5">
+                <div className="pt-3 flex items-center justify-end gap-2.5">
                   <Button type="button" variant="outline" size="md" onClick={() => setConfigModalOpen(false)}>
                     Cancel
                   </Button>
@@ -1115,7 +1115,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                       {closuresList.map((c) => (
                         <div
                           key={c.id}
-                          className="p-3 rounded-2xl bg-surface flex items-center justify-between gap-3 border border-white/5"
+                          className="p-3 rounded-2xl bg-surface-elevated flex items-center justify-between gap-3"
                         >
                           <div className="space-y-0.5 min-w-0">
                             <div className="flex items-center gap-2">

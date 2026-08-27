@@ -31,7 +31,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ compact = false, class
   return (
     <div
       className={cn(
-        'inline-flex items-center gap-1 rounded-md border border-border bg-surface-elevated p-1 text-xs',
+        'inline-flex items-center gap-1 rounded-md bg-surface-elevated p-1 text-xs',
         className
       )}
       role="radiogroup"

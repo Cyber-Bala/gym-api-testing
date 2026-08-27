@@ -23,9 +23,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           id={inputId}
           className={cn(
-            'flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none md:text-sm',
+            'flex h-9 w-full min-w-0 rounded-md bg-surface-elevated px-3 py-1 text-base transition-[color,box-shadow] outline-none md:text-sm',
             'placeholder:text-muted-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium',
-            'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+            'focus-visible:ring-ring/50 focus-visible:ring-[3px]',
             'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
             error && 'border-danger focus-visible:border-danger focus-visible:ring-danger/20',
             className
@@ -56,8 +56,8 @@ export const Textarea: React.FC<TextareaProps> = ({ label, error, hint, classNam
     )}
     <textarea
       className={cn(
-        'flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none md:text-sm',
-        'placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+        'flex min-h-[80px] w-full rounded-md bg-surface-elevated px-3 py-2 text-base transition-[color,box-shadow] outline-none md:text-sm',
+        'placeholder:text-muted-foreground focus-visible:ring-ring/50 focus-visible:ring-[3px]',
         'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
         error && 'border-danger focus-visible:border-danger focus-visible:ring-danger/20',
         className
@@ -80,8 +80,8 @@ export const Select: React.FC<SelectProps> = ({ label, error, hint, className, c
     {label && <span className="text-sm font-medium text-text">{label}</span>}
     <select
       className={cn(
-        'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs outline-none md:text-sm',
-        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+        'flex h-9 w-full rounded-md bg-surface-elevated px-3 py-1 text-base outline-none md:text-sm',
+        'focus-visible:ring-ring/50 focus-visible:ring-[3px]',
         'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
         error && 'border-danger',
         className
@@ -103,8 +103,8 @@ export const SearchInput: React.FC<SearchInputProps> = ({ className, ...props })
     <input
       type="search"
       className={cn(
-        'flex h-9 w-full rounded-md border border-input bg-transparent pl-9 pr-3 py-1 text-base shadow-xs outline-none md:text-sm',
-        'placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+        'flex h-9 w-full rounded-md bg-surface-elevated pl-9 pr-3 py-1 text-base outline-none md:text-sm',
+        'placeholder:text-muted-foreground focus-visible:ring-ring/50 focus-visible:ring-[3px]',
         className
       )}
       {...props}

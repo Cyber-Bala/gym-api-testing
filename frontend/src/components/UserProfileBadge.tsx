@@ -88,7 +88,7 @@ export const UserProfileBadge: React.FC<UserProfileBadgeProps> = ({
       </Button>
 
       {dropdownOpen && (
-        <div className="absolute right-0 mt-2 w-56 rounded-md border border-border bg-card shadow-lg p-1 z-50">
+        <div className="absolute right-0 mt-2 w-56 rounded-xl bg-card shadow-[0_12px_40px_rgba(0,0,0,0.35)] p-1 z-50">
           <div className="px-2 py-1.5">
             <p className="text-sm font-medium leading-none text-card-foreground">{user.name}</p>
             <p className="text-xs leading-none text-muted-foreground mt-1">{user.email}</p>
@@ -101,7 +101,7 @@ export const UserProfileBadge: React.FC<UserProfileBadgeProps> = ({
               </span>
             )}
           </div>
-          <div className="h-px bg-border my-1" />
+          <div className="my-1" />
           <button
             type="button"
             onClick={() => {
@@ -124,7 +124,7 @@ export const UserProfileBadge: React.FC<UserProfileBadgeProps> = ({
             <CreditCard className="w-4 h-4" />
             Payments
           </button>
-          <div className="h-px bg-border my-1" />
+          <div className="my-1" />
           <button
             type="button"
             onClick={() => {

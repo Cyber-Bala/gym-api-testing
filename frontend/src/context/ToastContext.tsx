@@ -92,7 +92,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           <div
             key={toast.id}
             className={cn(
-            'pointer-events-auto flex items-start gap-3 p-4 rounded-md border bg-background text-foreground shadow-lg transition-all',
+            'pointer-events-auto flex items-start gap-3 p-4 rounded-xl bg-card text-foreground shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition-all',
               getStyles(toast.type)
             )}
           >

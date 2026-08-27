@@ -124,7 +124,7 @@ export const LoginPage: React.FC = () => {
       </div>
 
       <div className="flex-1 flex items-center justify-center p-4 relative z-20">
-        <div className="relative w-full max-w-md shadow-lg bg-background/80 backdrop-blur-sm border border-border/50 rounded-xl py-6 flex flex-col gap-6">
+        <div className="relative w-full max-w-md shadow-[0_20px_60px_rgba(0,0,0,0.45)] bg-card/85 backdrop-blur-md rounded-xl py-6 flex flex-col gap-6">
           <div className="text-center space-y-4 px-6 pt-4">
             <RecLogo alt="REC Gym Logo" className="w-60 h-24 mx-auto" />
             <div className="space-y-2">

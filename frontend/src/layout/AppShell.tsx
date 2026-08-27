@@ -23,7 +23,9 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
 
   const isStudent = user?.role === 'student' || user?.personType === 'student';
   const isStaff = user?.role === 'staff' || user?.personType === 'staff';
+  const isTrainer = user?.role === 'trainer' || user?.personType === 'trainer';
   const hasSidebar = user ? ['admin', 'super_admin', 'trainer'].includes(user.role) : false;
+  const usesFloatingNav = isStudent || isStaff || isTrainer;
 
   const items = useMemo(() => visibleNav(user), [user]);
   const primaryIds = useMemo(() => getMobilePrimary(user), [user]);
@@ -69,17 +71,44 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
     );
   };
 
+  const FloatingItem = ({
+    id,
+    icon: Icon,
+    label,
+  }: {
+    id: AppView;
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+  }) => {
+    const selected = active === id;
+    return (
+      <button
+        type="button"
+        onClick={() => onNavigate(id)}
+        className={cn(
+          'flex items-center gap-2 rounded-full px-3.5 sm:px-4 py-2 text-xs font-semibold transition-all',
+          selected
+            ? 'bg-primary text-primary-foreground shadow-md'
+            : 'text-muted-foreground hover:text-text hover:bg-surface-elevated'
+        )}
+      >
+        <Icon className="w-4 h-4" />
+        <span className="whitespace-nowrap">{label}</span>
+      </button>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background text-text flex flex-col relative">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-card focus:p-3 focus:shadow-lg focus:border focus:border-border"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-card focus:p-3 focus:shadow-xl"
       >
         Skip to main content
       </a>
 
-      <header className="sticky top-0 z-40 w-full border-b bg-background">
-        <div className="md:px-10 px-2 flex h-16 items-center justify-between py-4">
+      <header className="sticky top-0 z-40 w-full bg-background/80 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
+        <div className="md:px-10 px-3 flex h-16 items-center justify-between py-4">
           <div className="flex items-center gap-2 min-w-0">
             {hasSidebar && (
               <Button
@@ -102,7 +131,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             </button>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <NotificationCenter compact />
             <ThemeToggle compact />
             <UserProfileBadge compact onNavigate={onNavigate} />
@@ -113,13 +142,13 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
       {hasSidebar && drawerOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div
-            className="fixed inset-0 bg-background/80 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setDrawerOpen(false)}
             aria-hidden="true"
           />
 
-          <div className="fixed inset-y-0 left-0 z-50 w-72 border-r bg-background">
-            <div className="flex h-16 items-center justify-between border-b px-4">
+          <div className="fixed inset-y-0 left-0 z-50 w-72 bg-card shadow-2xl">
+            <div className="flex h-16 items-center justify-between bg-surface-elevated px-4">
               <div className="flex items-center gap-2 min-w-0">
                 <RecLogo alt="REC Gym Logo" className="h-8 w-24" />
                 <span className="text-xl font-bold truncate">REC Gym</span>
@@ -154,7 +183,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
       <div className="flex flex-1">
         {hasSidebar && (
           <aside
-            className="hidden w-72 shrink-0 border-r bg-background lg:flex lg:flex-col"
+            className="hidden w-72 shrink-0 bg-card shadow-[8px_0_30px_rgba(0,0,0,0.12)] dark:shadow-[8px_0_30px_rgba(0,0,0,0.35)] lg:flex lg:flex-col"
             aria-label="Desktop Sidebar"
           >
             <nav className="flex-1 overflow-y-auto px-3 py-4">
@@ -183,7 +212,11 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
             id="main"
             className={cn(
               'container mx-auto w-full flex-1 px-4 py-8 md:px-10',
-              (isStudent || isStaff) ? 'pb-24' : hasSidebar ? 'pb-[calc(5.5rem+var(--safe-bottom))] lg:pb-8' : 'pb-8'
+              usesFloatingNav
+                ? 'pb-28'
+                : hasSidebar
+                  ? 'pb-[calc(5.5rem+var(--safe-bottom))] lg:pb-8'
+                  : 'pb-8'
             )}
           >
             {children}
@@ -192,87 +225,72 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
         </div>
       </div>
 
-      {(isStudent || isStaff) && (
+      {usesFloatingNav && (
         <nav
-          className="fixed inset-x-0 bottom-0 z-40 border-t bg-background pb-[var(--safe-bottom)]"
-          aria-label="Bottom Navigation"
+          className={cn(
+            'fixed inset-x-0 bottom-5 z-40 flex justify-center pointer-events-none px-4',
+            isTrainer && 'lg:hidden'
+          )}
+          aria-label="Floating Navigation"
         >
-          <div className="flex h-14 items-center justify-around px-2 max-w-md mx-auto">
-            <button
-              type="button"
-              onClick={() => onNavigate('home')}
-              className={cn(
-                'flex-1 flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors py-1',
-                active === 'home' ? 'text-primary' : 'text-muted-foreground hover:text-text'
-              )}
-            >
-              <Home className="h-5 w-5" />
-              <span>Home</span>
-            </button>
-
-            {isStudent && (
-              <button
-                type="button"
-                onClick={() => onNavigate('book')}
-                className={cn(
-                  'flex-1 flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors py-1',
-                  active === 'book' ? 'text-primary' : 'text-muted-foreground hover:text-text'
+          <div className="pointer-events-auto flex items-center gap-1 p-1.5 rounded-full bg-card/90 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.28)] dark:shadow-[0_16px_50px_rgba(0,0,0,0.55)]">
+            {isStudent || isStaff ? (
+              <>
+                <FloatingItem id="home" icon={Home} label="Home" />
+                {isStudent && <FloatingItem id="book" icon={CalendarCheck} label="Book" />}
+                <FloatingItem id="my_access" icon={DoorOpen} label="Entry / Exit" />
+              </>
+            ) : (
+              <>
+                {primary
+                  .filter((item) => item.id !== 'profile')
+                  .map((item) => {
+                    const Icon = item.icon;
+                    return <FloatingItem key={item.id} id={item.id} icon={Icon} label={item.shortLabel} />;
+                  })}
+                {overflow.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setDrawerOpen(true)}
+                    className={cn(
+                      'flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold transition-all',
+                      overflow.some((i) => i.id === active)
+                        ? 'bg-primary text-primary-foreground shadow-md'
+                        : 'text-muted-foreground hover:text-text hover:bg-surface-elevated'
+                    )}
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                    <span>More</span>
+                  </button>
                 )}
-              >
-                <CalendarCheck className="h-5 w-5" />
-                <span>Book</span>
-              </button>
+              </>
             )}
-
-            <button
-              type="button"
-              onClick={() => onNavigate('my_access')}
-              className={cn(
-                'flex-1 flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors py-1',
-                active === 'my_access' ? 'text-primary' : 'text-muted-foreground hover:text-text'
-              )}
-            >
-              <DoorOpen className="h-5 w-5" />
-              <span>Entry / Exit</span>
-            </button>
           </div>
         </nav>
       )}
 
-      {hasSidebar && (
+      {hasSidebar && !isTrainer && (
         <nav
-          className="fixed inset-x-0 bottom-0 z-40 border-t bg-background pb-[var(--safe-bottom)] lg:hidden"
+          className="fixed inset-x-0 bottom-5 z-40 flex justify-center pointer-events-none px-4 lg:hidden"
           aria-label="Primary Mobile Navigation"
         >
-          <div className="flex h-14 items-center justify-around px-2 max-w-md mx-auto">
+          <div className="pointer-events-auto flex items-center gap-1 p-1.5 rounded-full bg-card/90 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.28)] dark:shadow-[0_16px_50px_rgba(0,0,0,0.55)]">
             {primary.map((item) => {
               const Icon = item.icon;
-              const selected = active === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onNavigate(item.id)}
-                  className={cn(
-                    'flex-1 flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors py-1',
-                    selected ? 'text-primary' : 'text-muted-foreground hover:text-text'
-                  )}
-                >
-                  <Icon className="h-5 w-5" />
-                  <span className="truncate max-w-[64px]">{item.shortLabel}</span>
-                </button>
-              );
+              return <FloatingItem key={item.id} id={item.id} icon={Icon} label={item.shortLabel} />;
             })}
             {overflow.length > 0 && (
               <button
                 type="button"
                 onClick={() => setDrawerOpen(true)}
                 className={cn(
-                  'flex-1 flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors py-1',
-                  overflow.some((i) => i.id === active) ? 'text-primary' : 'text-muted-foreground hover:text-text'
+                  'flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold transition-all',
+                  overflow.some((i) => i.id === active)
+                    ? 'bg-primary text-primary-foreground shadow-md'
+                    : 'text-muted-foreground hover:text-text hover:bg-surface-elevated'
                 )}
               >
-                <MoreHorizontal className="h-5 w-5" />
+                <MoreHorizontal className="w-4 h-4" />
                 <span>More</span>
               </button>
             )}

@@ -21,7 +21,7 @@ export const Card: React.FC<CardProps> = ({
   <section
     onClick={onClick}
     className={cn(
-      'rounded-xl border border-border bg-card text-card-foreground shadow-sm transition-all duration-300',
+      'rounded-xl bg-card text-card-foreground shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.45)] transition-all duration-300',
       padded && 'p-6',
       interactive && 'cursor-pointer hover:shadow-xl hover:-translate-y-1',
       className
@@ -49,7 +49,7 @@ const badgeTone: Record<NonNullable<BadgeProps['tone']>, string> = {
 export const Badge: React.FC<BadgeProps> = ({ children, tone = 'neutral', className }) => (
   <span
     className={cn(
-      'inline-flex items-center justify-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0',
+      'inline-flex items-center justify-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0',
       badgeTone[tone],
       className
     )}
@@ -78,15 +78,15 @@ interface AlertProps {
 }
 
 const alertTone = {
-  success: 'border-success/30 bg-success-muted text-success',
-  warning: 'border-warning/40 bg-warning-muted text-warning',
-  danger: 'border-danger/30 bg-danger-muted text-danger',
-  info: 'border-primary/20 bg-primary/5 text-text',
+  success: 'bg-success-muted text-success',
+  warning: 'bg-warning-muted text-warning',
+  danger: 'bg-danger-muted text-danger',
+  info: 'bg-primary/10 text-text',
 };
 
 export const Alert: React.FC<AlertProps> = ({ tone = 'info', children, onDismiss, className }) => (
   <div
-    className={cn('flex items-start gap-3 rounded-md border px-4 py-3 text-sm shadow-xs', alertTone[tone], className)}
+    className={cn('flex items-start gap-3 rounded-xl px-4 py-3 text-sm shadow-md', alertTone[tone], className)}
     role="status"
   >
     <div className="min-w-0 flex-1">{children}</div>
@@ -107,7 +107,7 @@ interface EmptyStateProps {
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, description, action, className }) => (
-  <div className={cn('flex flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-12 text-center shadow-sm', className)}>
+  <div className={cn('flex flex-col items-center justify-center gap-2 rounded-xl bg-surface-elevated px-4 py-12 text-center shadow-md', className)}>
     {icon && <div className="mb-1 text-muted-foreground">{icon}</div>}
     <p className="text-2xl font-semibold text-card-foreground">{title}</p>
     {description && <p className="max-w-sm text-sm text-muted-foreground leading-relaxed">{description}</p>}
@@ -148,7 +148,7 @@ interface StatProps {
 }
 
 export const Stat: React.FC<StatProps> = ({ label, value, hint, icon, className }) => (
-  <div className={cn('rounded-xl border border-border bg-card p-4 sm:p-5 shadow-lg', className)}>
+  <div className={cn('rounded-xl bg-card p-4 sm:p-5 shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.45)]', className)}>
     <div className="flex items-center justify-between">
       <p className="text-sm text-muted-foreground">{label}</p>
       {icon && <div className="text-primary">{icon}</div>}
@@ -188,11 +188,11 @@ export const Modal: React.FC<ModalProps> = ({ open, title, onClose, children, fo
       <button type="button" className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
       <div
         className={cn(
-          'relative z-10 flex max-h-[92vh] w-full flex-col rounded-t-xl border border-border bg-card shadow-lg sm:rounded-xl',
+          'relative z-10 flex max-h-[92vh] w-full flex-col rounded-t-xl bg-card shadow-2xl sm:rounded-xl',
           wide ? 'sm:max-w-3xl' : 'sm:max-w-lg'
         )}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-border px-6 py-4">
+        <div className="flex items-center justify-between gap-3 bg-surface-elevated px-6 py-4">
           <h2 id="modal-title" className="text-lg font-semibold text-card-foreground">
             {title}
           </h2>
@@ -201,7 +201,7 @@ export const Modal: React.FC<ModalProps> = ({ open, title, onClose, children, fo
           </IconButton>
         </div>
         <div className="overflow-y-auto px-6 py-5">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-border px-6 py-4">{footer}</div>}
+        {footer && <div className="flex justify-end gap-2 bg-surface-elevated px-6 py-4">{footer}</div>}
       </div>
     </div>
   );
@@ -230,7 +230,7 @@ export function Tabs<T extends string>({ value, onChange, items, className }: Ta
               'inline-flex shrink-0 items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors',
               isSelected
                 ? 'bg-primary text-primary-foreground shadow-xs'
-                : 'border border-input bg-background text-secondary hover:bg-surface-elevated hover:text-text'
+                : 'bg-surface-elevated text-secondary hover:bg-surface-elevated/80 hover:text-text'
             )}
           >
             {item.icon}
