@@ -15,8 +15,10 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:clean": "tsx src/db/clean.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "user:remove": "tsx src/scripts/remove_user.ts"
   },
+
   "dependencies": {
     "@aws-sdk/client-s3": "^3.758.0",
     "@aws-sdk/s3-request-presigner": "^3.758.0",
