@@ -35,19 +35,18 @@ const BUCKET = config.MINIO_BUCKET_ARCHIVE; // "gym-archive"
 /** Ensure the archive bucket has a fully private (no anonymous) policy */
 export async function ensureArchiveBucketIsPrivate(): Promise<void> {
   try {
-    // Deny all anonymous access (belt-and-suspenders — bucket was already private)
+    // Deny all s3:GetObject access to unauthenticated (anonymous) principals.
+    // Note: MinIO does not support the 's3:x-amz-acl' condition key — the Condition
+    // block is intentionally omitted so the policy is valid for both AWS S3 and MinIO.
     const policy = JSON.stringify({
       Version: '2012-10-17',
       Statement: [
         {
-          Sid: 'DenyPublicAccess',
+          Sid: 'DenyAnonymousGetObject',
           Effect: 'Deny',
           Principal: '*',
           Action: 's3:GetObject',
           Resource: `arn:aws:s3:::${BUCKET}/*`,
-          Condition: {
-            StringEquals: { 's3:x-amz-acl': 'public-read' },
-          },
         },
       ],
     });
