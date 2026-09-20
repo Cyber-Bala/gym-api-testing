@@ -239,3 +239,46 @@ export const updateSlotConfig = async (
   }
 };
 
+export const getAdminBookingsByEmail = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const email = req.params.email;
+    const bookings = await reservationService.getAdminBookingsByEmail(email);
+    res.status(200).json({ success: true, data: bookings });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const adminCancelBooking = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const bookingId = req.params.id;
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    const result = await reservationService.adminCancelBooking(bookingId, adminEmail);
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const adminCancelAllBookings = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const email = req.params.email;
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    const result = await reservationService.adminCancelAllBookings(email, adminEmail);
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+};

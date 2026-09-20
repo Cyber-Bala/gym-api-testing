@@ -21,6 +21,7 @@ import { conflictsRouter } from './modules/conflicts/conflicts.routes.js';
 import { archiveRouter } from './modules/archive/archive.routes.js';
 import { integrationRouter } from './modules/integration/integration.routes.js';
 import { notificationRouter } from './modules/notification/notification.routes.js';
+import { sseRouter } from './modules/sse/sse.routes.js';
 import { schedulerRouter } from './modules/scheduler/scheduler.routes.js';
 import { NotFoundError } from './shared/errors/index.js';
 
@@ -54,18 +55,19 @@ export const createApp = (): Express => {
   app.use(`${config.API_PREFIX}/people`, peopleRouter);
   app.use(`${config.API_PREFIX}/booking`, bookingRouter);
   app.use(`${config.API_PREFIX}/access`, accessRouter);
-  app.use(`${config.API_PREFIX}/violations`, violationsRouter);
+  app.use(`${config.API_PREFIX}/notifications`, notificationRouter);
+  app.use(`${config.API_PREFIX}/sse`, sseRouter);
   app.use(`${config.API_PREFIX}/membership`, membershipRouter);
   app.use(`${config.API_PREFIX}/payment`, paymentRouter);
   app.use(`${config.API_PREFIX}/trainer`, trainerRouter);
   app.use(`${config.API_PREFIX}/admin`, adminRouter);
   app.use(`${config.API_PREFIX}/biometrics`, biometricsRouter);
+  app.use(`${config.API_PREFIX}/violations`, violationsRouter);
   app.use(`${config.API_PREFIX}/floor`, floorRouter);
   app.use(`${config.API_PREFIX}/reports`, reportsRouter);
   app.use(`${config.API_PREFIX}/conflicts`, conflictsRouter);
   app.use(`${config.API_PREFIX}/archive`, archiveRouter);
   app.use(`${config.API_PREFIX}/integration`, integrationRouter);
-  app.use(`${config.API_PREFIX}/notifications`, notificationRouter);
   app.use(`${config.API_PREFIX}/scheduler`, schedulerRouter);
   app.use(`${config.API_PREFIX}/admin/scheduler`, schedulerRouter);
 

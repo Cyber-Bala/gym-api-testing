@@ -127,3 +127,25 @@ export const triggerNoShowEvaluation = async (
     next(err);
   }
 };
+
+export const triggerFaceVerification = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new UnauthorizedError('Authentication required to verify face registration');
+    }
+
+    const result = await accessService.verifyFaceRegistration(req.user.personId);
+
+    res.status(200).json({
+      success: result.success,
+      message: result.message,
+      data: { enrolled: result.enrolled },
+    });
+  } catch (err) {
+    next(err);
+  }
+};

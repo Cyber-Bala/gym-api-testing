@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { NotFoundError, ValidationError } from '../../shared/errors/index.js';
-import { paymentOrders, membershipPlans, students, people } from '../../db/schema/index.js';
+import { paymentOrders, membershipPlans, students, people, memberships } from '../../db/schema/index.js';
 import { membershipService } from '../membership/membership.service.js';
 import { config } from '../../config/index.js';
 import {
@@ -199,9 +199,33 @@ export class PaymentService {
       })
       .where(eq(paymentOrders.id, order.id));
 
-    const membership = await membershipService.activateMembership(studentId, order.planId, paymentId);
-
-    logger.info({ orderId, paymentId, studentId }, 'Simulated payment verified and membership activated');
+    let membership;
+    const [stu] = await db.select().from(students).where(eq(students.id, studentId)).limit(1);
+    
+    if (stu?.residency === 'day_scholar' && stu?.faceEnrollmentStatus !== 'enrolled') {
+      const now = new Date();
+      const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, order.planId)).limit(1);
+      
+      const [inserted] = await db.insert(memberships).values({
+        studentId,
+        planId: order.planId,
+        status: 'pending_activation',
+        startDate: now,
+        endDate: now, // Will be updated on activation
+        paymentId,
+      }).returning();
+      
+      membership = {
+        ...inserted,
+        isActive: false,
+        daysRemaining: plan.durationDays,
+        planName: plan.name
+      };
+      logger.info({ orderId, paymentId, studentId }, 'Simulated payment verified and membership marked pending_activation');
+    } else {
+      membership = await membershipService.activateMembership(studentId, order.planId, paymentId);
+      logger.info({ orderId, paymentId, studentId }, 'Simulated payment verified and membership activated');
+    }
 
     return {
       success: true,
@@ -307,13 +331,29 @@ export class PaymentService {
         })
         .where(eq(paymentOrders.id, order.id));
 
-      await membershipService.activateMembership(
-        order.studentId,
-        order.planId,
-        mihpayid || order.orderId
-      );
-
-      logger.info({ txnid, mihpayid, studentId: order.studentId, source }, 'PayU success — membership activated');
+      const [stu] = await db.select().from(students).where(eq(students.id, order.studentId)).limit(1);
+      
+      if (stu?.residency === 'day_scholar' && stu?.faceEnrollmentStatus !== 'enrolled') {
+        const now = new Date();
+        const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, order.planId)).limit(1);
+        
+        await db.insert(memberships).values({
+          studentId: order.studentId,
+          planId: order.planId,
+          status: 'pending_activation',
+          startDate: now,
+          endDate: now,
+          paymentId: mihpayid || order.orderId,
+        });
+        logger.info({ txnid, mihpayid, studentId: order.studentId, source }, 'PayU success — membership marked pending_activation');
+      } else {
+        await membershipService.activateMembership(
+          order.studentId,
+          order.planId,
+          mihpayid || order.orderId
+        );
+        logger.info({ txnid, mihpayid, studentId: order.studentId, source }, 'PayU success — membership activated');
+      }
 
       return {
         result: 'success_confirmed',

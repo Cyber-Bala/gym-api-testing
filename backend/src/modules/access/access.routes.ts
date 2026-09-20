@@ -6,6 +6,7 @@ import {
   getMyAccessHistory,
   getAccessLogs,
   triggerNoShowEvaluation,
+  triggerFaceVerification,
 } from './access.controller.js';
 import { requireAuth, requireRole, optionalAuth } from '../auth/auth.middleware.js';
 
@@ -29,3 +30,6 @@ accessRouter.post(
   requireRole(['admin', 'super_admin']),
   triggerNoShowEvaluation
 );
+
+// Student triggers face registration verification
+accessRouter.post('/verify-face', requireAuth, triggerFaceVerification);

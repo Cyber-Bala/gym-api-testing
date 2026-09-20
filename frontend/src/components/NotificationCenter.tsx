@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Sparkles, AlertTriangle, Info, Calendar, CreditCard, ShieldCheck } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { useSSE } from '../context/SSEContext';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
@@ -17,6 +18,7 @@ interface NotificationItem {
 
 export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const { user } = useAuth();
+  const { latestNotification } = useSSE();
   const toast = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -51,9 +53,15 @@ export const NotificationCenter: React.FC<{ compact?: boolean }> = ({ compact = 
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 60000); // 1 min poll
-    return () => clearInterval(interval);
   }, [user]);
+
+  // Handle incoming real-time notifications from SSE
+  useEffect(() => {
+    if (latestNotification) {
+      setNotifications((prev) => [latestNotification, ...prev]);
+      toast.success(latestNotification.title);
+    }
+  }, [latestNotification]);
 
   useEffect(() => {
     const unread = notifications.filter((n) => !readIds.has(n.id)).length;

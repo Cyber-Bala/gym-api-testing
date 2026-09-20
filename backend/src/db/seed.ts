@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db, pool } from '../shared/database/index.js';
+import { config } from '../config/index.js';
 import { logger } from '../shared/logging/index.js';
 import { runMigrations } from './migrate.js';
 import {
@@ -120,6 +121,26 @@ export const seedDatabase = async () => {
     if (!existingSuperProfile) {
       await db.insert(adminProfiles).values({
         accountId: superAdminAcc.id,
+        roleId: superAdminRole.id,
+        isProtectedSuperAdmin: 'true',
+      });
+    }
+
+    // Provision the user's actual email as a Super Admin
+    const { account: userAcc } = await ensureAccountAndPerson(
+      config.SUPER_ADMIN_EMAIL,
+      'Gokulakrishnan Kadhirvelu',
+      'super_admin',
+      'admin'
+    );
+    const [existingUserProfile] = await db
+      .select()
+      .from(adminProfiles)
+      .where(eq(adminProfiles.accountId, userAcc.id))
+      .limit(1);
+    if (!existingUserProfile) {
+      await db.insert(adminProfiles).values({
+        accountId: userAcc.id,
         roleId: superAdminRole.id,
         isProtectedSuperAdmin: 'true',
       });

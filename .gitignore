@@ -43,3 +43,4 @@ minio_data/
 postgres_data/
 redis_data/
 *.parquet
+api_app

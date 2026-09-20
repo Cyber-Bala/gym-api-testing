@@ -13,6 +13,7 @@ export interface SessionUser {
   faceEnrollmentStatus?: string | null;
   faceReferenceId?: string | null;
   hasActiveMembership?: boolean;
+  hasPendingMembership?: boolean;
   activeMembershipEndDate?: string | null;
   hasCompletedOnboarding?: boolean;
   permissions: string[];

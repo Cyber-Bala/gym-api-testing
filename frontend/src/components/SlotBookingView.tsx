@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Clock,
   Users,
@@ -143,6 +143,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
   const isTrainer = user && (user.role === 'trainer' || user.personType === 'trainer');
   const isStaff = user && (user.role === 'staff' || user.personType === 'staff');
   const isStudent = user && (user.personType === 'student' || user.role === 'student');
+  const isEnrolled = user && (user.faceEnrollmentStatus === 'enrolled' || user.studentDetails?.faceEnrollmentStatus === 'enrolled');
 
   const fetchSlots = useCallback(async () => {
     setLoading(true);
@@ -626,7 +627,15 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
         </Alert>
       )}
 
-      {data && (
+      {isStudent && !isEnrolled ? (
+        <div className="p-12 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center text-center bg-surface-elevated/50">
+          <Lock className="w-12 h-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-bold text-foreground">Slots Locked</h3>
+          <p className="text-sm text-secondary mt-2 max-w-md">
+            You must register your face on the physical gym turnstile and verify it above before you can view and book slots.
+          </p>
+        </div>
+      ) : data && (
         <div className="space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">

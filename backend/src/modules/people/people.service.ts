@@ -960,6 +960,68 @@ const items = await db
       createdAt: newStudent.createdAt.toISOString(),
     };
   }
+  public async updateStudentResidency(
+    id: string,
+    residency: 'hosteller' | 'day_scholar',
+    adminEmail: string = 'system'
+  ): Promise<void> {
+    const [existingStudent] = await db
+      .select({ 
+        id: students.id, 
+        rollNumber: students.rollNumber,
+        residency: students.residency,
+        personId: students.personId
+      })
+      .from(students)
+      .where(eq(students.id, id))
+      .limit(1);
+
+    if (!existingStudent) {
+      throw new NotFoundError(`Student with ID ${id} not found`);
+    }
+
+    if (existingStudent.residency === 'hosteller' && residency === 'day_scholar') {
+      // 1. Cancel existing bookings
+      const { reservationService } = await import('../booking/reservation.service.js');
+      const [person] = await db.select({ email: people.email }).from(people).where(eq(people.id, existingStudent.personId));
+      if (person) {
+        await reservationService.adminCancelAllBookings(person.email, adminEmail);
+      }
+      
+      // 2. Delete his face in the device and tell to register
+      // We set faceEnrollmentStatus to not_enrolled to enforce re-registration
+      await db
+        .update(students)
+        .set({ residency, faceEnrollmentStatus: 'not_enrolled', faceReferenceId: null, updatedAt: new Date() })
+        .where(eq(students.id, id));
+
+      await db
+        .update(people)
+        .set({ faceEnrollmentStatus: 'not_enrolled', faceReferenceId: null, updatedAt: new Date() })
+        .where(eq(people.id, existingStudent.personId));
+        
+      try {
+         // Revoke access on ZKBio via api_app
+         await fetch(`http://localhost:8000/api/students/${existingStudent.rollNumber}/payment`, {
+           method: 'PATCH',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ payment_status: 'expired', payment_valid_from: null, payment_valid_until: null })
+         });
+      } catch (err) {
+         logger.error({ err }, 'Failed to sync access revocation to api_app');
+      }
+
+    } else {
+      // Day Scholar -> Hosteller (or no change)
+      // 1. Don't cancel slots (continue to use as hosteller plan)
+      // 2. No delete needed and no need of reregister
+      await db
+        .update(students)
+        .set({ residency, updatedAt: new Date() })
+        .where(eq(students.id, id));
+    }
+  }
+
 }
 
 export const peopleService = new PeopleService();

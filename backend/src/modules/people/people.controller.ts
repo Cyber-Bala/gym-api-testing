@@ -163,6 +163,30 @@ export const updateMyStudentProfile = async (
   }
 };
 
+export const updateStudentResidency = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { residency } = req.body;
+    if (residency !== 'hosteller' && residency !== 'day_scholar') {
+      res.status(400).json({ success: false, message: 'Invalid residency type' });
+      return;
+    }
+
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    await peopleService.updateStudentResidency(req.params.id, residency, adminEmail);
+
+    res.status(200).json({
+      success: true,
+      message: 'Residency updated successfully',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const setStudentTrainerRole = async (
   req: Request,
   res: Response,

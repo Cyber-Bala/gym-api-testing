@@ -4,6 +4,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { SSEProvider } from './context/SSEContext';
 import { App } from './App';
 import './index.css';
 import { registerSW } from 'virtual:pwa-register';
@@ -22,7 +23,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <ThemeProvider>
         <AuthProvider>
           <ToastProvider>
-            <App />
+            <SSEProvider>
+              <App />
+            </SSEProvider>
           </ToastProvider>
         </AuthProvider>
       </ThemeProvider>

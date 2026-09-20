@@ -332,6 +332,21 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
               </p>
             </div>
           </div>
+        ) : user?.hasPendingMembership ? (
+          <div className="p-5 rounded-2xl bg-surface-elevated space-y-3 shadow-sm border border-warning/50">
+            <div className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-warning" />
+              <span className="text-xs uppercase font-bold text-warning">
+                Action Required: Face Registration
+              </span>
+            </div>
+            <div>
+              <h4 className="font-bold text-base text-text">Pass Purchased, Activation Pending</h4>
+              <p className="text-xs text-secondary mt-1">
+                You have successfully paid for a gym pass. To activate your 90-day window and book slots, please register your face at the physical gym turnstile, then verify it on the Booking page.
+              </p>
+            </div>
+          </div>
         ) : isDayScholar ? (
           <div className="space-y-4">
             <Alert tone="warning">

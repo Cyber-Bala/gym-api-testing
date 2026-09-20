@@ -4,6 +4,7 @@ import { reservationService } from '../booking/reservation.service.js';
 import { membershipService } from '../membership/membership.service.js';
 import { paymentService } from '../payment/payment.service.js';
 import { accessService } from '../access/access.service.js';
+import { sseService } from '../sse/sse.service.js';
 import { biometricsService } from '../biometrics/biometrics.service.js';
 import { floorService } from '../floor/floor.service.js';
 import { noShowService } from '../access/no-show.service.js';
@@ -120,7 +121,6 @@ export class IntegrationService {
     t0 = Date.now();
     try {
       const devices = biometricsService.listDevices();
-      const syncRes = biometricsService.processSyncQueue();
       recordStep(
         'FLOW-005',
         'Biometric Face Vector Enrollment & Async Sync State Machine',
@@ -158,6 +158,8 @@ export class IntegrationService {
     t0 = Date.now();
     try {
       const occ = await accessService.getLiveOccupancy();
+      logger.info({ occ }, 'Live occupancy refreshed after turnstile event');
+      sseService.broadcast('occupancy_update', occ);
       recordStep(
         'FLOW-007',
         'Turnstile Exit Tracking & Workout Duration Engine',

@@ -495,6 +495,140 @@ export class ReservationService {
       };
     });
   }
+
+  /**
+   * Admin: Get bookings by user email
+   */
+  public async getAdminBookingsByEmail(email: string) {
+    const client = await pool.connect();
+    try {
+      const studentRes = await client.query(
+        `SELECT s.id as student_id 
+         FROM people.students s
+         JOIN people.people p ON s.person_id = p.id
+         WHERE p.email = $1`,
+        [email]
+      );
+
+      if (studentRes.rows.length === 0) {
+        throw new NotFoundError(`Student with email ${email} not found`);
+      }
+
+      const studentId = studentRes.rows[0].student_id;
+
+      const bookingsRes = await client.query(
+        `SELECT 
+           b.id AS booking_id,
+           b.booking_status,
+           b.created_at,
+           s.slot_date,
+           s.start_time,
+           s.end_time,
+           s.status AS slot_status
+         FROM booking.bookings b
+         JOIN booking.slots s ON b.slot_id = s.id
+         WHERE b.student_id = $1
+         ORDER BY s.slot_date DESC, s.start_time DESC`,
+        [studentId]
+      );
+
+      return bookingsRes.rows.map((row) => ({
+        id: row.booking_id,
+        date: typeof row.slot_date === 'string' ? row.slot_date.slice(0, 10) : bookingService.formatISTDate(row.slot_date),
+        startTime: row.start_time,
+        endTime: row.end_time,
+        status: row.booking_status,
+        slotStatus: row.slot_status,
+        createdAt: row.created_at,
+      }));
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Admin: Cancel a specific booking without penalty
+   */
+  public async adminCancelBooking(bookingId: string, adminEmail: string) {
+    const lockKey = `lock:booking:cancel:${bookingId}`;
+    const acquired = await redis.set(lockKey, '1', 'PX', 5000, 'NX');
+    if (!acquired) {
+      throw new ConflictError('A cancellation operation is already in progress for this booking.');
+    }
+
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        const bookingRes = await client.query(
+          `SELECT id, slot_id, booking_status FROM booking.bookings WHERE id = $1 FOR UPDATE`,
+          [bookingId]
+        );
+
+        if (bookingRes.rows.length === 0) {
+          throw new NotFoundError(`Booking '${bookingId}' not found`);
+        }
+
+        const booking = bookingRes.rows[0];
+
+        if (booking.booking_status !== 'booked') {
+          throw new ValidationError(
+            `Cannot cancel a booking that is already in '${booking.booking_status}' status.`
+          );
+        }
+
+        // Update booking status
+        await client.query(
+          `UPDATE booking.bookings 
+           SET booking_status = 'cancelled_by_admin',
+               cancelled_at = NOW(),
+               cancellation_reason = $1,
+               updated_at = NOW()
+           WHERE id = $2`,
+          [`Cancelled administratively by ${adminEmail}`, bookingId]
+        );
+
+        // Decrement slot booked count
+        await client.query(
+          `UPDATE booking.slots 
+           SET booked_count = GREATEST(0, booked_count - 1) 
+           WHERE id = $1`,
+          [booking.slot_id]
+        );
+
+        await client.query('COMMIT');
+        return { bookingId, status: 'cancelled_by_admin' };
+      } catch (txErr) {
+        await client.query('ROLLBACK');
+        throw txErr;
+      } finally {
+        client.release();
+      }
+    } finally {
+      await redis.del(lockKey);
+    }
+  }
+
+  /**
+   * Admin: Cancel all active bookings for a user
+   */
+  public async adminCancelAllBookings(email: string, adminEmail: string) {
+    const bookings = await this.getAdminBookingsByEmail(email);
+    const activeBookings = bookings.filter((b) => b.status === 'booked');
+    const results = [];
+
+    for (const booking of activeBookings) {
+      try {
+        const res = await this.adminCancelBooking(booking.id, adminEmail);
+        results.push(res);
+      } catch (err) {
+        logger.error({ err, bookingId: booking.id }, 'Failed to cancel booking in bulk');
+      }
+    }
+
+    return results;
+  }
 }
 
 export const reservationService = new ReservationService();

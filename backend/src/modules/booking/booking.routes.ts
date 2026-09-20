@@ -10,6 +10,9 @@ import {
   updateSlotStatus,
   getSlotConfig,
   updateSlotConfig,
+  getAdminBookingsByEmail,
+  adminCancelBooking,
+  adminCancelAllBookings,
 } from './booking.controller.js';
 import { requireAuth, optionalAuth, requireRole } from '../auth/auth.middleware.js';
 
@@ -27,6 +30,28 @@ bookingRouter.get('/slots', optionalAuth, getSlotsForDate);
 bookingRouter.post('/reserve', requireAuth, reserveSlot);
 bookingRouter.post('/cancel/:id', requireAuth, cancelBooking);
 bookingRouter.get('/my-bookings', requireAuth, getMyBookings);
+
+// Admin bookings management
+bookingRouter.get(
+  '/admin/user/:email/bookings',
+  requireAuth,
+  requireRole(['admin', 'super_admin']),
+  getAdminBookingsByEmail
+);
+
+bookingRouter.delete(
+  '/admin/bookings/:id',
+  requireAuth,
+  requireRole(['admin', 'super_admin']),
+  adminCancelBooking
+);
+
+bookingRouter.delete(
+  '/admin/user/:email/bookings',
+  requireAuth,
+  requireRole(['admin', 'super_admin']),
+  adminCancelAllBookings
+);
 
 // Admin slot maintenance & overrides
 bookingRouter.post(

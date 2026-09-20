@@ -272,6 +272,7 @@ export class AuthService {
     // Load student details if applicable
     let studentDetails: SessionUser['studentDetails'];
     let hasActiveMembership = true;
+    let hasPendingMembership = false;
     let activeMembershipEndDate: string | null = null;
     let hasCompletedOnboarding = true;
 
@@ -332,6 +333,22 @@ export class AuthService {
             hasActiveMembership = false;
             activeMembershipEndDate = null;
           }
+
+          // Check if there is a pending_activation membership
+          const [pendingMem] = await db
+            .select()
+            .from(memberships)
+            .where(
+              and(
+                eq(memberships.studentId, studentRec.id),
+                eq(memberships.status, 'pending_activation')
+              )
+            )
+            .limit(1);
+          
+          if (pendingMem) {
+            hasPendingMembership = true;
+          }
         } else {
           // Hostellers: inclusive access, no payment
           hasActiveMembership = true;
@@ -366,6 +383,7 @@ export class AuthService {
       faceEnrollmentStatus,
       faceReferenceId,
       hasActiveMembership,
+      hasPendingMembership,
       activeMembershipEndDate,
       hasCompletedOnboarding,
       permissions,

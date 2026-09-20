@@ -12,6 +12,7 @@ import {
   updateMyStudentProfile,
   setStudentTrainerRole,
   bulkSetTrainerRoles,
+  updateStudentResidency,
 } from './people.controller.js';
 import { requireAuth, requireRole } from '../auth/auth.middleware.js';
 
@@ -29,6 +30,7 @@ peopleRouter.patch('/students/me', updateMyStudentProfile);
 // Student queries & single creation
 peopleRouter.get('/students', requireRole(['admin', 'super_admin', 'trainer']), listStudents);
 peopleRouter.post('/students', requireRole(['admin', 'super_admin']), createStudent);
+peopleRouter.patch('/students/:id/residency', requireRole(['admin', 'super_admin']), updateStudentResidency);
 
 // Trainer role management (students who are trainers)
 peopleRouter.patch('/students/:id/trainer-role', requireRole(['admin', 'super_admin']), setStudentTrainerRole);

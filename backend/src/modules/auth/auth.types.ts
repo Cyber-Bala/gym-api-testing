@@ -11,6 +11,7 @@ export interface SessionUser {
   faceEnrollmentStatus?: string | null;
   faceReferenceId?: string | null;
   hasActiveMembership?: boolean;
+  hasPendingMembership?: boolean;
   activeMembershipEndDate?: string | null;
   /** Always true; contact details and face capture are not app onboarding steps */
   hasCompletedOnboarding?: boolean;

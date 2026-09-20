@@ -3,6 +3,7 @@ import { db } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { notificationLogs, pushSubscriptions } from '../../db/schema/notification.js';
 import { NotificationLogItem, PushSubscriptionDto } from './notification.types.js';
+import { sseService } from '../sse/sse.service.js';
 
 export class NotificationService {
   /**
@@ -15,14 +16,27 @@ export class NotificationService {
     eventType: string;
   }): Promise<void> {
     try {
-      await db.insert(notificationLogs).values({
+      const [loggedNotif] = await db.insert(notificationLogs).values({
         accountId: params.accountId || null,
         title: params.title,
         body: params.body,
         eventType: params.eventType,
         status: 'sent',
-      });
+      }).returning();
       logger.info({ eventType: params.eventType, title: params.title }, 'Notification logged');
+
+      // Emit over SSE in real-time
+      if (params.accountId) {
+        sseService.sendToUser(params.accountId, 'new_notification', {
+          id: loggedNotif.id,
+          title: params.title,
+          body: params.body,
+          eventType: params.eventType,
+          status: 'delivered',
+          createdAt: loggedNotif.createdAt,
+        });
+      }
+
     } catch (err) {
       logger.error({ err }, 'Failed to log notification');
     }

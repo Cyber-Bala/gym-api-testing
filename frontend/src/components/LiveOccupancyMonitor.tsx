@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { useSSE } from '../context/SSEContext';
 import { useToast } from '../context/ToastContext';
 import { Card, Badge, ProgressBar, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
@@ -52,6 +53,7 @@ interface ScanResult {
 
 export const LiveOccupancyMonitor: React.FC = () => {
   const { user } = useAuth();
+  const { liveOccupancy } = useSSE();
   const toast = useToast();
   const [stats, setStats] = useState<LiveOccupancyStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -78,9 +80,14 @@ export const LiveOccupancyMonitor: React.FC = () => {
 
   useEffect(() => {
     fetchLiveOccupancy();
-    const interval = setInterval(fetchLiveOccupancy, 8000); // 8s live polling
-    return () => clearInterval(interval);
   }, []);
+
+  // Update when SSE pushes new live occupancy data
+  useEffect(() => {
+    if (liveOccupancy) {
+      setStats(liveOccupancy);
+    }
+  }, [liveOccupancy]);
 
   const handleSimulateScan = async (overrideParams?: {
     identifierType: string;

@@ -8,11 +8,13 @@ import {
   FileSpreadsheet,
   Award,
   UserPlus,
+  Calendar,
 } from 'lucide-react';
 import { Card, Badge, Alert, Modal } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { SearchInput, Select, Input } from '../ui/Input';
 import { ExcelImportModal } from './ExcelImportModal';
+import { AdminStudentBookingsModal } from './AdminStudentBookingsModal';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
@@ -58,6 +60,8 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   const toast = useToast();
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [togglingResidencyId, setTogglingResidencyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>('');
   const [residency, setResidency] = useState<string>('');
@@ -65,7 +69,12 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [importOpen, setImportOpen] = useState<boolean>(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const [bookingModalStudent, setBookingModalStudent] = useState<{
+    name: string;
+    email: string;
+    rollNumber: string;
+  } | null>(null);
 
   // Add Single Student Modal State
   const [addModalOpen, setAddModalOpen] = useState<boolean>(false);
@@ -124,13 +133,32 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
       await api.patch(`/api/v1/people/students/${stu.id}/trainer-role`, {
         isTrainer: !stu.isTrainer,
       });
-      toast.success(stu.isTrainer ? `Removed trainer role from ${stu.rollNumber}` : `Marked ${stu.rollNumber} as trainer`);
+      toast.success(
+        `Successfully ${!stu.isTrainer ? 'assigned' : 'removed'} trainer role for ${stu.name}`
+      );
       fetchStudents();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(msg, 'Trainer Toggle Failed');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update trainer role');
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  const handleToggleResidency = async (stu: StudentItem) => {
+    setTogglingResidencyId(stu.id);
+    try {
+      const newResidency = stu.residency === 'hosteller' ? 'day_scholar' : 'hosteller';
+      await api.patch(`/api/v1/people/students/${stu.id}/residency`, {
+        residency: newResidency,
+      });
+      toast.success(
+        `Successfully updated ${stu.name}'s residency to ${newResidency === 'hosteller' ? 'Hosteller' : 'Day Scholar'}`
+      );
+      fetchStudents();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update residency');
+    } finally {
+      setTogglingResidencyId(null);
     }
   };
 
@@ -264,6 +292,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
               <th className="py-3 px-4">Face Scan</th>
               <th className="py-3 px-4">Discipline</th>
               <th className="py-3 px-4">Status</th>
+              <th className="py-3 px-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border text-text">
@@ -291,9 +320,20 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                     <div className="text-[11px] text-muted">Batch of {stu.joiningYear}</div>
                   </td>
                   <td className="py-3 px-4">
-                    <Badge tone={stu.residency === 'hosteller' ? 'accent' : 'neutral'}>
-                      {stu.residency === 'hosteller' ? 'Hosteller' : 'Day Scholar'}
-                    </Badge>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleResidency(stu)}
+                      disabled={togglingResidencyId === stu.id}
+                      className={cn(
+                        'transition-all cursor-pointer disabled:opacity-50 disabled:cursor-wait',
+                        togglingResidencyId === stu.id && 'animate-pulse'
+                      )}
+                      title="Click to toggle residency"
+                    >
+                      <Badge tone={stu.residency === 'hosteller' ? 'accent' : 'neutral'}>
+                        {stu.residency === 'hosteller' ? 'Hosteller' : 'Day Scholar'}
+                      </Badge>
+                    </button>
                   </td>
                   <td className="py-3 px-4">
                     <button
@@ -331,6 +371,20 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                     <span className="flex items-center gap-1 text-success font-medium capitalize">
                       <UserCheck className="w-3.5 h-3.5" /> {stu.status}
                     </span>
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      className="ml-auto flex items-center gap-1 text-[11px]"
+                      onClick={() => setBookingModalStudent({
+                        name: stu.name,
+                        email: stu.email,
+                        rollNumber: stu.rollNumber
+                      })}
+                    >
+                      <Calendar className="w-3 h-3" /> Bookings
+                    </Button>
                   </td>
                 </tr>
               ))
@@ -482,6 +536,15 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
           fetchStudents();
         }}
       />
+
+      {/* Bookings Modal */}
+      {bookingModalStudent && (
+        <AdminStudentBookingsModal
+          isOpen={true}
+          onClose={() => setBookingModalStudent(null)}
+          student={bookingModalStudent}
+        />
+      )}
     </Card>
   );
 };

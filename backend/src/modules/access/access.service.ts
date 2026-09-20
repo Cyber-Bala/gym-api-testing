@@ -15,6 +15,10 @@ import {
 } from '../../db/schema/index.js';
 import { bookingService } from '../booking/booking.service.js';
 import { ZkBioWebhookDto, AccessDecisionResult, LiveOccupancyStats, LiveGymOccupant } from './access.types.js';
+import { sseService } from '../sse/sse.service.js';
+import { membershipService } from '../membership/membership.service.js';
+import { membershipPlans, memberships } from '../../db/schema/index.js';
+import { config } from '../../config/index.js';
 
 export class AccessService {
   /**
@@ -133,13 +137,22 @@ export class AccessService {
       };
     }
 
+    let result: AccessDecisionResult;
     // Process Entry
     if (dto.eventType === 'entry') {
-      return this.handleEntry(person, dto);
+      result = await this.handleEntry(person, dto);
+    } else {
+      // Process Exit
+      result = await this.handleExit(person, dto);
     }
 
-    // Process Exit
-    return this.handleExit(person, dto);
+    // Broadcast new occupancy if access was granted
+    if (result.accessGranted) {
+      const occ = await this.getLiveOccupancy(false);
+      sseService.broadcast('occupancy_update', occ);
+    }
+
+    return result;
   }
 
   /**
@@ -549,6 +562,81 @@ export class AccessService {
       .limit(limit);
 
     return logs;
+  }
+
+  /**
+   * Verify face registration via api_app and activate hosteller pass
+   */
+  public async verifyFaceRegistration(personId: string) {
+    const [person] = await db.select().from(people).where(eq(people.id, personId)).limit(1);
+    if (!person || person.personType !== 'student') {
+      throw new Error('Only students can verify face registration');
+    }
+
+    const [stu] = await db.select().from(students).where(eq(students.personId, personId)).limit(1);
+    if (!stu) {
+      throw new Error('Student record not found');
+    }
+
+    if (stu.faceEnrollmentStatus === 'enrolled') {
+      return { success: true, message: 'Face is already enrolled.' };
+    }
+
+    try {
+      // Check with api_app
+      const response = await fetch(`http://localhost:8000/api/students/${stu.rollNumber}/face-status`);
+      if (!response.ok) {
+        throw new Error('Failed to reach ZKBio integration service');
+      }
+      
+      const data = await response.json() as any;
+      if (data.enrolled) {
+        // Face is registered on the machine!
+        // 1. Update status
+        await db.update(students)
+          .set({ faceEnrollmentStatus: 'enrolled', updatedAt: new Date() })
+          .where(eq(students.id, stu.id));
+        
+        await db.update(people)
+          .set({ faceEnrollmentStatus: 'enrolled', updatedAt: new Date() })
+          .where(eq(people.id, personId));
+
+        // 2. If hosteller, activate 90-day window
+        let message = 'Face successfully verified and enrolled.';
+        if (stu.residency === 'hosteller') {
+          // Find 3-Month Student Pass
+          const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.durationDays, 90)).limit(1);
+          if (plan) {
+            await membershipService.activateMembership(stu.id, plan.id, 'hosteller-free-pass');
+            message += ' 90-day hosteller access activated.';
+          } else {
+            message += ' (Note: 90-day membership plan not found in database).';
+          }
+        } else if (stu.residency === 'day_scholar') {
+          // Find pending_activation membership and activate it
+          const [pendingMem] = await db.select().from(memberships).where(
+            and(
+              eq(memberships.studentId, stu.id),
+              eq(memberships.status, 'pending_activation')
+            )
+          ).orderBy(desc(memberships.createdAt)).limit(1);
+          
+          if (pendingMem) {
+            await membershipService.activateMembership(stu.id, pendingMem.planId, pendingMem.paymentId || 'pending-activation');
+            await db.delete(memberships).where(eq(memberships.id, pendingMem.id)); // Clean up the pending row as activateMembership creates a new active one or extends an existing one
+            message += ' Your purchased gym pass is now active.';
+          }
+        }
+        
+        return { success: true, message, enrolled: true };
+      } else {
+        return { success: false, message: 'Face not yet registered on the machine.', enrolled: false };
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err, rollNumber: stu.rollNumber }, 'Error verifying face registration');
+      throw new Error(`Verification failed: ${msg}`);
+    }
   }
 }
 
