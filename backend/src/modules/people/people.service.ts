@@ -1032,10 +1032,16 @@ const items = await db
    *       c. Deletes the student from the api_app SQLite DB
    */
   public async deleteStudent(studentId: string, adminEmail: string): Promise<{ deletedRollNumber: string }> {
-    // 1. Resolve student
+    // 1. Resolve student and their associated account ID
     const [stu] = await db
-      .select({ id: students.id, personId: students.personId, rollNumber: students.rollNumber })
+      .select({ 
+        id: students.id, 
+        personId: students.personId, 
+        rollNumber: students.rollNumber,
+        accountId: people.accountId
+      })
       .from(students)
+      .innerJoin(people, eq(students.personId, people.id))
       .where(eq(students.id, studentId))
       .limit(1);
 
@@ -1052,7 +1058,7 @@ const items = await db
       // accessSessions, trainerProfiles) have ON DELETE CASCADE from their
       // student_id → students.id FK, or person_id → people.id FK.
       // So we just need to:
-      //  1. Null out / delete the account (people.account_id is SET NULL on accounts delete)
+      //  1. Delete the account (if it exists)
       //  2. Delete the person row → cascades to students → cascades to all child tables
 
       // Audit log first (before the rows disappear)
@@ -1065,8 +1071,10 @@ const items = await db
         newValue: { studentId: stu.id, rollNumber },
       });
 
-      // Delete account row (people.accountId will be set to null by the FK)
-      await tx.delete(accounts).where(eq(accounts.personId, stu.personId));
+      // Delete account row if it exists
+      if (stu.accountId) {
+        await tx.delete(accounts).where(eq(accounts.id, stu.accountId));
+      }
 
       // Delete person → cascades to students → cascades to all child records
       await tx.delete(people).where(eq(people.id, stu.personId));
