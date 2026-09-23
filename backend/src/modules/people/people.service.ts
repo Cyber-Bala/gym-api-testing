@@ -1046,32 +1046,30 @@ const items = await db
     const rollNumber = stu.rollNumber;
 
     // 2. Cascade delete from Postgres inside a transaction
-    const {
-      bookings: bookingsTable,
-      violations: violationsTable,
-      memberships: membershipsTable,
-      paymentOrders: paymentOrdersTable,
-      accessSessions: accessSessionsTable,
-    } = await import('../../db/schema/index.js');
-
+    // (All child tables have ON DELETE CASCADE FKs — no manual child deletes needed)
     await db.transaction(async (tx) => {
-      await tx.delete(bookingsTable).where(eq(bookingsTable.studentId, stu.id));
-      await tx.delete(violationsTable).where(eq(violationsTable.studentId, stu.id));
-      await tx.delete(membershipsTable).where(eq(membershipsTable.studentId, stu.id));
-      await tx.delete(paymentOrdersTable).where(eq(paymentOrdersTable.studentId, stu.id));
-      await tx.delete(accessSessionsTable).where(eq(accessSessionsTable.studentId, stu.id));
-      await tx.delete(trainerProfiles).where(eq(trainerProfiles.studentId, stu.id));
-      await tx.delete(students).where(eq(students.id, stu.id));
-      await tx.delete(accounts).where(eq(accounts.personId, stu.personId));
-      await tx.delete(people).where(eq(people.id, stu.personId));
+      // All child tables (bookings, memberships, violations, paymentOrders,
+      // accessSessions, trainerProfiles) have ON DELETE CASCADE from their
+      // student_id → students.id FK, or person_id → people.id FK.
+      // So we just need to:
+      //  1. Null out / delete the account (people.account_id is SET NULL on accounts delete)
+      //  2. Delete the person row → cascades to students → cascades to all child tables
 
+      // Audit log first (before the rows disappear)
       await tx.insert(auditLogs).values({
         action: 'student_deleted',
         actorEmail: adminEmail,
         targetEmail: `roll:${rollNumber}`,
         details: { studentId: stu.id, rollNumber },
       });
+
+      // Delete account row (people.accountId will be set to null by the FK)
+      await tx.delete(accounts).where(eq(accounts.personId, stu.personId));
+
+      // Delete person → cascades to students → cascades to all child records
+      await tx.delete(people).where(eq(people.id, stu.personId));
     });
+
 
     logger.info({ rollNumber, adminEmail }, 'Student deleted from Postgres DB');
 
