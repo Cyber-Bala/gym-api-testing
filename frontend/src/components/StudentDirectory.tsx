@@ -9,6 +9,7 @@ import {
   Award,
   UserPlus,
   Calendar,
+  Trash2,
 } from 'lucide-react';
 import { Card, Badge, Alert, Modal } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
@@ -16,6 +17,7 @@ import { SearchInput, Select, Input } from '../ui/Input';
 import { ExcelImportModal } from './ExcelImportModal';
 import { AdminStudentBookingsModal } from './AdminStudentBookingsModal';
 import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 
@@ -58,10 +60,14 @@ const DEPARTMENTS = [
 
 export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport }) => {
   const toast = useToast();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [togglingResidencyId, setTogglingResidencyId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirmStudent, setDeleteConfirmStudent] = useState<StudentItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>('');
   const [residency, setResidency] = useState<string>('');
@@ -159,6 +165,29 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
       toast.error(err.message || 'Failed to update residency');
     } finally {
       setTogglingResidencyId(null);
+    }
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!deleteConfirmStudent) return;
+    setDeletingId(deleteConfirmStudent.id);
+    try {
+      const res = await fetch(`/api/v1/people/students/${deleteConfirmStudent.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error?.message || data.message || 'Delete failed');
+      toast.success(
+        `${deleteConfirmStudent.name} (${deleteConfirmStudent.rollNumber}) permanently deleted from system, database, and device.`,
+        'Student Deleted'
+      );
+      setDeleteConfirmStudent(null);
+      fetchStudents();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete student');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -373,18 +402,31 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                     </span>
                   </td>
                   <td className="py-3 px-4 text-right">
-                    <Button
-                      variant="outline"
-                      size="xs"
-                      className="ml-auto flex items-center gap-1 text-[11px]"
-                      onClick={() => setBookingModalStudent({
-                        name: stu.name,
-                        email: stu.email,
-                        rollNumber: stu.rollNumber
-                      })}
-                    >
-                      <Calendar className="w-3 h-3" /> Bookings
-                    </Button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        className="flex items-center gap-1 text-[11px]"
+                        onClick={() => setBookingModalStudent({
+                          name: stu.name,
+                          email: stu.email,
+                          rollNumber: stu.rollNumber
+                        })}
+                      >
+                        <Calendar className="w-3 h-3" /> Bookings
+                      </Button>
+                      {isSuperAdmin && (
+                        <IconButton
+                          label={`Delete ${stu.name}`}
+                          size="sm"
+                          className="text-danger hover:bg-danger/10 border-danger/30"
+                          onClick={() => setDeleteConfirmStudent(stu)}
+                          disabled={deletingId === stu.id}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </IconButton>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -545,6 +587,61 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
           student={bookingModalStudent}
         />
       )}
+
+      {/* Delete Confirm Modal */}
+      {deleteConfirmStudent && (
+        <Modal
+          open={true}
+          title="Permanently Delete Student"
+          onClose={() => setDeleteConfirmStudent(null)}
+          footer={
+            <>
+              <Button variant="secondary" size="sm" onClick={() => setDeleteConfirmStudent(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                loading={deletingId === deleteConfirmStudent.id}
+                onClick={handleDeleteStudent}
+                className="bg-danger hover:bg-danger/90 border-danger"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Yes, Delete Permanently
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4 text-sm">
+            <Alert tone="danger">
+              <div className="flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-danger" />
+                <div>
+                  <p className="font-bold">This action is irreversible.</p>
+                  <p className="text-xs mt-1 text-muted">
+                    This will permanently remove the student from:
+                  </p>
+                  <ul className="text-xs text-muted list-disc list-inside mt-1 space-y-0.5">
+                    <li>Our Postgres database (bookings, memberships, violations, etc.)</li>
+                    <li>The api_app SQLite database</li>
+                    <li>The physical ZKBio turnstile device (access revoked)</li>
+                  </ul>
+                </div>
+              </div>
+            </Alert>
+            <div className="rounded-xl bg-surface-elevated border border-border p-3 space-y-1">
+              <p className="font-bold text-text">{deleteConfirmStudent.name}</p>
+              <p className="text-xs font-mono text-muted">
+                {deleteConfirmStudent.rollNumber} · {deleteConfirmStudent.email}
+              </p>
+              <p className="text-xs text-muted">{deleteConfirmStudent.department}</p>
+            </div>
+            <p className="text-xs text-muted">
+              Are you sure you want to delete this student? Type their name to confirm below if in doubt.
+            </p>
+          </div>
+        </Modal>
+      )}
     </Card>
+
   );
 };

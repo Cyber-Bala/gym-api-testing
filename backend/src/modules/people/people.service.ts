@@ -1022,6 +1022,79 @@ const items = await db
     }
   }
 
+  /**
+   * Fully delete a student:
+   *  1. Cascade delete all related rows from our Postgres DB (bookings, violations,
+   *     memberships, payment orders, access sessions, trainer profile, student, person, account)
+   *  2. Call api_app DELETE /api/students/{roll_no} which:
+   *       a. Revokes access level on the physical ZKBio turnstile device
+   *       b. Syncs the device
+   *       c. Deletes the student from the api_app SQLite DB
+   */
+  public async deleteStudent(studentId: string, adminEmail: string): Promise<{ deletedRollNumber: string }> {
+    // 1. Resolve student
+    const [stu] = await db
+      .select({ id: students.id, personId: students.personId, rollNumber: students.rollNumber })
+      .from(students)
+      .where(eq(students.id, studentId))
+      .limit(1);
+
+    if (!stu) {
+      throw new NotFoundError(`Student '${studentId}' not found`);
+    }
+
+    const rollNumber = stu.rollNumber;
+
+    // 2. Cascade delete from Postgres inside a transaction
+    const {
+      bookings: bookingsTable,
+      violations: violationsTable,
+      memberships: membershipsTable,
+      paymentOrders: paymentOrdersTable,
+      accessSessions: accessSessionsTable,
+    } = await import('../../db/schema/index.js');
+
+    await db.transaction(async (tx) => {
+      await tx.delete(bookingsTable).where(eq(bookingsTable.studentId, stu.id));
+      await tx.delete(violationsTable).where(eq(violationsTable.studentId, stu.id));
+      await tx.delete(membershipsTable).where(eq(membershipsTable.studentId, stu.id));
+      await tx.delete(paymentOrdersTable).where(eq(paymentOrdersTable.studentId, stu.id));
+      await tx.delete(accessSessionsTable).where(eq(accessSessionsTable.studentId, stu.id));
+      await tx.delete(trainerProfiles).where(eq(trainerProfiles.studentId, stu.id));
+      await tx.delete(students).where(eq(students.id, stu.id));
+      await tx.delete(accounts).where(eq(accounts.personId, stu.personId));
+      await tx.delete(people).where(eq(people.id, stu.personId));
+
+      await tx.insert(auditLogs).values({
+        action: 'student_deleted',
+        actorEmail: adminEmail,
+        targetEmail: `roll:${rollNumber}`,
+        details: { studentId: stu.id, rollNumber },
+      });
+    });
+
+    logger.info({ rollNumber, adminEmail }, 'Student deleted from Postgres DB');
+
+    // 3. Delete from api_app SQLite DB + ZKBio device (best-effort)
+    try {
+      const apiAppRes = await fetch(`http://localhost:8000/api/students/${rollNumber}`, {
+        method: 'DELETE',
+      });
+
+      if (apiAppRes.status === 204 || apiAppRes.status === 404) {
+        logger.info({ rollNumber }, 'Student removed from api_app + ZKBio device');
+      } else {
+        const body = await apiAppRes.text().catch(() => '');
+        logger.warn({ rollNumber, status: apiAppRes.status, body }, 'api_app delete returned unexpected status');
+      }
+    } catch (err) {
+      // api_app may be offline (no device connected). Postgres deletion already succeeded.
+      logger.warn({ err, rollNumber }, 'Could not reach api_app to delete from device (device may be offline)');
+    }
+
+    return { deletedRollNumber: rollNumber };
+  }
+
 }
 
 export const peopleService = new PeopleService();

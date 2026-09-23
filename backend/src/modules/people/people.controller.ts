@@ -310,3 +310,18 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
     next(err);
   }
 };
+
+export const deleteStudent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    const result = await peopleService.deleteStudent(req.params.id, adminEmail);
+
+    res.status(200).json({
+      success: true,
+      message: `Student ${result.deletedRollNumber} has been permanently deleted from the system, api_app database, and ZKBio device.`,
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};

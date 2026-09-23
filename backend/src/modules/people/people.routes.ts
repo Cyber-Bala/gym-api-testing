@@ -3,6 +3,7 @@ import {
   downloadTemplate,
   importStudents,
   createStudent,
+  deleteStudent,
   importStaff,
   listStudents,
   listAuthorizedPersons,
@@ -26,9 +27,10 @@ peopleRouter.use(requireAuth);
 // Student self-onboarding profile update
 peopleRouter.patch('/students/me', updateMyStudentProfile);
 
-// Student queries & single creation
+// Student queries & single creation/deletion
 peopleRouter.get('/students', requireRole(['admin', 'super_admin', 'trainer']), listStudents);
 peopleRouter.post('/students', requireRole(['admin', 'super_admin']), createStudent);
+peopleRouter.delete('/students/:id', requireRole(['super_admin']), deleteStudent);
 peopleRouter.patch('/students/:id/residency', requireRole(['admin', 'super_admin']), updateStudentResidency);
 
 // Trainer role management (students who are trainers)
