@@ -1057,10 +1057,12 @@ const items = await db
 
       // Audit log first (before the rows disappear)
       await tx.insert(auditLogs).values({
-        action: 'student_deleted',
+        action: 'delete',
         actorEmail: adminEmail,
-        targetEmail: `roll:${rollNumber}`,
-        details: { studentId: stu.id, rollNumber },
+        entity: 'student',
+        entityId: rollNumber,
+        reason: `Student ${rollNumber} permanently deleted by admin`,
+        newValue: { studentId: stu.id, rollNumber },
       });
 
       // Delete account row (people.accountId will be set to null by the FK)
