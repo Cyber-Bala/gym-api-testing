@@ -55,7 +55,11 @@ export const App: React.FC = () => {
   const isDayScholar =
     isStudent && user.studentDetails?.residency === 'day_scholar';
 
-  if (isDayScholar && user.hasActiveMembership === false) {
+  // Block payment gate ONLY if the student has neither an active membership
+  // NOR a pending_activation one. If they've paid (hasPendingMembership=true)
+  // but haven't registered their face yet, let them through — the face
+  // registration flow will guide them to the next step.
+  if (isDayScholar && user.hasActiveMembership === false && !user.hasPendingMembership) {
     return <MembershipStore mandatoryMode />;
   }
 

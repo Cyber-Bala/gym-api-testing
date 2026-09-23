@@ -156,12 +156,20 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
       const mode = await startPayUCheckout(plan.id);
 
       if (mode === 'simulated') {
-        const msg = `Payment confirmed! Your ${plan.name} pass is now active.`;
-        setSuccessMessage(msg);
-        toast.success(msg, 'Payment Completed');
+        // Refresh session first — for Day Scholars without face enrollment,
+        // the backend creates a pending_activation membership. The App.tsx gate
+        // checks hasPendingMembership so it will lift and show face registration.
         await refreshSession();
         fetchData();
         setPurchasingPlanId(null);
+
+        // Show appropriate message based on face enrollment status
+        const isFaceEnrolled = user?.faceEnrollmentStatus === 'enrolled';
+        const msg = isFaceEnrolled
+          ? `Payment confirmed! Your ${plan.name} gym pass is now active.`
+          : `Payment confirmed! Now visit the gym to register your face and activate your pass.`;
+        setSuccessMessage(msg);
+        toast.success(msg, 'Payment Completed');
         return;
       }
 
