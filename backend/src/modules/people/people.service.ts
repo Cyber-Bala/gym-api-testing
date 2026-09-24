@@ -1002,7 +1002,7 @@ const items = await db
         
       try {
          // Revoke access on ZKBio via api_app
-         await fetch(`http://localhost:8000/api/students/${existingStudent.rollNumber}/payment`, {
+         await fetch(`${config.API_APP_URL}/api/students/${existingStudent.rollNumber}/payment`, {
            method: 'PATCH',
            headers: { 'Content-Type': 'application/json' },
            body: JSON.stringify({ payment_status: 'expired', payment_valid_from: null, payment_valid_until: null })
@@ -1085,7 +1085,7 @@ const items = await db
 
     // 3. Delete from api_app SQLite DB + ZKBio device (best-effort)
     try {
-      const apiAppRes = await fetch(`http://localhost:8000/api/students/${rollNumber}`, {
+      const apiAppRes = await fetch(`${config.API_APP_URL}/api/students/${rollNumber}`, {
         method: 'DELETE',
       });
 

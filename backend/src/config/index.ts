@@ -50,6 +50,9 @@ const envSchema = z.object({
   // Access WebSocket
   ACCESS_WS_PORT: z.coerce.number().default(4001),
   ACCESS_DEVICE_TOKEN: z.string().default('dev_access_device_token_secret'),
+
+  // Python api_app Bridge
+  API_APP_URL: z.string().default('http://localhost:8000'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

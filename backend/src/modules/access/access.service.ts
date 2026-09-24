@@ -584,7 +584,7 @@ export class AccessService {
 
     try {
       // Check with api_app
-      const response = await fetch(`http://localhost:8000/api/students/${stu.rollNumber}/face-status`);
+      const response = await fetch(`${config.API_APP_URL}/api/students/${stu.rollNumber}/face-status`);
       if (!response.ok) {
         throw new Error('Failed to reach ZKBio integration service');
       }
