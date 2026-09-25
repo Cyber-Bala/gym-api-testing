@@ -21,7 +21,7 @@ services:
     container_name: gym_frontend
     restart: unless-stopped
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
     networks:
       - gym_network
 
@@ -32,7 +32,7 @@ services:
     container_name: gym_api
     restart: unless-stopped
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - PORT=4000
       - DATABASE_URL=postgresql://gym_user:gym_password@postgres:5432/gym_db
       - REDIS_HOST=redis
@@ -46,6 +46,8 @@ services:
       - CORS_ORIGIN=http://localhost:5173,http://localhost:80,http://localhost
       - TIMEZONE=Asia/Kolkata
       - FRONTEND_URL=http://localhost
+      - ACCESS_DEVICE_TOKEN=${ACCESS_DEVICE_TOKEN:-dev_access_device_token_secret}
+      - API_APP_URL=${API_APP_URL:-http://localhost:8000}
       - PAYU_BACKEND_URL=http://localhost
       - PAYU_ENV=TEST
       - PAYU_BASE_URL=https://test.payu.in/_payment
@@ -69,7 +71,7 @@ services:
     container_name: gym_worker
     restart: unless-stopped
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - DATABASE_URL=postgresql://gym_user:gym_password@postgres:5432/gym_db
       - REDIS_HOST=redis
       - REDIS_PORT=6379

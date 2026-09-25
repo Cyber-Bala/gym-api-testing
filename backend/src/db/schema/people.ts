@@ -25,6 +25,7 @@ export const students = peopleSchema.table('students', {
   department: varchar('department', { length: 100 }).notNull(),
   joiningYear: integer('joining_year').notNull(),
   residency: varchar('residency', { length: 50 }).notNull().default('day_scholar'), // hosteller, day_scholar
+  gender: varchar('gender', { length: 20 }).notNull().default('male'), // male, female
   faceEnrollmentStatus: varchar('face_enrollment_status', { length: 50 }).notNull().default('not_enrolled'),
   faceReferenceId: varchar('face_reference_id', { length: 255 }),
   emergencyContact: varchar('emergency_contact', { length: 20 }), // optional

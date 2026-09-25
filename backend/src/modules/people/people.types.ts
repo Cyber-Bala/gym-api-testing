@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 export const studentRowSchema = z.object({
   rollNumber: z.string().min(2, 'Roll number is required').trim(),
@@ -7,6 +7,7 @@ export const studentRowSchema = z.object({
   department: z.string().min(2, 'Department is required').trim(),
   joiningYear: z.coerce.number().int().min(2000).max(2050),
   residency: z.enum(['hosteller', 'day_scholar']).default('day_scholar'),
+  gender: z.enum(['male', 'female']).default('male'),
 });
 
 export type StudentRowInput = z.infer<typeof studentRowSchema>;

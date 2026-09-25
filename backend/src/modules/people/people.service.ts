@@ -147,6 +147,42 @@ public generateStudentTemplateBuffer(): Buffer {
   }
 
   /**
+   * Helper to push a person directly to ZKBio via api_app
+   */
+  private async syncPersonToZkbio(
+    rollNumber: string,
+    name: string,
+    phone: string | null,
+    residency: string,
+    gender: string
+  ) {
+    let deptCode = '1'; // Default Day Scholar (General)
+    if (residency === 'hosteller') {
+      deptCode = gender === 'female' ? '2' : '3';
+    }
+
+    try {
+      const response = await fetch(`${config.API_APP_URL}/api/students`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roll_no: rollNumber,
+          name: name,
+          room_no: 'N/A',
+          phone: phone || '',
+          dept_code: deptCode,
+        }),
+      });
+
+      if (!response.ok && response.status !== 400) {
+        logger.warn({ rollNumber, status: response.status }, 'Failed to sync student to api_app');
+      }
+    } catch (err) {
+      logger.warn({ err, rollNumber }, 'Could not reach api_app to sync student');
+    }
+  }
+
+  /**
    * Normalize student column names from various Excel headers
    */
   private normalizeStudentRow(row: Record<string, unknown>): Record<string, unknown> {
@@ -164,6 +200,10 @@ if (cleanKey.includes('roll') || cleanKey.includes('regno')) normalized.rollNumb
       else if (cleanKey.includes('residency') || cleanKey.includes('hostel') || cleanKey.includes('dayscholar')) {
         const resStr = String(strVal).toLowerCase();
         normalized.residency = resStr.includes('hostel') ? 'hosteller' : 'day_scholar';
+      }
+      else if (cleanKey.includes('gender') || cleanKey.includes('sex')) {
+        const genStr = String(strVal).toLowerCase();
+        normalized.gender = genStr.includes('female') ? 'female' : 'male';
       }
     }
 
@@ -281,6 +321,7 @@ if (cleanKey.includes('roll') || cleanKey.includes('regno')) normalized.rollNumb
               department: rowData.department,
               joiningYear: rowData.joiningYear,
               residency: rowData.residency,
+              gender: rowData.gender,
               updatedAt: new Date(),
             })
             .where(eq(students.id, existingStudent.id));
@@ -335,11 +376,21 @@ if (cleanKey.includes('roll') || cleanKey.includes('regno')) normalized.rollNumb
             department: rowData.department,
             joiningYear: rowData.joiningYear,
             residency: rowData.residency,
+            gender: rowData.gender,
             faceEnrollmentStatus: 'not_enrolled',
           })
           .returning();
 
         successfulIds.push(newStudent.id);
+        
+        // Push to ZKBio device asynchronously
+        this.syncPersonToZkbio(
+          rowData.rollNumber,
+          rowData.name,
+          null, // phone not in excel yet
+          rowData.residency,
+          rowData.gender
+        );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error({ err, rowData }, 'Failed to insert student record');
@@ -926,6 +977,7 @@ const items = await db
         department: data.department,
         joiningYear: data.joiningYear,
         residency: data.residency,
+        gender: data.gender,
         faceEnrollmentStatus: 'not_enrolled',
       })
       .returning();
@@ -942,6 +994,7 @@ const items = await db
         department: newStudent.department,
         joiningYear: newStudent.joiningYear,
         residency: newStudent.residency,
+        gender: newStudent.gender,
       },
       reason: `Admin created student '${newStudent.rollNumber}'`,
     });
