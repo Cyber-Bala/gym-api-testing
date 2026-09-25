@@ -72,6 +72,7 @@ export const runMigrations = async (): Promise<void> => {
       department VARCHAR(100) NOT NULL,
       joining_year INTEGER NOT NULL,
       residency VARCHAR(50) NOT NULL DEFAULT 'day_scholar',
+      gender VARCHAR(20) NOT NULL DEFAULT 'male',
       face_enrollment_status VARCHAR(50) NOT NULL DEFAULT 'not_enrolled',
       face_reference_id VARCHAR(255),
       emergency_contact VARCHAR(20), -- optional

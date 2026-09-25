@@ -164,7 +164,7 @@ public generateStudentTemplateBuffer(): Buffer {
     try {
       const response = await fetch(`${config.API_APP_URL}/api/students`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
         body: JSON.stringify({
           roll_no: rollNumber,
           name: name,
@@ -998,6 +998,15 @@ const items = await db
       },
       reason: `Admin created student '${newStudent.rollNumber}'`,
     });
+
+    // Push single-added student to ZKBio device via api_app (async, best-effort)
+    this.syncPersonToZkbio(
+      newStudent.rollNumber,
+      newPerson.name,
+      newPerson.phone || null,
+      newStudent.residency,
+      newStudent.gender
+    );
 
     return {
       id: newStudent.id,
