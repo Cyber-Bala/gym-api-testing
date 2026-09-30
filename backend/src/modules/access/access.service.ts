@@ -583,8 +583,18 @@ export class AccessService {
     }
 
     try {
-      // Check with api_app
-      const response = await fetch(`${config.API_APP_URL}/api/students/${stu.rollNumber}/face-status`);
+      // Check with api_app (ngrok header needed when API_APP_URL is a tunnel URL)
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15_000);
+      let response: Response;
+      try {
+        response = await fetch(`${config.API_APP_URL}/api/students/${stu.rollNumber}/face-status`, {
+          headers: { 'ngrok-skip-browser-warning': 'true' },
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       if (!response.ok) {
         throw new Error('Failed to reach ZKBio integration service');
       }

@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   LayoutGrid,
   DoorOpen,
+  ScanFace,
   UserRound,
 } from 'lucide-react';
 import type { SessionUser, UserRole } from '../context/AuthContext';
@@ -30,6 +31,7 @@ export type AppView =
   | 'live_attendance'
   | 'floor_management'
   | 'biometrics'
+  | 'face_registration'
   | 'violations'
   | 'conflicts'
   | 'reports'
@@ -130,6 +132,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Entry devices',
     shortLabel: 'Devices',
     icon: Cpu,
+    roles: ['admin', 'super_admin'],
+  },
+  {
+    id: 'face_registration',
+    label: 'Face Registration',
+    shortLabel: 'Face Reg',
+    icon: ScanFace,
     roles: ['admin', 'super_admin'],
   },
   {

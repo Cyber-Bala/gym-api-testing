@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { biometricsService } from '../src/modules/biometrics/biometrics.service.js';
@@ -126,5 +126,35 @@ describe('Biometrics & ZKBio Turnstile Hardware Sync', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.syncedCount).toBe(3);
+  });
+
+  it('POST /api/v1/biometrics/admin-face-enroll registers student face and bridges to FastAPI/ZKBio', async () => {
+    vi.spyOn(authService, 'getSession').mockResolvedValue({
+      id: 'sess-adm-1',
+      user: mockAdminUser,
+      createdAt: new Date().toISOString(),
+      lastActivityAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    });
+
+    vi.spyOn(biometricsService, 'adminEnrollStudentFace').mockResolvedValue({
+      studentId: '11111111-1111-1111-1111-111111111111',
+      rollNumber: '2024CS001',
+      status: 'enrolled',
+      message: 'Face registered successfully for student 2024CS001 and synced to device gate.',
+    });
+
+    const res = await request(app)
+      .post('/api/v1/biometrics/admin-face-enroll')
+      .set('Cookie', [`${SESSION_COOKIE_NAME}=sess-adm-1`])
+      .send({
+        studentId: '11111111-1111-1111-1111-111111111111',
+        rollNumber: '2024CS001',
+        faceImageBase64: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD...',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.status).toBe('enrolled');
   });
 });

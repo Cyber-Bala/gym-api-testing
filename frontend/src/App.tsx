@@ -16,6 +16,7 @@ import { AuthorizedPersonsManager } from './components/AuthorizedPersonsManager'
 import { ViolationManager } from './components/ViolationManager';
 import { ConflictResolutionDesk } from './components/ConflictResolutionDesk';
 import { DeviceBiometricsManager } from './components/DeviceBiometricsManager';
+import { FaceRegistrationAdmin } from './components/FaceRegistrationAdmin';
 import { TrainerTimesheet } from './components/TrainerTimesheet';
 import { ReportsCenter } from './components/ReportsCenter';
 import { ExecutiveAnalyticsDashboard } from './components/ExecutiveAnalyticsDashboard';
@@ -127,6 +128,8 @@ export const App: React.FC = () => {
         return <TrainerFloorManager />;
       case 'biometrics':
         return <DeviceBiometricsManager />;
+      case 'face_registration':
+        return <FaceRegistrationAdmin />;
       case 'violations':
         return <ViolationManager />;
       case 'conflicts':

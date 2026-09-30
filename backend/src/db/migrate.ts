@@ -85,6 +85,9 @@ export const runMigrations = async (): Promise<void> => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    ALTER TABLE people.students ADD COLUMN IF NOT EXISTS gender VARCHAR(20) NOT NULL DEFAULT 'male';
+    ALTER TABLE people.students ADD COLUMN IF NOT EXISTS face_enrollment_status VARCHAR(50) NOT NULL DEFAULT 'not_enrolled';
+
     CREATE TABLE IF NOT EXISTS people.staff (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       person_id UUID NOT NULL REFERENCES people.people(id) ON DELETE CASCADE UNIQUE,

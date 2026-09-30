@@ -24,6 +24,15 @@ export const retrySyncSchema = z.object({
   syncId: z.string().uuid('Valid syncId UUID is required'),
 });
 
+export const adminFaceEnrollSchema = z.object({
+  studentId: z.string().min(1, 'Student ID is required'),
+  personId: z.string().optional(),
+  rollNumber: z.string().min(1, 'Roll number is required'),
+  faceImageBase64: z.string().min(10, 'Face image data is required'),
+});
+
+export type AdminFaceEnrollDto = z.infer<typeof adminFaceEnrollSchema>;
+
 export interface AccessDeviceDto {
   deviceId: string;
   deviceName: string;

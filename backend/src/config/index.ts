@@ -51,8 +51,11 @@ const envSchema = z.object({
   ACCESS_WS_PORT: z.coerce.number().default(4001),
   ACCESS_DEVICE_TOKEN: z.string().default('dev_access_device_token_secret'),
 
-  // Python api_app Bridge
-  API_APP_URL: z.string().default('http://localhost:8000'),
+  // Python api_app Bridge (trailing slashes stripped: call sites append "/api/...")
+  API_APP_URL: z
+    .string()
+    .default('http://localhost:44444')
+    .transform((v) => v.replace(/\/+$/, '')),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

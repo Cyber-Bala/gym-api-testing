@@ -42,7 +42,7 @@ export const AppShell: React.FC<AppShellProps> = ({ active, onNavigate, children
     { title: 'Core Facility', ids: ['home', 'book', 'memberships', 'my_access'] as AppView[] },
     {
       title: 'Operations',
-      ids: ['live_attendance', 'floor_management', 'trainer_shifts', 'biometrics'] as AppView[],
+      ids: ['live_attendance', 'floor_management', 'trainer_shifts', 'biometrics', 'face_registration'] as AppView[],
     },
     {
       title: 'Directory & People',
