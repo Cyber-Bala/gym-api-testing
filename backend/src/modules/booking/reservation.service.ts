@@ -136,11 +136,12 @@ export class ReservationService {
           throw new ValidationError('This slot has been closed or cancelled by the gym administrator.');
         }
 
-        // Verify rolling window
-        const isInWindow = await bookingService.isDateInRollingWindow(slotDateStr);
+        // Verify user's per-user window (anchored to first booking)
+        const { dates: userWindowDates } = await bookingService.getUserWindowDates(studentTableId);
+        const isInWindow = userWindowDates.includes(slotDateStr);
         if (!isInWindow) {
           throw new ValidationError(
-            `Slot date (${slotDateStr}) is outside the active booking window`
+            `Slot date (${slotDateStr}) is outside your active booking window (${userWindowDates.join(', ')})`
           );
         }
 
@@ -229,8 +230,8 @@ export class ReservationService {
           );
         }
 
-        // 3. Check total window quota: max 3 slots total across the active rolling window
-        const { dates: windowDates } = await bookingService.getRollingWindowDates();
+        // 3. Check total window quota: max 3 slots total across the user's per-user window
+        const { dates: myWindowDates } = await bookingService.getUserWindowDates(studentTableId);
         const windowCountRes = await client.query(
           `SELECT COUNT(*)::int AS count 
            FROM booking.bookings b
@@ -238,13 +239,13 @@ export class ReservationService {
            WHERE b.student_id = $1 
              AND s.slot_date::text = ANY($2::text[]) 
              AND b.booking_status = 'booked'`,
-          [studentTableId, windowDates]
+          [studentTableId, myWindowDates]
         );
 
         const windowCount = Number(windowCountRes.rows[0]?.count || 0);
         if (windowCount >= 3) {
           throw new ConflictError(
-            `You have reached the maximum allowed limit of 3 active bookings across the window (3/3 slots booked).`
+            `You have reached the maximum allowed limit of 3 active bookings in your window (${myWindowDates.join(', ')}).`
           );
         }
 

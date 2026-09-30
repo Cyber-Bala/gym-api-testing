@@ -1,4 +1,4 @@
-﻿# College Gym Management System — API Documentation
+# College Gym Management System — API Documentation
 
 ## 1. Overview & Architectural Standards
 
@@ -131,11 +131,11 @@ The College Gym Management System API is structured as a **Modular Monolith** or
 
 ---
 
-## 4. 3-Day Rolling Slot Reservation Engine (`/booking`)
+## 4. Per-User Booking Window Engine (`/booking`)
 
-### 4.1 Get 3-Day Rolling Window Slots
+### 4.1 Get Per-User Booking Window Slots
 - **Method & Path:** `GET /booking/slots/window`
-- **Description:** Returns 10 hourly slots per day (06:00–10:00, 15:00–21:00) strictly partitioned into Today, Tomorrow, and Day-After-Tomorrow based on `Asia/Kolkata` time.
+- **Description:** Returns hourly slots for each active working date within the student's personal booking window (anchored to their last active booking date, greedy-partitioned based on configured open days) in `Asia/Kolkata` time.
 - **Response (`200 OK`):**
 ```json
 {

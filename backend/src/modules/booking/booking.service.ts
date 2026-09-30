@@ -197,36 +197,37 @@ export class BookingService {
   }
 
   /**
-   * Compute the active window dates in IST.
-   * If a date is locked (e.g. Day 2), it is included as locked and the window
-   * extends to the next open day (e.g. Day 4) so students have `windowDays` open days.
+   * Load gym calendar closures into a Map<dateStr, reason>.
+   * Shared helper used by both global and per-user window builders.
    */
-  public async getRollingWindowDates(config?: SlotConfigDto): Promise<{ dates: string[]; lockedMap: Map<string, string> }> {
-    const cfg = config || (await this.getSlotConfig());
-    const desiredOpenDays = cfg.windowDays || 3;
-
-    // Fetch all active closures from gym_calendar
+  public async loadLockedMap(): Promise<Map<string, string>> {
     const closures = await db.select().from(gymCalendar);
     const lockedMap = new Map<string, string>();
     for (const c of closures) {
       const cDateStr = typeof c.closureDate === 'string' ? c.closureDate.slice(0, 10) : this.formatISTDate(c.closureDate);
       lockedMap.set(cDateStr, c.reason);
     }
+    return lockedMap;
+  }
 
+  /**
+   * Build a block of `desiredOpenDays` open dates starting from `startStr`.
+   * Locked/closure days are included but do NOT count toward the open-day tally.
+   * Walks forward up to 14 calendar days max.
+   */
+  public buildBlockFrom(startStr: string, desiredOpenDays: number, lockedMap: Map<string, string>): string[] {
     const dates: string[] = [];
     let openDaysFound = 0;
-    const now = new Date();
+    const startDate = new Date(`${startStr}T00:00:00+05:30`);
     let offset = 0;
 
-    // Search forward up to 14 days
     while (openDaysFound < desiredOpenDays && offset < 14) {
-      const target = new Date(now.getTime() + offset * 24 * 60 * 60 * 1000);
+      const target = new Date(startDate.getTime() + offset * 24 * 60 * 60 * 1000);
       const dateStr = this.formatISTDate(target);
 
       dates.push(dateStr);
 
       if (lockedMap.has(dateStr)) {
-        // Day is locked: include it in window, but do NOT increment open days
         logger.debug({ dateStr, reason: lockedMap.get(dateStr) }, 'Date is locked in gym calendar');
       } else {
         openDaysFound++;
@@ -235,14 +236,106 @@ export class BookingService {
       offset++;
     }
 
+    return dates;
+  }
+
+  /**
+   * Compute the GLOBAL active window dates in IST (used by scheduler + ensureSlotsForWindow).
+   * Starts from today, counts `windowDays` open days. Same for all users.
+   */
+  public async getRollingWindowDates(config?: SlotConfigDto): Promise<{ dates: string[]; lockedMap: Map<string, string> }> {
+    const cfg = config || (await this.getSlotConfig());
+    const desiredOpenDays = cfg.windowDays || 3;
+    const lockedMap = await this.loadLockedMap();
+    const todayStr = this.formatISTDate();
+    const dates = this.buildBlockFrom(todayStr, desiredOpenDays, lockedMap);
     return { dates, lockedMap };
   }
 
   /**
-   * Check if a given date string (YYYY-MM-DD) is within the active rolling window
+   * Per-user first-booking anchored lazy-start block window.
+   * Greedy partition: bookings are grouped into non-overlapping blocks from the
+   * earliest date. Only the block owning today locks. Expired blocks are skipped,
+   * so a fresh prospective window starts after expiry.
+   */
+  public async getUserWindowDates(
+    studentId?: string,
+    config?: SlotConfigDto
+  ): Promise<{ dates: string[]; lockedMap: Map<string, string>; anchor: string; locked: boolean }> {
+    const cfg = config || (await this.getSlotConfig());
+    const desiredOpenDays = cfg.windowDays || 3;
+    const lockedMap = await this.loadLockedMap();
+    const todayStr = this.formatISTDate();
+
+    if (!studentId) {
+      const dates = this.buildBlockFrom(todayStr, desiredOpenDays, lockedMap);
+      return { dates, lockedMap, anchor: todayStr, locked: false };
+    }
+
+    const [studentRec] = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(or(eq(students.personId, studentId), eq(students.id, studentId)))
+      .limit(1);
+
+    const resolvedId = studentRec?.id || studentId;
+
+    const cutoffDate = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const cutoffStr = this.formatISTDate(cutoffDate);
+
+    const bookedRows = await db
+      .select({ slotDate: slots.slotDate })
+      .from(bookings)
+      .innerJoin(slots, eq(bookings.slotId, slots.id))
+      .where(
+        and(
+          eq(bookings.studentId, resolvedId),
+          eq(bookings.bookingStatus, 'booked'),
+          gt(slots.slotDate, cutoffStr)
+        )
+      )
+      .orderBy(asc(slots.slotDate));
+
+    const bookedDatesSet = new Set<string>();
+    for (const row of bookedRows) {
+      const d = typeof row.slotDate === 'string' ? row.slotDate.slice(0, 10) : this.formatISTDate(row.slotDate);
+      bookedDatesSet.add(d);
+    }
+    const bookedDates = Array.from(bookedDatesSet).sort();
+
+    // Greedy partition — expired blocks are consumed and skipped
+    let i = 0;
+    while (i < bookedDates.length) {
+      const start = bookedDates[i];
+      const block = this.buildBlockFrom(start, desiredOpenDays, lockedMap);
+      const set = new Set(block);
+      if (set.has(todayStr)) {
+        return { dates: block, lockedMap, anchor: start, locked: true };
+      }
+      if (start > todayStr) {
+        return { dates: block, lockedMap, anchor: start, locked: true };
+      }
+      while (i < bookedDates.length && set.has(bookedDates[i])) i++;
+    }
+
+    const dates = this.buildBlockFrom(todayStr, desiredOpenDays, lockedMap);
+    return { dates, lockedMap, anchor: todayStr, locked: false };
+  }
+
+  /**
+   * Check if a given date string (YYYY-MM-DD) is within the active rolling window (global).
+   * Kept for backward compat — scheduler, etc.
    */
   public async isDateInRollingWindow(dateStr: string): Promise<boolean> {
     const { dates } = await this.getRollingWindowDates();
+    return dates.includes(dateStr);
+  }
+
+  /**
+   * Check if a given date is within the user's per-user window.
+   */
+  public async isDateInUserWindow(dateStr: string, studentId?: string): Promise<boolean> {
+    const { dates } = await this.getUserWindowDates(studentId);
     return dates.includes(dateStr);
   }
 
@@ -369,9 +462,15 @@ export class BookingService {
   /**
    * Get slots for a specific date with user-specific booking status and lock information
    */
-  public async getSlotsForDate(dateStr: string, studentId?: string, config?: SlotConfigDto): Promise<DaySlotsDto> {
+  public async getSlotsForDate(
+    dateStr: string,
+    studentId?: string,
+    config?: SlotConfigDto,
+    skipEnsure = false
+  ): Promise<DaySlotsDto> {
     const cfg = config || (await this.getSlotConfig());
-    const { dates, lockedMap } = await this.getRollingWindowDates(cfg);
+    // Per-user window when studentId available, else global prospective
+    const { dates, lockedMap } = await this.getUserWindowDates(studentId, cfg);
 
     if (!dates.includes(dateStr)) {
       throw new ValidationError(
@@ -382,8 +481,10 @@ export class BookingService {
     const isLocked = lockedMap.has(dateStr);
     const lockReason = lockedMap.get(dateStr);
 
-    // Ensure database contains slots for this window
-    await this.ensureSlotsForWindow(cfg);
+    // Ensure database contains slots for this window (unless already ensured by caller)
+    if (!skipEnsure) {
+      await this.ensureSlotsForWindow(cfg);
+    }
 
     const dbSlots = await db
       .select()
@@ -492,9 +593,10 @@ export class BookingService {
       timeZone: 'UTC',
     }).format(parsedDate);
 
+    const tomorrowStr = this.formatISTDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
     let dayLabel = dateStr;
-    if (dateStr === dates[0]) dayLabel = 'Today';
-    else if (dateStr === dates[1]) dayLabel = 'Tomorrow';
+    if (dateStr === todayStr) dayLabel = 'Today';
+    else if (dateStr === tomorrowStr) dayLabel = 'Tomorrow';
 
     const totalCapacity = isLocked ? 0 : slotDtos.reduce((sum, s) => sum + s.capacity, 0);
     const totalBooked = slotDtos.reduce((sum, s) => sum + s.bookedCount, 0);
@@ -523,11 +625,16 @@ export class BookingService {
    */
   public async getRollingWindowSlots(studentId?: string): Promise<RollingWindowSlotsResponse> {
     const config = await this.getSlotConfig();
-    const { dates } = await this.getRollingWindowDates(config);
+    // Per-user window: personalised dates
+    const { dates } = await this.getUserWindowDates(studentId, config);
+
+    // Ensure global slots exist (covers all potential user windows)
+    await this.ensureSlotsForWindow(config);
+
     const days: DaySlotsDto[] = [];
 
     for (const dateStr of dates) {
-      const daySlots = await this.getSlotsForDate(dateStr, studentId, config);
+      const daySlots = await this.getSlotsForDate(dateStr, studentId, config, true);
       days.push(daySlots);
     }
 

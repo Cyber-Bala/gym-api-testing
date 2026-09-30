@@ -57,7 +57,7 @@ college-gym/
 
 ### For Students
 - **Google OAuth Login** using college email (`@rajalakshmi.edu.in`)
-- **Slot Booking System** — browse and reserve 30-minute gym sessions from a rolling 7-day window
+- **Slot Booking System** — browse and reserve gym sessions within a personalized, per-user booking window (anchored to active booking dates)
 - **Membership Management** — view active plans, purchase Day Scholar passes via PayU payment gateway
 - **Face Registration Flow** — guided biometric enrollment at the physical ZKBio turnstile
 - **Live Slot Availability** — real-time slot capacity updates

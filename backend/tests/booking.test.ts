@@ -24,22 +24,22 @@ describe('Booking & Rolling Window Module', () => {
     vi.restoreAllMocks();
   });
 
-  it('computes exactly 3 rolling window dates in IST format (YYYY-MM-DD)', () => {
-    const dates = bookingService.getRollingWindowDates();
+  it('computes exactly 3 rolling window dates in IST format (YYYY-MM-DD)', async () => {
+    const { dates } = await bookingService.getRollingWindowDates();
     expect(dates).toHaveLength(3);
     dates.forEach((d) => {
       expect(d).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
-    expect(bookingService.isDateInRollingWindow(dates[0])).toBe(true);
-    expect(bookingService.isDateInRollingWindow(dates[1])).toBe(true);
-    expect(bookingService.isDateInRollingWindow(dates[2])).toBe(true);
-    expect(bookingService.isDateInRollingWindow('2020-01-01')).toBe(false);
-    expect(bookingService.isDateInRollingWindow('2099-12-31')).toBe(false);
+    expect(await bookingService.isDateInRollingWindow(dates[0])).toBe(true);
+    expect(await bookingService.isDateInRollingWindow(dates[1])).toBe(true);
+    expect(await bookingService.isDateInRollingWindow(dates[2])).toBe(true);
+    expect(await bookingService.isDateInRollingWindow('2020-01-01')).toBe(false);
+    expect(await bookingService.isDateInRollingWindow('2099-12-31')).toBe(false);
   });
 
   it('GET /api/v1/booking/slots/window returns 3-day rolling window structure', async () => {
-    const mockDates = bookingService.getRollingWindowDates();
+    const { dates: mockDates } = await bookingService.getRollingWindowDates();
     vi.spyOn(bookingService, 'getRollingWindowSlots').mockResolvedValue({
       windowDates: mockDates,
       days: mockDates.map((dateStr, idx) => ({

@@ -1,4 +1,4 @@
-﻿# College Gym Management System — PostgreSQL Multi-Schema Documentation
+# College Gym Management System — PostgreSQL Multi-Schema Documentation
 
 ## 1. Architectural Schema Partitioning (ADR-001)
 
@@ -111,7 +111,7 @@ Directory records, student roll numbers, staff IDs, biometric statuses, and resi
 ---
 
 ### 2.3 Schema: `booking`
-Time slots, rolling window reservations, and disciplinary strike logs.
+Time slots, per-user anchored booking window reservations, and disciplinary strike logs.
 
 #### Table: `booking.slots`
 | Column | Type | Constraints | Description |
