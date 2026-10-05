@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🔌 Gym API App — ZKBio CVSecurity Integration Bridge
 
 A lightweight **Python FastAPI** service that acts as the communication bridge between the main [Gym Management System](https://github.com/Gokulakrishnan610/gym-app) backend and the physical **ZKBio CVSecurity face-recognition turnstile device** installed at the college gym entrance.
@@ -190,3 +191,6 @@ Main Gym Management System (Backend + Frontend):
 ## 👨‍💻 Maintainer
 
 **Gokulakrishnan** — [@Gokulakrishnan610](https://github.com/Gokulakrishnan610)
+=======
+# gym-api-testing
+>>>>>>> 210912a11a30408b026ff22c52a4b92439a88dea
