@@ -311,29 +311,93 @@ def get_face_status(roll_no: str, db: Session = Depends(get_db)):
     student = db.query(Student).filter(Student.roll_no == roll_no).first()
     if not student:
         raise HTTPException(404, "Student not found")
-        
+
     person_data = zkbio_client.get_person(pin=roll_no)
     if not person_data:
         return {"roll_no": roll_no, "enrolled": False, "reason": "Not found in ZKBio or ZKBio disabled"}
-        
+
     # Check if ZKBio indicates a face is registered.
     # Often represented by "hasPhoto", "vislightPhoto", "hasFace", or template counts > 0.
     # Note: ZKBio CVSecurity API typically returns 'vislightPhoto' or 'biometricTemplates'
     has_face = False
-    
+    portal_levels = ""
+    vislight_path = ""
+
     if person_data.get("code") == 0 and "data" in person_data:
         person_details = person_data["data"]
-        
-        # Check standard fields for face template existence
-        has_vislight = bool(person_details.get("vislightPhoto") or person_details.get("vislightPhotoPath"))
-        
+
+        # Check standard fields for face template existence.
+        # NOTE: vislightPhoto is often "" while vislightPhotoPath is set —
+        # the path alone means the portal extracted a face (see manual §2.1.1.5).
+        vislight_path = str(person_details.get("vislightPhotoPath") or "")
+        has_vislight = bool(person_details.get("vislightPhoto") or vislight_path)
+
         # Or check if face templates are listed (Biometric Templates: 9 is vislight face)
         templates = person_details.get("biometricTemplates", [])
         has_face_template = any(t.get("bioType") == 9 for t in templates) if isinstance(templates, list) else False
-        
+
+        portal_levels = str(person_details.get("accLevelIds") or "")
         has_face = has_vislight or has_face_template
-    
-    return {"roll_no": roll_no, "enrolled": has_face, "zkbio_raw": person_data.get("data") if person_data.get("code") == 0 else None}
+
+    # Cross-check the bio-template store directly (portal get_person
+    # does not always include templates).
+    bio = zkbio_client.get_bio_templates(pin=roll_no)
+    has_bio_face = False
+    try:
+        if isinstance(bio, dict) and bio.get("code") == 0:
+            payload = bio.get("data", [])
+            items = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
+            if isinstance(items, list):
+                has_bio_face = any(
+                    isinstance(t, dict) and t.get("bioType") in (9, "9") for t in items
+                )
+    except Exception:
+        pass
+    if has_bio_face:
+        has_face = True
+
+    # Door-level check: face without a level == "person not registered" on terminal
+    configured = zkbio_client.ZKBIO_LEVEL_IDS
+    level_ok = bool(portal_levels) and configured in portal_levels
+
+    diagnosis = None
+    if has_face and not level_ok:
+        diagnosis = (
+            f"Face IS on the portal (vislight path: {vislight_path or 'present'}), "
+            f"but access level '{configured}' is not assigned (portal has '{portal_levels or 'none'}'). "
+            f"The turnstile will say 'person not registered'. Fix ZKBIO_LEVEL_IDS then re-register."
+        )
+    elif not has_face:
+        diagnosis = (
+            "No face template on portal. Recapture frontal, well-lit JPEG and re-register. "
+            "If detectFace rejects it, the photo quality is the problem."
+        )
+
+    return {
+        "roll_no": roll_no,
+        "enrolled": has_face,
+        "level_ok": level_ok,
+        "portal_levels": portal_levels,
+        "configured_levels": configured,
+        "vislight_path": vislight_path,
+        "has_bio_face": has_bio_face,
+        "diagnosis": diagnosis,
+        "zkbio_raw": person_data.get("data") if person_data.get("code") == 0 else None,
+    }
+
+
+@app.get("/api/zkbio/levels", tags=["ZKBio"])
+def list_zkbio_levels():
+    """List access levels on the portal — copy the real `id` into ZKBIO_LEVEL_IDS.
+
+    The default ZKBIO_LEVEL_IDS=1 is a placeholder; real systems use
+    UUID-like ids (e.g. 8a888e23...). Wrong level == gate says
+    'person not registered'.
+    """
+    data = zkbio_client.list_access_levels()
+    if data is None:
+        raise HTTPException(502, "ZKBio disabled or unreachable")
+    return data
 
 
 def _extract_photo_b64(payload: FaceRegisterRequest) -> str | None:
@@ -440,8 +504,10 @@ def delete_student(roll_no: str, db: Session = Depends(get_db)):
     if not student:
         raise HTTPException(404, "Student not found")
 
-    # ── Revoke access on ZKBio device before deleting ──
+    # ── Revoke access + remove person on ZKBio device before deleting ──
+    # (delete_level alone leaves the person listed in the CVSecurity panel)
     zkbio_client.delete_level(pin=roll_no)
+    zkbio_client.delete_person(pin=roll_no)
     zkbio_client.sync_person(pin=roll_no)
 
     db.delete(student)

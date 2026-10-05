@@ -258,14 +258,68 @@ def register_face(
                     "steps": steps,
                 }
 
-    # 3. Sync down to the physical device
+    # 3. Grant access level THEN sync down to the physical device.
+    # NOTE: syncPerson alone does NOT grant door permission. Without
+    # addLevelPerson the portal shows the person but the turnstile
+    # reports "person not registered" / "no access".
+    # (Payment-gated: callers that want unpaid users to have no access
+    #  should revoke afterwards via PATCH /payment — but the default
+    #  gym flow needs the level present so the gate recognises the face.)
+    level_res = add_level_person(pin)
+    steps["addLevelPerson"] = level_res
     synced = sync_person(pin)
     steps["syncPerson"] = synced
 
-    # 4. Verify enrollment
+    # 4. Verify enrollment: portal photo + door level + bio template
     verify = get_person(pin)
     steps["verify"] = (verify.get("data") if isinstance(verify, dict) else None)
     enrolled = _has_face_template(verify)
+
+    # Bio-template cross-check (bioType 9 == vislight face)
+    bio = get_bio_templates(pin)
+    steps["bioTemplates"] = bio
+    has_bio_face = False
+    try:
+        if isinstance(bio, dict) and bio.get("code") == 0:
+            payload = bio.get("data", [])
+            items = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
+            if isinstance(items, list):
+                for t in items:
+                    if isinstance(t, dict) and t.get("bioType") in (9, "9"):
+                        has_bio_face = True
+                        break
+    except Exception:
+        pass
+    if has_bio_face:
+        enrolled = True
+
+    # Level cross-check — warn loudly if the configured level is missing
+    portal_levels = ""
+    try:
+        if isinstance(verify, dict) and verify.get("code") == 0:
+            d = verify.get("data", {})
+            if isinstance(d, dict):
+                portal_levels = str(d.get("accLevelIds", "") or "")
+    except Exception:
+        pass
+    steps["portalAccLevelIds"] = portal_levels
+    steps["configuredLevelIds"] = ZKBIO_LEVEL_IDS
+    level_ok = bool(portal_levels) and ZKBIO_LEVEL_IDS in portal_levels
+    if isinstance(level_res, dict) and level_res.get("code") not in (0, None):
+        level_ok = False
+
+    if enrolled and not level_ok:
+        return {
+            "ok": False,
+            "enrolled": True,
+            "message": (
+                f"Face photo is on the portal for {pin}, but door access level "
+                f"'{ZKBIO_LEVEL_IDS}' is NOT assigned (portal has '{portal_levels or 'none'}'). "
+                f"The turnstile will say 'person not registered' until you set the real "
+                f"ZKBIO_LEVEL_IDS (see GET /api/zkbio/levels) and re-register."
+            ),
+            "steps": steps,
+        }
 
     return {
         "ok": enrolled,
@@ -330,6 +384,69 @@ def _has_face_template(person_data: dict[str, Any] | None) -> bool:
 # ══════════════════════════════════════════════════════════════════
 #  Access Level Management
 # ══════════════════════════════════════════════════════════════════
+
+def list_access_levels(page_no: int = 1, page_size: int = 50) -> dict[str, Any] | None:
+    """List access levels configured on the portal.
+
+    Use this to discover the REAL level UUID (e.g. 8a888e23...)
+    — the placeholder ZKBIO_LEVEL_IDS=1 almost never exists on a
+    real system and is the #1 cause of 'person not registered' on
+    the terminal. GET /api/v2/accLevel/list
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    try:
+        resp = httpx.get(
+            _url("/api/v2/accLevel/list"),
+            params=_params(pageNo=page_no, pageSize=page_size),
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        logger.info(f"list_access_levels: {str(data)[:500]}")
+        return data
+    except Exception as e:
+        logger.error(f"list_access_levels failed: {e}")
+        return None
+
+
+def get_bio_templates(pin: str) -> dict[str, Any] | None:
+    """Retrieve face/fingerprint templates for a PIN.
+
+    Tries v2 first, then v1. A vislight face template shows up with
+    bioType 9. If this is empty, the terminal has nothing to match
+    against and will report 'person not registered'.
+    POST /api/v2/bioTemplate/getFgListByPin / POST /api/bioTemplate/getFgListByPin/{pin}
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    # v2 (query-param style)
+    try:
+        resp = httpx.post(
+            _url("/api/v2/bioTemplate/getFgListByPin"),
+            params=_params(pin=pin),
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        if data.get("code") == 0:
+            logger.info(f"get_bio_templates({pin}) [v2]: found")
+            return data
+    except Exception as e:
+        logger.error(f"get_bio_templates({pin}) [v2] failed: {e}")
+    # v1 (path style)
+    try:
+        resp = httpx.post(
+            _url(f"/api/bioTemplate/getFgListByPin/{pin}"),
+            params=_params(),
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        logger.info(f"get_bio_templates({pin}) [v1]: {str(data)[:300]}")
+        return data
+    except Exception as e:
+        logger.error(f"get_bio_templates({pin}) [v1] failed: {e}")
+    return None
 
 def add_level_person(pin: str, level_ids: str | None = None) -> dict[str, Any] | None:
     """Grant access level to a person on the device."""
