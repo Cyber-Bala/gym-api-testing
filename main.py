@@ -8,7 +8,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import base64
+import binascii
+
 from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
@@ -17,6 +21,8 @@ from database import get_db, init_db, SessionLocal
 from models import AccessLog, AccessStatus, EventType, PaymentStatus, Student
 from schemas import (
     AccessLogResponse,
+    FaceRegisterRequest,
+    FaceRegisterResponse,
     LogEntryExitRequest,
     PaymentUpdate,
     StatsResponse,
@@ -30,6 +36,14 @@ logger = logging.getLogger("gym_access")
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Gym Access Control", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ── Static files ─────────────────────────────────────────────────────
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -203,6 +217,17 @@ async def startup():
 
 
 # ── Dashboard ────────────────────────────────────────────────────────
+@app.get("/health", tags=["Health"])
+@app.get("/api/health", tags=["Health"])
+def health():
+    return {
+        "status": "ok",
+        "service": "gym_api_app",
+        "zkbio_enabled": zkbio_client.ZKBIO_ENABLED,
+        "zkbio_base_url": zkbio_client.ZKBIO_BASE_URL if zkbio_client.ZKBIO_ENABLED else None,
+    }
+
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def dashboard():
     index_path = os.path.join(STATIC_DIR, "index.html")
@@ -309,6 +334,104 @@ def get_face_status(roll_no: str, db: Session = Depends(get_db)):
         has_face = has_vislight or has_face_template
     
     return {"roll_no": roll_no, "enrolled": has_face, "zkbio_raw": person_data.get("data") if person_data.get("code") == 0 else None}
+
+
+def _extract_photo_b64(payload: FaceRegisterRequest) -> str | None:
+    """Return raw base64 (strip data: URL prefix, whitespace)."""
+    raw = payload.photo_base64 or payload.personPhoto
+    if not raw:
+        return None
+    raw = raw.strip()
+    if "," in raw and raw.startswith("data:"):
+        raw = raw.split(",", 1)[1]
+    return raw.strip() or None
+
+
+@app.post(
+    "/api/students/{roll_no}/register-face",
+    response_model=FaceRegisterResponse,
+    tags=["Students"],
+)
+def register_face(roll_no: str, payload: FaceRegisterRequest, db: Session = Depends(get_db)):
+    """
+    Face registration bridge.
+
+    Flow: gym-app (admin webcam) → Node backend → HERE → ZKBio device portal.
+
+    1. Look up the student locally (auto-create a stub so the device PIN
+       always has a local row, matching POST /api/students behaviour).
+    2. Validate the photo (base64, JPEG/PNG magic bytes, sane size).
+    3. If ZKBIO_ENABLED=false → dev-mock: accept and report enrolled=True
+       so admin UI + tests work without hardware.
+    4. Else → zkbio_client.register_face(): detectFace → add/update
+       personPhoto → syncPerson → verify vislight template.
+    """
+    student = db.query(Student).filter(Student.roll_no == roll_no).first()
+    if not student:
+        # Auto-create stub so device PIN and local DB never diverge.
+        # (gym-app syncs the full profile separately via POST /api/students.)
+        student = Student(
+            roll_no=roll_no,
+            name=(payload.name or roll_no),
+            room_no="N/A",
+            payment_status=PaymentStatus.UNPAID,
+            access_enabled=False,
+        )
+        db.add(student)
+        db.commit()
+        db.refresh(student)
+        logger.info(f"[Face] Auto-created stub student {roll_no} for face registration")
+
+    photo_b64 = _extract_photo_b64(payload)
+    if not photo_b64:
+        raise HTTPException(400, "photo_base64 (or personPhoto) is required")
+    if len(photo_b64) < 1000:
+        raise HTTPException(400, "Photo data too small — capture a real camera frame")
+
+    try:
+        raw_bytes = base64.b64decode(photo_b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(400, "photo_base64 is not valid base64")
+    if len(raw_bytes) < 2000:
+        raise HTTPException(400, "Decoded photo too small — recapture with better lighting")
+    if len(raw_bytes) > 8 * 1024 * 1024:
+        raise HTTPException(400, "Photo too large (max 8 MB decoded)")
+    if not (
+        raw_bytes.startswith(b"\xff\xd8\xff")  # JPEG
+        or raw_bytes.startswith(b"\x89PNG")  # PNG
+    ):
+        raise HTTPException(400, "Photo must be JPEG or PNG")
+
+    # ── Dev / no-hardware mode ──
+    if not zkbio_client.ZKBIO_ENABLED:
+        logger.info(f"[Face] dev-mock register for {roll_no} ({len(raw_bytes)} bytes)")
+        return FaceRegisterResponse(
+            roll_no=roll_no,
+            enrolled=True,
+            message=f"Face registered for {roll_no} (device bridge in dev-mock mode).",
+            mode="dev-mock",
+            zkbio=None,
+        )
+
+    # ── Real device portal flow ──
+    result = zkbio_client.register_face(
+        pin=roll_no,
+        photo_base64=photo_b64,
+        name=student.name,
+        dept_code=None,
+    )
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("message", f"Device portal rejected face for {roll_no}"),
+        )
+    return FaceRegisterResponse(
+        roll_no=roll_no,
+        enrolled=bool(result.get("enrolled")),
+        message=result.get("message", f"Face registered for {roll_no}."),
+        mode="device",
+        zkbio=result.get("steps"),
+    )
 
 
 @app.delete("/api/students/{roll_no}", status_code=204, tags=["Students"])

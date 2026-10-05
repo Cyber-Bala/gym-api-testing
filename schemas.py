@@ -22,6 +22,24 @@ class StudentUpdate(BaseModel):
     phone: Optional[str] = Field(None, max_length=15)
 
 
+class FaceRegisterRequest(BaseModel):
+    # gym-app sends `photo_base64`; accept `personPhoto` alias too
+    photo_base64: Optional[str] = Field(None, description="Raw base64 JPEG (no data: prefix required)")
+    personPhoto: Optional[str] = Field(None, description="Alias for photo_base64")
+    name: Optional[str] = Field(None, max_length=120)
+    dept_code: Optional[str] = Field(None, max_length=10)
+
+    model_config = {"populate_by_name": True}
+
+
+class FaceRegisterResponse(BaseModel):
+    roll_no: str
+    enrolled: bool
+    message: str
+    mode: str  # "device" | "dev-mock"
+    zkbio: Optional[dict] = None
+
+
 class PaymentUpdate(BaseModel):
     payment_status: PaymentStatus
     payment_valid_from: Optional[dt_date] = None

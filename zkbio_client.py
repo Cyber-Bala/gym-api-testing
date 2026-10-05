@@ -80,10 +80,11 @@ def add_person(pin: str, name: str, last_name: str = "", dept_code: str | None =
 
 
 def get_person(pin: str) -> dict[str, Any] | None:
-    """Get person record from the ZKBio device."""
+    """Get person record from the ZKBio device (tries v1 path, then v1 query, then v2 list)."""
     if not ZKBIO_ENABLED:
         _log_disabled()
         return None
+    # 1. GET /api/person/get/{pin}
     try:
         resp = httpx.get(
             _url(f"/api/person/get/{pin}"),
@@ -91,10 +92,239 @@ def get_person(pin: str) -> dict[str, Any] | None:
             timeout=TIMEOUT,
         )
         data = resp.json()
+        if data.get("code") == 0 and data.get("data"):
+            return data
+    except Exception as e:
+        logger.error(f"get_person({pin}) [path] failed: {e}")
+    # 2. GET /api/person/get?pin={pin}
+    try:
+        resp = httpx.get(
+            _url("/api/person/get"),
+            params=_params(pin=pin),
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        if data.get("code") == 0 and data.get("data"):
+            return data
+    except Exception as e:
+        logger.error(f"get_person({pin}) [query] failed: {e}")
+    # 3. POST /api/v2/person/getPersonList (pins filter)
+    try:
+        resp = httpx.post(
+            _url("/api/v2/person/getPersonList"),
+            params=_params(),
+            json={"pins": pin, "pageNo": 1, "pageSize": 5},
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        if data.get("code") == 0:
+            payload = data.get("data", {})
+            items = payload.get("data", []) if isinstance(payload, dict) else payload
+            if isinstance(items, list) and items:
+                return {"code": 0, "message": "success", "data": items[0]}
+    except Exception as e:
+        logger.error(f"get_person({pin}) [v2 list] failed: {e}")
+    return None
+
+
+def delete_person(pin: str) -> dict[str, Any] | None:
+    """Delete a person from the ZKBio device."""
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    try:
+        resp = httpx.request(
+            "DELETE",
+            _url(f"/api/person/delete/{pin}"),
+            params=_params(),
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        logger.info(f"delete_person({pin}): {data}")
         return data
     except Exception as e:
-        logger.error(f"get_person({pin}) failed: {e}")
+        logger.error(f"delete_person({pin}) failed: {e}")
         return None
+
+
+# ══════════════════════════════════════════════════════════════════
+#  Face Enrollment (photo → device portal)
+# ══════════════════════════════════════════════════════════════════
+
+def detect_face(photo_base64: str) -> dict[str, Any] | None:
+    """
+    Ask ZKBio whether a face template can be extracted from the photo.
+    POST /api/v2/person/detectFace  { personPhoto: <base64> }
+    Returns raw device JSON (code==0 means extractable).
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    try:
+        resp = httpx.post(
+            _url("/api/v2/person/detectFace"),
+            params=_params(),
+            json={"personPhoto": photo_base64},
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        logger.info(f"detect_face: {data}")
+        return data
+    except Exception as e:
+        logger.error(f"detect_face failed: {e}")
+        return None
+
+
+def update_personnel_photo(pin: str, photo_base64: str) -> dict[str, Any] | None:
+    """
+    Upload/replace the comparison (vislight) photo for an existing person.
+    POST /api/person/updatePersonnelPhoto  { pin, personPhoto }
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    try:
+        resp = httpx.post(
+            _url("/api/person/updatePersonnelPhoto"),
+            params=_params(),
+            json={"pin": pin, "personPhoto": photo_base64},
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        logger.info(f"update_personnel_photo({pin}): {data}")
+        return data
+    except Exception as e:
+        logger.error(f"update_personnel_photo({pin}) failed: {e}")
+        return None
+
+
+def register_face(
+    pin: str,
+    photo_base64: str,
+    name: str = "",
+    dept_code: str | None = None,
+) -> dict[str, Any]:
+    """
+    Full face-registration flow against the ZKBio device portal.
+
+    Steps (per ZKBio CVSecurity manual):
+      1. detectFace — validate a face can be extracted (soft-fail: warn only,
+         some firmware returns non-zero for valid photos).
+      2. Ensure person exists — get_person, else add_person with personPhoto.
+      3. updatePersonnelPhoto — push the new comparison photo.
+      4. syncPerson — push person data down to the physical turnstile.
+      5. get_person — verify vislightPhoto / vislightPhotoPath present.
+
+    Returns dict with keys: ok, enrolled, message, steps.
+    """
+    steps: dict[str, Any] = {}
+
+    # 1. Face detection (validation only — don't hard-fail)
+    detected = detect_face(photo_base64)
+    steps["detectFace"] = detected
+    if detected is not None and detected.get("code") not in (0, None):
+        logger.warning(f"register_face({pin}): detectFace returned {detected}")
+
+    # 2. Ensure person exists
+    person = get_person(pin)
+    steps["personExistsBefore"] = bool(person and person.get("code") == 0)
+    if not steps["personExistsBefore"]:
+        created = add_person_with_photo(
+            pin=pin, name=name or pin, dept_code=dept_code, photo_base64=photo_base64
+        )
+        steps["addPerson"] = created
+        if created is None or (isinstance(created, dict) and created.get("code") not in (0, None)):
+            return {
+                "ok": False,
+                "enrolled": False,
+                "message": f"Failed to create person {pin} on device portal",
+                "steps": steps,
+            }
+    else:
+        # Person exists — push new photo
+        updated = update_personnel_photo(pin, photo_base64)
+        steps["updatePhoto"] = updated
+        if updated is None or (isinstance(updated, dict) and updated.get("code") not in (0, None)):
+            # Fallback: re-add person with photo (add is upsert on most firmware)
+            readded = add_person_with_photo(
+                pin=pin, name=name or pin, dept_code=dept_code, photo_base64=photo_base64
+            )
+            steps["reAddPerson"] = readded
+            if readded is None or (isinstance(readded, dict) and readded.get("code") not in (0, None)):
+                return {
+                    "ok": False,
+                    "enrolled": False,
+                    "message": f"Device rejected face photo for {pin}",
+                    "steps": steps,
+                }
+
+    # 3. Sync down to the physical device
+    synced = sync_person(pin)
+    steps["syncPerson"] = synced
+
+    # 4. Verify enrollment
+    verify = get_person(pin)
+    steps["verify"] = (verify.get("data") if isinstance(verify, dict) else None)
+    enrolled = _has_face_template(verify)
+
+    return {
+        "ok": enrolled,
+        "enrolled": enrolled,
+        "message": (
+            f"Face registered for {pin} and synced to device gate."
+            if enrolled
+            else f"Photo pushed for {pin} but device does not yet report a face template — it may sync shortly."
+        ),
+        "steps": steps,
+    }
+
+
+def add_person_with_photo(
+    pin: str,
+    name: str,
+    dept_code: str | None = None,
+    photo_base64: str | None = None,
+) -> dict[str, Any] | None:
+    """Register a person on the device including the comparison photo (upsert)."""
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    payload: dict[str, Any] = {
+        "pin": pin,
+        "name": name,
+        "deptCode": dept_code or ZKBIO_DEPT_CODE,
+        "accLevelIds": ZKBIO_LEVEL_IDS,
+    }
+    if photo_base64:
+        payload["personPhoto"] = photo_base64
+    try:
+        resp = httpx.post(
+            _url("/api/person/add"),
+            params=_params(),
+            json=payload,
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        logger.info(f"add_person_with_photo({pin}): code={data.get('code')}")
+        return data
+    except Exception as e:
+        logger.error(f"add_person_with_photo({pin}) failed: {e}")
+        return None
+
+
+def _has_face_template(person_data: dict[str, Any] | None) -> bool:
+    """True if ZKBio person payload reports a vislight face photo/template."""
+    if not person_data or person_data.get("code") != 0:
+        return False
+    details = person_data.get("data", {})
+    if not isinstance(details, dict):
+        return False
+    if bool(details.get("vislightPhoto") or details.get("vislightPhotoPath")):
+        return True
+    templates = details.get("biometricTemplates", [])
+    if isinstance(templates, list) and any(t.get("bioType") == 9 for t in templates):
+        return True
+    return False
 
 
 # ══════════════════════════════════════════════════════════════════
