@@ -22,7 +22,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     const initGsi = () => {
       const g = (window as unknown as { google?: { accounts?: { id?: { initialize: (cfg: unknown) => void; renderButton: (el: HTMLElement, opts: unknown) => void; prompt: () => void } } } }).google;
       if (g?.accounts?.id) {
-        const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '9029127515-jnnre2q9gn4vqfnqgffc6r09e9jpoq37.apps.googleusercontent.com';
+        const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
         g.accounts.id.initialize({
           client_id: clientId,
           callback: async (response: { credential: string }) => {

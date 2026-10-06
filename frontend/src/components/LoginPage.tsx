@@ -55,7 +55,7 @@ export const LoginPage: React.FC = () => {
       if (g?.accounts?.id) {
         const clientId =
           import.meta.env.VITE_GOOGLE_CLIENT_ID ||
-          '9029127515-jnnre2q9gn4vqfnqgffc6r09e9jpoq37.apps.googleusercontent.com';
+          '737303260877-18l67rvuq78fenmicpurdeu7jr3o0d7g.apps.googleusercontent.com';
 
         g.accounts.id.initialize({
           client_id: clientId,
