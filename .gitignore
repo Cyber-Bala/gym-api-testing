@@ -1,2 +1,14 @@
+# Python bytecode — regenerated on every run, must never be committed
+# (this was the cause of push/pull conflicts)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local runtime data — per-machine, regenerated via init_db()
+gym_access.db
+
+# Virtualenv
 .venv/
+
+# Secrets (copy .env.example patterns manually per machine)
 .env

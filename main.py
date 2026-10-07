@@ -556,17 +556,10 @@ def get_face_status(roll_no: str, db: Session = Depends(get_db)):
     # Cross-check the bio-template store directly (portal get_person
     # does not always include templates).
     bio = zkbio_client.get_bio_templates(pin=roll_no)
-    has_bio_face = False
     try:
-        if isinstance(bio, dict) and bio.get("code") == 0:
-            payload = bio.get("data", [])
-            items = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
-            if isinstance(items, list):
-                has_bio_face = any(
-                    isinstance(t, dict) and t.get("bioType") in (9, "9") for t in items
-                )
+        has_bio_face = zkbio_client.has_face_bio_template(bio)
     except Exception:
-        pass
+        has_bio_face = False
     if has_bio_face:
         has_face = True
 
@@ -936,6 +929,20 @@ def access_check(roll_no: str, db: Session = Depends(get_db)):
         payment_valid_until=student.payment_valid_until,
         message=_paywall_message(student) if not allowed else _paywall_message(student),
     )
+
+
+@app.get("/api/occupancy/inside", tags=["Access"])
+def occupancy_inside(zone_code: Optional[str] = Query(None)):
+    """Device-side occupancy (manual §2.2.6.1 getWhoIsInsideByZone).
+
+    Returns the PINs the PORTAL currently considers inside the zone —
+    authoritative unlike our locally inferred access logs. Needs
+    ZKBIO_ZONE_CODE (area code from the panel) unless passed explicitly.
+    """
+    if not zkbio_client.ZKBIO_ENABLED:
+        raise HTTPException(503, "ZKBio disabled (ZKBIO_ENABLED=false).")
+    inside = zkbio_client.get_who_is_inside(zone_code)
+    return {"zone": zone_code or zkbio_client.ZKBIO_ZONE_CODE, "count": len(inside), "inside": inside}
 
 
 # ══════════════════════════════════════════════════════════════════════

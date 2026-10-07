@@ -150,6 +150,14 @@ ZKBIO_EXIT_DOOR_ID=2,4               # Door IDs for exit
 | `DELETE` | `/api/students/{roll_no}` | Delete student and revoke device access |
 | `PATCH` | `/api/students/{roll_no}/payment` | Update payment status + sync ZKBio access level |
 | `GET` | `/api/students/{roll_no}/face-status` | Check if face template is enrolled on ZKBio device |
+| `GET` | `/api/access/check/{roll_no}` | Gate decision + pay-wall message (allowed? else "you should pay") |
+| `GET` | `/api/occupancy/inside` | Device-side inside-zone PINs (manual §2.2.6.1) |
+| `GET` | `/api/zkbio/persons` | Live person page straight from the portal |
+| `GET` | `/api/zkbio/levels` | Real access-level ids (copy one into ZKBIO_LEVEL_IDS) |
+| `POST` | `/api/sync/pull` | Portal → local reconcile (adds + deletes) |
+| `GET` | `/api/sync/diff` | Read-only portal-vs-local diff with per-PIN verdicts |
+| `GET` | `/api/sync/status` | Sync health (portal vs local counts, last result) |
+| `POST` | `/api/sync/push` | Push local-only rows back up to the portal |
 | `POST` | `/api/access/log` | Manually log an entry/exit event |
 | `GET` | `/api/access/logs` | List all access log entries |
 | `GET` | `/api/stats` | Current gym statistics (occupancy, counts) |
@@ -161,15 +169,24 @@ ZKBIO_EXIT_DOOR_ID=2,4               # Door IDs for exit
 
 The `zkbio_client.py` module wraps the ZKBio CVSecurity REST API. Key operations:
 
-| Operation | ZKBio Endpoint Called |
+| Operation | ZKBio Endpoint Called (per CVSecurity manual v1.2) |
 |-----------|----------------------|
-| Register person | `POST /api/person/add` |
-| Get person info | `GET /api/person/getPersonInfo` |
-| Delete person | `DELETE /api/person/delete/{pin}` |
-| Grant access level | `POST /api/accLevel/addLevelPerson` |
-| Revoke access level | `DELETE /api/accLevel/deleteLevelPerson` |
-| Sync to device | `POST /api/person/sync` |
-| Poll transactions | `GET /api/transaction/listTransaction` |
+| Register person | `POST /api/person/add` (§2.1.1.1) |
+| Get person info | `GET /api/person/get/{pin}` → `GET /api/person/get?pin=` → `POST /api/v2/person/getPersonList` (§2.1.1.4/5/12) |
+| List all persons (sync) | `POST /api/v2/person/getPersonList` {pageNo, pageSize} (§2.1.1.12) |
+| Person presence check | same lookups; code **-22** = "person does not exist" (appendix §3.1) |
+| Delete person | `DELETE /api/person/delete/{pin}` (§2.1.1.2) |
+| Face quality check | `POST /api/v2/person/detectFace` (§2.1.1.16; error codes -5001…-5018 mapped to hints) |
+| Upload face photo | `POST /api/person/updatePersonnelPhoto` (§2.1.1.11) |
+| Face templates | `GET /api/v2/bioTemplate/getFgListByPin?pin=` → `GET /api/bioTemplate/getFgListByPin/{pin}` (§2.1.4.5/2) |
+| Grant access level | `POST /api/accLevel/addLevelPerson?pin=&levelIds=` (§2.2.4.13) |
+| Revoke access level | `POST /api/accLevel/deleteLevel?pin=&levelIds=` (§2.2.4.1) |
+| Sync to device | `POST /api/accLevel/syncPerson?pin=&levelIds=` (§2.2.4.9) |
+| List access levels | `GET /api/v2/accLevel/list` (§2.2.4.10) |
+| Poll transactions | `GET /api/v2/transaction/list?personPin=&startDate=&endDate=&pageNo=&pageSize=` (§2.2.5.5) |
+| Entry/exit direction | `readerState` 0=in/1=out, else `readerName`/`eventPointName` -In/-Out suffix (§2.2.3/§2.2.5) |
+| Door state | `GET /api/door/doorStateById?doorId=&timestamp(ms)=` (§2.2.2.2 — timestamp required) |
+| Who is inside | `GET /api/accAdvanced/getWhoIsInsideByZone?code=` (§2.2.6.1) |
 
 > The **PIN** field on the ZKBio device corresponds to the student's **Roll Number** in this system.
 

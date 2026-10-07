@@ -16,11 +16,15 @@ import httpx
 logger = logging.getLogger("zkbio_client")
 
 # ── Config from env ───────────────────────────────────────────────
+# NOTE on ZKBIO_BASE_URL: per the CVSecurity manual (§1.2) every endpoint is
+# http://serverIP:serverPort/api/... with serverPort e.g. 8088 — the port is
+# REQUIRED. Bare "http://192.168.1.100" (port 80) will never answer.
 ZKBIO_ENABLED = os.getenv("ZKBIO_ENABLED", "false").lower() == "true"
-ZKBIO_BASE_URL = os.getenv("ZKBIO_BASE_URL", "http://192.168.1.100").rstrip("/")
+ZKBIO_BASE_URL = os.getenv("ZKBIO_BASE_URL", "http://192.168.1.100:8088").rstrip("/")
 ZKBIO_ACCESS_TOKEN = os.getenv("ZKBIO_ACCESS_TOKEN", "")
 ZKBIO_LEVEL_IDS = os.getenv("ZKBIO_LEVEL_IDS", "1")
 ZKBIO_DEPT_CODE = os.getenv("ZKBIO_DEPT_CODE", "1")
+ZKBIO_ZONE_CODE = os.getenv("ZKBIO_ZONE_CODE", "")
 ZKBIO_POLL_INTERVAL = int(os.getenv("ZKBIO_POLL_INTERVAL", "5"))
 ZKBIO_SYNC_INTERVAL = int(os.getenv("ZKBIO_SYNC_INTERVAL", "30"))
 ZKBIO_ENTRY_EXIT_MODE = os.getenv("ZKBIO_ENTRY_EXIT_MODE", "two_readers")
@@ -255,37 +259,42 @@ def fetch_all_portal_persons(
 def check_person_present(pin: str) -> bool | None:
     """Authoritative per-PIN presence check against the portal.
 
+    Per the CVSecurity manual appendix §3.1, code -22 means
+    "The person does not exist" — that is the ONLY non-zero code treated
+    as absent. Any other non-zero code (e.g. -40 auth failure, -90 bad
+    paging) means "unknown" so a bad token can never look like deletions.
+
     Returns True  = portal positively reports the person (found),
-            False = portal reachable but does NOT report the person,
-            None  = cannot tell (disabled / transport error / no portal
-                    response at all — caller must NOT treat as absent).
-    A bare code!=0 reply counts as "absent" ONLY when at least one of the
-    lookup attempts got a portal JSON response; pure exceptions → None.
+            False = portal positively reports the person GONE (code -22,
+                    or an empty pins-filtered v2 search),
+            None  = cannot tell (disabled / transport error / any other
+                    portal error — caller must NOT treat as absent).
     """
     if not ZKBIO_ENABLED:
         _log_disabled()
         return None
-    saw_portal_response = False
-    attempts: list[tuple[str, str, dict[str, Any] | None]] = [
-        ("GET", f"/api/person/get/{pin}", None),
-        ("GET", "/api/person/get", {"pin": pin}),
-    ]
-    for method, path, extra in attempts:
+    absent_votes = 0
+    # v1 single-person lookups (manual §2.1.1.4–2.1.1.5, mode GET)
+    for label, path, extra in (
+        ("path", f"/api/person/get/{pin}", None),
+        ("query", "/api/person/get", {"pin": pin}),
+    ):
         try:
-            if method == "GET" and extra is None:
+            if extra is None:
                 resp = httpx.get(_url(path), params=_params(), timeout=TIMEOUT)
             else:
-                resp = httpx.get(_url(path), params=_params(**(extra or {})), timeout=TIMEOUT)
+                resp = httpx.get(_url(path), params=_params(**extra), timeout=TIMEOUT)
             data = resp.json()
         except Exception as e:
-            logger.error(f"check_person_present({pin}) [{path}] failed: {e}")
+            logger.error(f"check_person_present({pin}) [{label}] failed: {e}")
             continue
         if not isinstance(data, dict) or "code" not in data:
             continue
-        saw_portal_response = True
         if data.get("code") == 0 and data.get("data"):
             return True
-    # v2 list with pins filter (authoritative for CVSecurity portals)
+        if data.get("code") == -22:
+            absent_votes += 1
+    # v2 pins-filtered search (manual §2.1.1.12): code==0 + empty list = gone.
     try:
         resp = httpx.post(
             _url("/api/v2/person/getPersonList"),
@@ -296,16 +305,16 @@ def check_person_present(pin: str) -> bool | None:
         data = resp.json()
     except Exception as e:
         logger.error(f"check_person_present({pin}) [v2 list] failed: {e}")
-        return None if not saw_portal_response else False
-    if isinstance(data, dict) and "code" in data:
-        saw_portal_response = True
-        if data.get("code") == 0:
-            payload = data.get("data", {})
-            items = payload.get("data", payload.get("list", [])) if isinstance(payload, dict) else payload
-            if isinstance(items, list) and items:
-                return True
-            return False if saw_portal_response else None
-    return False if saw_portal_response else None
+        return None if absent_votes == 0 else False
+    if isinstance(data, dict) and data.get("code") == 0:
+        payload = data.get("data", {})
+        items = payload.get("data", payload.get("list", [])) if isinstance(payload, dict) else payload
+        if isinstance(items, list) and items:
+            return True
+        absent_votes += 1
+    elif isinstance(data, dict) and data.get("code") == -22:
+        absent_votes += 1
+    return False if absent_votes > 0 else None
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -315,7 +324,7 @@ def check_person_present(pin: str) -> bool | None:
 def detect_face(photo_base64: str) -> dict[str, Any] | None:
     """
     Ask ZKBio whether a face template can be extracted from the photo.
-    POST /api/v2/person/detectFace  { personPhoto: <base64> }
+    Manual §2.1.1.16: POST /api/v2/person/detectFace  { personPhoto: <base64> }
     Returns raw device JSON (code==0 means extractable).
     """
     if not ZKBIO_ENABLED:
@@ -334,6 +343,42 @@ def detect_face(photo_base64: str) -> dict[str, Any] | None:
     except Exception as e:
         logger.error(f"detect_face failed: {e}")
         return None
+
+
+# Manual appendix §3.1 — detectFace / photo quality failures worth surfacing
+# to the admin (who can then recapture) instead of a bare code number.
+FACE_ERROR_MESSAGES: dict[int, str] = {
+    -27: "Invalid personnel photo (portal rejected the image).",
+    -262: "Photo not qualified — recapture with better framing.",
+    -5001: "Picture resolution below 80000 pixels — move closer.",
+    -5002: "No face detected — face the camera directly in good light.",
+    -5003: "Multiple faces detected — only the student should be in frame.",
+    -5005: "Face ratio too small — move closer to the camera.",
+    -5006: "Non-color image — use a color camera frame.",
+    -5012: "Face stretched too much — keep a neutral straight-on pose.",
+    -5013: "Face is blocked (mask/hand/hair) — uncover the face.",
+    -5014: "Smiling too much — keep a neutral expression.",
+    -5015: "Face deflection angle too large — look straight at the camera.",
+    -5016: "Picture is vague/blurry — hold still and recapture.",
+    -5009: "Picture overexposed — reduce backlight.",
+    -5010: "Picture too dark — add front lighting.",
+    -5011: "Picture too noisy — improve lighting and recapture.",
+    -5017: "Image brightness critical — fix lighting and recapture.",
+    -5018: "Face deflection angle critical — look straight at the camera.",
+}
+
+
+def describe_face_error(detect_result: dict[str, Any] | None) -> str | None:
+    """Human-readable reason for a failed detectFace call, if recognised."""
+    if not isinstance(detect_result, dict):
+        return None
+    try:
+        code = int(detect_result.get("code"))
+    except (TypeError, ValueError):
+        return None
+    if code == 0:
+        return None
+    return FACE_ERROR_MESSAGES.get(code)
 
 
 def update_personnel_photo(pin: str, photo_base64: str) -> dict[str, Any] | None:
@@ -383,8 +428,11 @@ def register_face(
     # 1. Face detection (validation only — don't hard-fail)
     detected = detect_face(photo_base64)
     steps["detectFace"] = detected
+    face_hint = describe_face_error(detected)
     if detected is not None and detected.get("code") not in (0, None):
         logger.warning(f"register_face({pin}): detectFace returned {detected}")
+        if face_hint:
+            steps["faceHint"] = face_hint
 
     # 2. Ensure person exists
     person = get_person(pin)
@@ -436,21 +484,13 @@ def register_face(
     steps["verify"] = (verify.get("data") if isinstance(verify, dict) else None)
     enrolled = _has_face_template(verify)
 
-    # Bio-template cross-check (bioType 9 == vislight face)
+    # Bio-template cross-check (secondary face signal)
     bio = get_bio_templates(pin)
     steps["bioTemplates"] = bio
-    has_bio_face = False
     try:
-        if isinstance(bio, dict) and bio.get("code") == 0:
-            payload = bio.get("data", [])
-            items = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
-            if isinstance(items, list):
-                for t in items:
-                    if isinstance(t, dict) and t.get("bioType") in (9, "9"):
-                        has_bio_face = True
-                        break
+        has_bio_face = has_face_bio_template(bio)
     except Exception:
-        pass
+        has_bio_face = False
     if has_bio_face:
         enrolled = True
 
@@ -482,14 +522,17 @@ def register_face(
             "steps": steps,
         }
 
+    base_msg = (
+        f"Face registered for {pin} and synced to device gate."
+        if enrolled
+        else f"Photo pushed for {pin} but device does not yet report a face template — it may sync shortly."
+    )
+    if not enrolled and steps.get("faceHint"):
+        base_msg += f" Portal hint: {steps['faceHint']}"
     return {
         "ok": enrolled,
         "enrolled": enrolled,
-        "message": (
-            f"Face registered for {pin} and synced to device gate."
-            if enrolled
-            else f"Photo pushed for {pin} but device does not yet report a face template — it may sync shortly."
-        ),
+        "message": base_msg,
         "steps": steps,
     }
 
@@ -571,20 +614,52 @@ def list_access_levels(page_no: int = 1, page_size: int = 50) -> dict[str, Any] 
         return None
 
 
+# bioType values are NOT enumerated in the CVSecurity manual (examples only
+# show bioType 1 = fingerprint template). Community integrations report 9 for
+# vislight face templates, so both the manual-confirmed vislight photo fields
+# (primary signal) and bioType 9 (secondary signal) are checked.
+FACE_BIO_TYPES = (9, "9")
+
+
+def extract_bio_items(bio_data: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Normalize a getFgListByPin response payload to a template list.
+
+    The manual (§2.1.4.2/§2.1.4.5) shows `data` as a single template OBJECT,
+    but firmware may return a list — accept both, plus the paged wrapper.
+    """
+    if not isinstance(bio_data, dict) or bio_data.get("code") != 0:
+        return []
+    payload = bio_data.get("data", [])
+    if isinstance(payload, dict):
+        inner = payload.get("data", payload.get("list", payload))
+        if isinstance(inner, list):
+            return [t for t in inner if isinstance(t, dict)]
+        return [payload]  # single template object
+    if isinstance(payload, list):
+        return [t for t in payload if isinstance(t, dict)]
+    return []
+
+
+def has_face_bio_template(bio_data: dict[str, Any] | None) -> bool:
+    """True if any template in the payload looks like a face template."""
+    return any(t.get("bioType") in FACE_BIO_TYPES for t in extract_bio_items(bio_data))
+
+
 def get_bio_templates(pin: str) -> dict[str, Any] | None:
     """Retrieve face/fingerprint templates for a PIN.
 
-    Tries v2 first, then v1. A vislight face template shows up with
-    bioType 9. If this is empty, the terminal has nothing to match
-    against and will report 'person not registered'.
-    POST /api/v2/bioTemplate/getFgListByPin / POST /api/bioTemplate/getFgListByPin/{pin}
+    Manual §2.1.4.5 (v2) and §2.1.4.2 (v1) are both mode GET:
+      GET /api/v2/bioTemplate/getFgListByPin?pin={pin}
+      GET /api/bioTemplate/getFgListByPin/{pin}
+    Use extract_bio_items()/has_face_bio_template() to read the result —
+    `data` may be a single object, a list, or a paged wrapper.
     """
     if not ZKBIO_ENABLED:
         _log_disabled()
         return None
     # v2 (query-param style)
     try:
-        resp = httpx.post(
+        resp = httpx.get(
             _url("/api/v2/bioTemplate/getFgListByPin"),
             params=_params(pin=pin),
             timeout=TIMEOUT,
@@ -597,7 +672,7 @@ def get_bio_templates(pin: str) -> dict[str, Any] | None:
         logger.error(f"get_bio_templates({pin}) [v2] failed: {e}")
     # v1 (path style)
     try:
-        resp = httpx.post(
+        resp = httpx.get(
             _url(f"/api/bioTemplate/getFgListByPin/{pin}"),
             params=_params(),
             timeout=TIMEOUT,
@@ -751,14 +826,21 @@ def get_doors(page_no: int = 1, page_size: int = 50) -> list[dict[str, Any]]:
 
 
 def get_door_state(door_id: str) -> dict[str, Any] | None:
-    """Get current state of a specific door."""
+    """Get current state of a specific door.
+
+    Manual §2.2.2.2: GET /api/door/doorStateById?doorId=&timestamp=&... —
+    timestamp (ms) is REQUIRED; omit it and the portal answers an error.
+    """
     if not ZKBIO_ENABLED:
         _log_disabled()
         return None
     try:
+        from datetime import datetime as _dt
+
+        timestamp_ms = int(_dt.now().timestamp() * 1000)
         resp = httpx.get(
             _url("/api/door/doorStateById"),
-            params=_params(doorId=door_id),
+            params=_params(doorId=door_id, timestamp=timestamp_ms),
             timeout=TIMEOUT,
         )
         return resp.json()
@@ -801,17 +883,49 @@ def remote_close_door(door_id: str) -> dict[str, Any] | None:
         return None
 
 
+def _reader_direction_from_name(name: Any) -> str | None:
+    """entry/exit from a reader or event-point name, or None if unclear.
+
+    Portal names look like "10.8.14.210-1-In" / "...-Out" (manual §2.2.5),
+    and gate readers may use Chinese 入 (in) / 出 (out) (manual §2.9.4.1).
+    """
+    if not name:
+        return None
+    text = str(name).strip().lower()
+    if text.endswith("-out") or text.endswith(" out") or text.endswith("出"):
+        return "exit"
+    if text.endswith("-in") or text.endswith(" in") or text.endswith("入"):
+        return "entry"
+    return None
+
+
 def determine_event_type(transaction: dict) -> str:
     """
-    Determine if a transaction is an 'entry' or 'exit' based on config mode.
+    Determine if a transaction is an 'entry' or 'exit'.
 
-    Supports three modes configured via ZKBIO_ENTRY_EXIT_MODE:
-    - two_readers: reader index determines direction
-    - two_doors: door ID determines direction
-    - toggle: not used in real-time, fallback to 'entry'
+    Real transaction rows (manual §2.2.5) carry readerState (0=in, 1=out
+    per §2.2.3), readerName/eventPointName ("...-In" / "...-Out") and
+    doorName — NOT a numeric reader index. So prefer portal truth first
+    and only fall back to the configured index/door lists:
+      1. readerState 0/1 (strongest signal)
+      2. readerName, then eventPointName suffix
+      3. configured ZKBIO_ENTRY_EXIT_MODE lists (two_readers / two_doors)
+      4. default "entry"
     """
+    state = transaction.get("readerState")
+    try:
+        if state is not None and str(state).strip() != "":
+            return "exit" if int(state) == 1 else "entry"
+    except (TypeError, ValueError):
+        pass
+
+    for key in ("readerName", "eventPointName", "reader", "event_point"):
+        direction = _reader_direction_from_name(transaction.get(key))
+        if direction:
+            return direction
+
     if ZKBIO_ENTRY_EXIT_MODE == "two_readers":
-        reader = transaction.get("reader", transaction.get("readerNo", 0))
+        reader = transaction.get("readerNo", transaction.get("reader", 0))
         try:
             reader_int = int(reader)
         except (TypeError, ValueError):
@@ -819,9 +933,46 @@ def determine_event_type(transaction: dict) -> str:
         return "entry" if reader_int in ZKBIO_ENTRY_READERS else "exit"
 
     elif ZKBIO_ENTRY_EXIT_MODE == "two_doors":
-        door_id = str(transaction.get("doorId", transaction.get("door_id", "")))
-        return "entry" if door_id in ZKBIO_ENTRY_DOOR_IDS else "exit"
+        door_id = str(
+            transaction.get("doorId", transaction.get("door_id", transaction.get("doorName", "")))
+        )
+        if door_id and door_id not in ("", "None"):
+            if door_id in ZKBIO_ENTRY_DOOR_IDS:
+                return "entry"
+            if door_id in ZKBIO_EXIT_DOOR_IDS:
+                return "exit"
+        return "entry"
 
     else:
         # toggle or unknown — default to entry
         return "entry"
+
+
+def get_who_is_inside(zone_code: str | None = None) -> list[dict[str, Any]]:
+    """Who-is-inside-zone query (manual §2.2.6.1).
+
+    GET /api/accAdvanced/getWhoIsInsideByZone?code={zone}&... → list of
+    {zoneId, zoneName, pin}. Authoritative device-side occupancy — far more
+    reliable than inferring it from our own access logs.
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return []
+    code = zone_code or ZKBIO_ZONE_CODE
+    if not code:
+        logger.warning("get_who_is_inside: no zone code (set ZKBIO_ZONE_CODE)")
+        return []
+    try:
+        resp = httpx.get(
+            _url("/api/accAdvanced/getWhoIsInsideByZone"),
+            params=_params(code=code),
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        if data.get("code") == 0 and isinstance(data.get("data"), list):
+            return data["data"]
+        logger.warning(f"get_who_is_inside unexpected response: {str(data)[:300]}")
+        return []
+    except Exception as e:
+        logger.error(f"get_who_is_inside failed: {e}")
+        return []
