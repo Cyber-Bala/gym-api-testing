@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from database import get_db, init_db, SessionLocal
 from models import AccessLog, AccessStatus, EventType, PaymentStatus, Student
 from schemas import (
+    AccessCheckResponse,
     AccessLogResponse,
     FaceRegisterRequest,
     FaceRegisterResponse,
@@ -29,6 +30,8 @@ from schemas import (
     StudentCreate,
     StudentResponse,
     StudentUpdate,
+    SyncPullResponse,
+    SyncStatusResponse,
 )
 import zkbio_client
 
@@ -202,6 +205,191 @@ async def _process_transaction(txn: dict, db: Session):
 
 
 # ══════════════════════════════════════════════════════════════════════
+#  PORTAL → LOCAL SYNC (ZKBio admin panel is the hardware source of truth)
+# ══════════════════════════════════════════════════════════════════════
+# Without this, persons added/deleted in the CVSecurity admin panel never
+# appear/disappear in the api_app SQLite DB (and therefore never reach gym-app).
+
+_SYNC_STATE: dict = {
+    "last_pull_at": None,
+    "last_pull_ok": None,
+    "last_pull_message": None,
+    "last_added": 0,
+    "last_updated": 0,
+    "last_removed": 0,
+    "portal_count": 0,
+}
+
+
+def _portal_pin(item: dict) -> str:
+    for key in ("pin", "personPin", "pinNumber", "empPin"):
+        val = item.get(key)
+        if val:
+            return str(val).strip()
+    return ""
+
+
+def _portal_name(item: dict) -> str:
+    for key in ("name", "personName", "empName"):
+        val = item.get(key)
+        if val:
+            return str(val).strip()
+    return ""
+
+
+def _sweep_expired(db: Session) -> int:
+    """Mark overdue PAID rows as EXPIRED (+revoke device level). Returns count."""
+    today = dt_date.today()
+    overdue = (
+        db.query(Student)
+        .filter(
+            Student.payment_status == PaymentStatus.PAID,
+            Student.payment_valid_until.isnot(None),
+            Student.payment_valid_until < today,
+        )
+        .all()
+    )
+    for s in overdue:
+        s.payment_status = PaymentStatus.EXPIRED
+        s.access_enabled = False
+        s.updated_at = datetime.utcnow()
+    if overdue:
+        db.commit()
+        for s in overdue:
+            try:
+                zkbio_client.delete_level(pin=s.roll_no)
+                zkbio_client.sync_person(pin=s.roll_no)
+            except Exception:
+                pass
+            logger.info(f"[Expiry] {s.roll_no} marked EXPIRED (valid_until={s.payment_valid_until})")
+    return len(overdue)
+
+
+def _paywall_message(student: Student) -> str:
+    until = student.payment_valid_until.isoformat() if student.payment_valid_until else "—"
+    if student.payment_status == PaymentStatus.PAID and student.access_enabled:
+        return f"Access allowed for {student.name} ({student.roll_no}). Valid until {until}."
+    if student.payment_status == PaymentStatus.EXPIRED:
+        return (
+            f"Your gym access expired on {until}. Please pay to renew your pass — "
+            f"contact the gym admin or complete payment in the gym app."
+        )
+    # unpaid (covers day_scholar without a pass + any unknown state)
+    return (
+        "You should pay to use the gym. Your pass is not active — "
+        "complete payment in the gym app, then re-verify at the gate."
+    )
+
+
+def pull_portal_sync(db: Session) -> dict:
+    """One portal → SQLite reconcile pass.
+
+    - Portal persons missing locally → created (UNPAID, access off by default
+      so the gate denies with a pay-wall message until gym-app confirms payment).
+    - Name/dept changed on portal → updated locally.
+    - Local rows missing on portal → deleted locally (admin-panel delete
+      propagates to api_app; gym-app picks it up via /api/students diff).
+    Safe no-op when ZKBio is disabled/unreachable (never deletes then).
+    """
+    if not zkbio_client.ZKBIO_ENABLED:
+        msg = "ZKBio disabled (ZKBIO_ENABLED=false) — set ZKBIO_BASE_URL + token and restart."
+        _SYNC_STATE.update({
+            "last_pull_at": datetime.utcnow(), "last_pull_ok": False,
+            "last_pull_message": msg, "portal_count": 0,
+        })
+        return {"ok": False, "message": msg, "added": [], "updated": [], "removed": []}
+
+    portal_items = zkbio_client.iter_all_portal_persons()
+    # Distinguish "reachable but empty" from "unreachable": re-probe once.
+    probe_ok = True
+    if not portal_items:
+        probe = zkbio_client.list_persons(page_no=1, page_size=1)
+        probe_ok = isinstance(probe, dict) and probe.get("code") == 0
+        if not probe_ok:
+            msg = "Portal unreachable — keeping local data untouched. Check IP/token."
+            _SYNC_STATE.update({
+                "last_pull_at": datetime.utcnow(), "last_pull_ok": False,
+                "last_pull_message": msg, "portal_count": 0,
+            })
+            return {"ok": False, "message": msg, "added": [], "updated": [], "removed": []}
+
+    portal_by_pin: dict[str, dict] = {}
+    for item in portal_items:
+        if not isinstance(item, dict):
+            continue
+        pin = _portal_pin(item)
+        if pin and pin not in portal_by_pin:
+            portal_by_pin[pin] = item
+
+    local_students = db.query(Student).all()
+    local_by_pin = {s.roll_no: s for s in local_students}
+
+    added: list[str] = []
+    updated: list[str] = []
+    removed: list[str] = []
+
+    for pin, item in portal_by_pin.items():
+        name = _portal_name(item) or pin
+        dept = str(item.get("deptCode") or item.get("dept_code") or "") or None
+        existing = local_by_pin.get(pin)
+        if not existing:
+            db.add(Student(
+                roll_no=pin, name=name, room_no="N/A",
+                payment_status=PaymentStatus.UNPAID, access_enabled=False,
+                dept_code=dept,
+            ))
+            added.append(pin)
+        else:
+            changed = False
+            if existing.name != name:
+                existing.name = name
+                changed = True
+            if dept and existing.dept_code != dept:
+                existing.dept_code = dept
+                changed = True
+            if changed:
+                existing.updated_at = datetime.utcnow()
+                updated.append(pin)
+
+    for pin, row in local_by_pin.items():
+        if pin not in portal_by_pin:
+            db.delete(row)
+            removed.append(pin)
+
+    db.commit()
+    _sweep_expired(db)
+
+    _SYNC_STATE.update({
+        "last_pull_at": datetime.utcnow(), "last_pull_ok": True,
+        "last_pull_message": f"Portal sync OK: +{len(added)} ~{len(updated)} -{len(removed)}",
+        "last_added": len(added), "last_updated": len(updated),
+        "last_removed": len(removed), "portal_count": len(portal_by_pin),
+    })
+    logger.info(f"[Sync] portal→local: +{len(added)} ~{len(updated)} -{len(removed)}")
+    return {"ok": True, "message": _SYNC_STATE["last_pull_message"],
+            "added": added, "updated": updated, "removed": removed}
+
+
+async def poll_person_sync():
+    """Background task: reconcile portal persons into SQLite every SYNC_INTERVAL."""
+    if not zkbio_client.ZKBIO_ENABLED:
+        logger.info("[Sync] ZKBio disabled, portal sync poller will not run.")
+        return
+    logger.info(f"[Sync] Starting portal sync poller (interval={zkbio_client.ZKBIO_SYNC_INTERVAL}s)")
+    await asyncio.sleep(10)  # let the app finish startup first
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                pull_portal_sync(db)
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"[Sync] poller error: {e}")
+        await asyncio.sleep(zkbio_client.ZKBIO_SYNC_INTERVAL)
+
+
+# ══════════════════════════════════════════════════════════════════════
 #  STARTUP
 # ══════════════════════════════════════════════════════════════════════
 
@@ -212,6 +400,7 @@ async def startup():
     if zkbio_client.ZKBIO_ENABLED:
         logger.info(f"[Startup] ZKBio integration ENABLED → {zkbio_client.ZKBIO_BASE_URL}")
         asyncio.create_task(poll_transactions())
+        asyncio.create_task(poll_person_sync())
     else:
         logger.info("[Startup] ZKBio integration DISABLED (manual mode)")
 
@@ -247,6 +436,7 @@ def list_students(
     payment_status: Optional[PaymentStatus] = Query(None),
     db: Session = Depends(get_db),
 ):
+    _sweep_expired(db)
     q = db.query(Student)
     if search:
         pattern = f"%{search}%"
@@ -272,6 +462,8 @@ def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
         phone=payload.phone,
         payment_status=PaymentStatus.UNPAID,
         access_enabled=False,
+        residency=(payload.residency or None),
+        dept_code=payload.dept_code,
     )
     db.add(student)
     db.commit()
@@ -286,6 +478,7 @@ def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
 
 @app.get("/api/students/{roll_no}", response_model=StudentResponse, tags=["Students"])
 def get_student(roll_no: str, db: Session = Depends(get_db)):
+    _sweep_expired(db)
     student = db.query(Student).filter(Student.roll_no == roll_no).first()
     if not student:
         raise HTTPException(404, "Student not found")
@@ -550,6 +743,128 @@ def update_payment(roll_no: str, payload: PaymentUpdate, db: Session = Depends(g
         logger.info(f"[ZKBio] Access DISABLED for {roll_no} on device")
 
     return student
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  PORTAL SYNC API (admin panel ↔ api_app)
+# ══════════════════════════════════════════════════════════════════════
+
+@app.get("/api/zkbio/persons", tags=["ZKBio"])
+def list_zkbio_persons(
+    page_no: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=200),
+):
+    """Live read of persons on the ZKBio admin panel portal.
+
+    Use this to prove the api_app can actually see portal data.
+    When ZKBIO_ENABLED=false this returns 503 with setup instructions.
+    """
+    if not zkbio_client.ZKBIO_ENABLED:
+        raise HTTPException(
+            503,
+            "ZKBio disabled (ZKBIO_ENABLED=false). Set ZKBIO_BASE_URL + "
+            "ZKBIO_ACCESS_TOKEN from the CVSecurity admin panel and restart.",
+        )
+    data = zkbio_client.list_persons(page_no=page_no, page_size=page_size)
+    if data is None:
+        raise HTTPException(502, "ZKBio portal unreachable — check IP/token/network")
+    return data
+
+
+@app.post("/api/sync/pull", response_model=SyncPullResponse, tags=["Sync"])
+def sync_pull(db: Session = Depends(get_db)):
+    """Pull portal persons into the local DB now (portal → api_app).
+
+    Creates rows missing locally, updates renamed rows, and deletes local
+    rows whose PIN was deleted on the admin panel. Safe no-op when the
+    portal is disabled/unreachable (never deletes then).
+    """
+    result = pull_portal_sync(db)
+    if not result["ok"]:
+        raise HTTPException(502 if "unreachable" in result["message"] else 503, result["message"])
+    return SyncPullResponse(
+        pulled_at=_SYNC_STATE["last_pull_at"],
+        portal_count=_SYNC_STATE["portal_count"],
+        added=len(result["added"]),
+        updated=len(result["updated"]),
+        removed=len(result["removed"]),
+        added_pins=result["added"][:100],
+        removed_pins=result["removed"][:100],
+    )
+
+
+@app.get("/api/sync/status", response_model=SyncStatusResponse, tags=["Sync"])
+def sync_status(db: Session = Depends(get_db)):
+    """Show portal-vs-local sync health (proves data is flowing)."""
+    local_count = db.query(func.count(Student.id)).scalar() or 0
+    return SyncStatusResponse(
+        zkbio_enabled=zkbio_client.ZKBIO_ENABLED,
+        zkbio_base_url=zkbio_client.ZKBIO_BASE_URL if zkbio_client.ZKBIO_ENABLED else None,
+        last_pull_at=_SYNC_STATE["last_pull_at"],
+        last_pull_ok=_SYNC_STATE["last_pull_ok"],
+        last_pull_message=_SYNC_STATE["last_pull_message"],
+        last_added=_SYNC_STATE["last_added"],
+        last_updated=_SYNC_STATE["last_updated"],
+        last_removed=_SYNC_STATE["last_removed"],
+        portal_count=_SYNC_STATE["portal_count"],
+        local_count=local_count,
+    )
+
+
+@app.post("/api/sync/push", tags=["Sync"])
+def sync_push(db: Session = Depends(get_db)):
+    """Push local rows missing on the portal back up (api_app → admin panel).
+
+    Repair tool for the reverse direction: gym-app created a student while
+    the portal was offline. Returns per-PIN results.
+    """
+    if not zkbio_client.ZKBIO_ENABLED:
+        raise HTTPException(503, "ZKBio disabled — nothing to push to.")
+    pushed, failed, skipped = [], [], []
+    for s in db.query(Student).all():
+        try:
+            person = zkbio_client.get_person(pin=s.roll_no)
+            if person and person.get("code") == 0:
+                skipped.append(s.roll_no)
+                continue
+            res = zkbio_client.add_person(pin=s.roll_no, name=s.name, dept_code=s.dept_code)
+            if res is not None and res.get("code") not in (0, None):
+                failed.append(s.roll_no)
+                continue
+            if s.access_enabled:
+                zkbio_client.add_level_person(pin=s.roll_no)
+            zkbio_client.sync_person(pin=s.roll_no)
+            pushed.append(s.roll_no)
+        except Exception:
+            failed.append(s.roll_no)
+    return {"pushed": pushed, "failed": failed, "already_on_portal": skipped}
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  ACCESS CHECK (single pay-wall decision for gym-app + frontend)
+# ══════════════════════════════════════════════════════════════════════
+
+@app.get("/api/access/check/{roll_no}", response_model=AccessCheckResponse, tags=["Access"])
+def access_check(roll_no: str, db: Session = Depends(get_db)):
+    """Authoritative gate decision: allowed? If not, message says pay/renew.
+
+    gym-app calls this on every turnstile scan so an expired day-scholar
+    pass shows 'You should pay…' instead of a generic deny.
+    """
+    _sweep_expired(db)
+    student = db.query(Student).filter(Student.roll_no == roll_no).first()
+    if not student:
+        raise HTTPException(404, "Student not found")
+    allowed = bool(student.access_enabled and student.payment_status == PaymentStatus.PAID)
+    return AccessCheckResponse(
+        roll_no=student.roll_no,
+        allowed=allowed,
+        payment_status=student.payment_status,
+        access_enabled=student.access_enabled,
+        residency=student.residency,
+        payment_valid_until=student.payment_valid_until,
+        message=_paywall_message(student) if not allowed else _paywall_message(student),
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════

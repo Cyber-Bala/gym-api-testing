@@ -44,6 +44,10 @@ class Student(Base):
     payment_valid_from: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
     payment_valid_until: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
     access_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Portal-mirrored attributes (nullable so old DBs keep working).
+    # residency: hosteller | day_scholar | None — drives pay-wall messaging.
+    residency: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
+    dept_code: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow,

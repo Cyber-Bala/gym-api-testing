@@ -22,6 +22,7 @@ ZKBIO_ACCESS_TOKEN = os.getenv("ZKBIO_ACCESS_TOKEN", "")
 ZKBIO_LEVEL_IDS = os.getenv("ZKBIO_LEVEL_IDS", "1")
 ZKBIO_DEPT_CODE = os.getenv("ZKBIO_DEPT_CODE", "1")
 ZKBIO_POLL_INTERVAL = int(os.getenv("ZKBIO_POLL_INTERVAL", "5"))
+ZKBIO_SYNC_INTERVAL = int(os.getenv("ZKBIO_SYNC_INTERVAL", "30"))
 ZKBIO_ENTRY_EXIT_MODE = os.getenv("ZKBIO_ENTRY_EXIT_MODE", "two_readers")
 # Parse comma-separated strings into lists (e.g., "0,2" -> [0, 2])
 ZKBIO_ENTRY_READERS = [int(r.strip()) for r in os.getenv("ZKBIO_ENTRY_READER", "0").split(",") if r.strip()]
@@ -145,6 +146,70 @@ def delete_person(pin: str) -> dict[str, Any] | None:
     except Exception as e:
         logger.error(f"delete_person({pin}) failed: {e}")
         return None
+
+
+def list_persons(page_no: int = 1, page_size: int = 100) -> dict[str, Any] | None:
+    """List persons on the ZKBio portal (paginated raw response).
+
+    POST /api/v2/person/getPersonList  { pageNo, pageSize }
+    Returns the raw device JSON (code==0). Callers unwrap
+    data.data / data.list depending on firmware.
+    Returns None when disabled or unreachable.
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    try:
+        resp = httpx.post(
+            _url("/api/v2/person/getPersonList"),
+            params=_params(),
+            json={"pageNo": page_no, "pageSize": page_size},
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        if data.get("code") != 0:
+            logger.warning(f"list_persons(p={page_no}) unexpected: {str(data)[:300]}")
+        return data
+    except Exception as e:
+        logger.error(f"list_persons(p={page_no}) failed: {e}")
+        return None
+
+
+def iter_all_portal_persons(page_size: int = 100, max_pages: int = 50) -> list[dict[str, Any]]:
+    """Fetch every person on the portal, following pagination.
+
+    Returns [] when disabled/unreachable (caller must distinguish
+    'no data' from 'sync disabled' via ZKBIO_ENABLED).
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return []
+    all_items: list[dict[str, Any]] = []
+    for page in range(1, max_pages + 1):
+        data = list_persons(page_no=page, page_size=page_size)
+        if not isinstance(data, dict) or data.get("code") != 0:
+            break
+        payload = data.get("data", [])
+        if isinstance(payload, dict):
+            total = payload.get("total", 0)
+            items = payload.get("data", payload.get("list", []))
+            if not isinstance(items, list):
+                break
+            all_items.extend(items)
+            try:
+                if total and len(all_items) >= int(total):
+                    break
+            except (TypeError, ValueError):
+                pass
+            if len(items) < page_size:
+                break
+        elif isinstance(payload, list):
+            all_items.extend(payload)
+            if len(payload) < page_size:
+                break
+        else:
+            break
+    return all_items
 
 
 # ══════════════════════════════════════════════════════════════════

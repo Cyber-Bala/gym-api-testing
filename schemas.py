@@ -14,12 +14,15 @@ class StudentCreate(BaseModel):
     room_no: str = Field(..., min_length=1, max_length=20)
     phone: Optional[str] = Field(None, max_length=15)
     dept_code: Optional[str] = Field(None, max_length=10)
+    residency: Optional[str] = Field(None, max_length=20, description="hosteller | day_scholar")
 
 
 class StudentUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=120)
     room_no: Optional[str] = Field(None, max_length=20)
     phone: Optional[str] = Field(None, max_length=15)
+    residency: Optional[str] = Field(None, max_length=20)
+    dept_code: Optional[str] = Field(None, max_length=10)
 
 
 class FaceRegisterRequest(BaseModel):
@@ -56,10 +59,47 @@ class StudentResponse(BaseModel):
     payment_valid_from: Optional[dt_date]
     payment_valid_until: Optional[dt_date]
     access_enabled: bool
+    residency: Optional[str] = None
+    dept_code: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── Portal sync / access-check schemas ─────────────────────────────────
+
+class SyncPullResponse(BaseModel):
+    pulled_at: datetime
+    portal_count: int
+    added: int
+    updated: int
+    removed: int
+    added_pins: list[str] = []
+    removed_pins: list[str] = []
+
+
+class SyncStatusResponse(BaseModel):
+    zkbio_enabled: bool
+    zkbio_base_url: Optional[str] = None
+    last_pull_at: Optional[datetime] = None
+    last_pull_ok: Optional[bool] = None
+    last_pull_message: Optional[str] = None
+    last_added: int = 0
+    last_updated: int = 0
+    last_removed: int = 0
+    portal_count: int = 0
+    local_count: int = 0
+
+
+class AccessCheckResponse(BaseModel):
+    roll_no: str
+    allowed: bool
+    payment_status: PaymentStatus
+    access_enabled: bool
+    residency: Optional[str] = None
+    payment_valid_until: Optional[dt_date] = None
+    message: str
 
 
 # ── Access Log Schemas ───────────────────────────────────────────────
