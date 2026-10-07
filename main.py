@@ -289,29 +289,31 @@ def pull_portal_sync(db: Session) -> dict:
     - Name/dept changed on portal → updated locally.
     - Local rows missing on portal → deleted locally (admin-panel delete
       propagates to api_app; gym-app picks it up via /api/students diff).
+      Deletes require BOTH a complete multi-page portal fetch AND a per-PIN
+      portal lookup confirming the person is gone. A stale list entry alone
+      can never wipe a local row, and a partial/failed fetch never deletes.
     Safe no-op when ZKBio is disabled/unreachable (never deletes then).
     """
     if not zkbio_client.ZKBIO_ENABLED:
-        msg = "ZKBio disabled (ZKBIO_ENABLED=false) — set ZKBIO_BASE_URL + token and restart."
+        msg = "ZKBIO_ENABLED=false — bridge is DISABLED. Set ZKBIO_BASE_URL + ZKBIO_ACCESS_TOKEN and restart api_app; until then no portal data can be seen."
         _SYNC_STATE.update({
             "last_pull_at": datetime.utcnow(), "last_pull_ok": False,
             "last_pull_message": msg, "portal_count": 0,
         })
         return {"ok": False, "message": msg, "added": [], "updated": [], "removed": []}
 
-    portal_items = zkbio_client.iter_all_portal_persons()
-    # Distinguish "reachable but empty" from "unreachable": re-probe once.
-    probe_ok = True
-    if not portal_items:
-        probe = zkbio_client.list_persons(page_no=1, page_size=1)
-        probe_ok = isinstance(probe, dict) and probe.get("code") == 0
-        if not probe_ok:
-            msg = "Portal unreachable — keeping local data untouched. Check IP/token."
-            _SYNC_STATE.update({
-                "last_pull_at": datetime.utcnow(), "last_pull_ok": False,
-                "last_pull_message": msg, "portal_count": 0,
-            })
-            return {"ok": False, "message": msg, "added": [], "updated": [], "removed": []}
+    fetched = zkbio_client.fetch_all_portal_persons()
+    portal_items = fetched["items"]
+    if not fetched["complete"]:
+        msg = (
+            "Portal fetch INCOMPLETE — keeping local data untouched "
+            f"(pages={fetched['pages']}, error={fetched['error']}). Check IP/token."
+        )
+        _SYNC_STATE.update({
+            "last_pull_at": datetime.utcnow(), "last_pull_ok": False,
+            "last_pull_message": msg, "portal_count": 0,
+        })
+        return {"ok": False, "message": msg, "added": [], "updated": [], "removed": []}
 
     portal_by_pin: dict[str, dict] = {}
     for item in portal_items:
@@ -327,6 +329,7 @@ def pull_portal_sync(db: Session) -> dict:
     added: list[str] = []
     updated: list[str] = []
     removed: list[str] = []
+    kept_stale: list[str] = []
 
     for pin, item in portal_by_pin.items():
         name = _portal_name(item) or pin
@@ -351,23 +354,38 @@ def pull_portal_sync(db: Session) -> dict:
                 existing.updated_at = datetime.utcnow()
                 updated.append(pin)
 
+    # Deletes: list-missing AND per-PIN lookup confirms gone.
+    # If the lookup still finds the person (stale list), keep the local row.
     for pin, row in local_by_pin.items():
         if pin not in portal_by_pin:
+            present = zkbio_client.check_person_present(pin)
+            if present is True:
+                kept_stale.append(pin)
+                logger.warning(
+                    f"[Sync] {pin} missing from portal list but per-PIN lookup "
+                    f"still finds it — keeping local row (stale list page)."
+                )
+                continue
             db.delete(row)
             removed.append(pin)
 
     db.commit()
     _sweep_expired(db)
 
+    detail = f"portal_total={fetched['total']}"
     _SYNC_STATE.update({
         "last_pull_at": datetime.utcnow(), "last_pull_ok": True,
-        "last_pull_message": f"Portal sync OK: +{len(added)} ~{len(updated)} -{len(removed)}",
+        "last_pull_message": (
+            f"Portal sync OK: +{len(added)} ~{len(updated)} -{len(removed)} "
+            f"({detail}, kept_stale={len(kept_stale)})"
+        ),
         "last_added": len(added), "last_updated": len(updated),
         "last_removed": len(removed), "portal_count": len(portal_by_pin),
     })
-    logger.info(f"[Sync] portal→local: +{len(added)} ~{len(updated)} -{len(removed)}")
+    logger.info(f"[Sync] portal→local: +{len(added)} ~{len(updated)} -{len(removed)} kept_stale={len(kept_stale)}")
     return {"ok": True, "message": _SYNC_STATE["last_pull_message"],
-            "added": added, "updated": updated, "removed": removed}
+            "added": added, "updated": updated, "removed": removed,
+            "kept_stale": kept_stale}
 
 
 async def poll_person_sync():
@@ -412,8 +430,11 @@ def health():
     return {
         "status": "ok",
         "service": "gym_api_app",
+        "build": "portal-sync-v2",
         "zkbio_enabled": zkbio_client.ZKBIO_ENABLED,
         "zkbio_base_url": zkbio_client.ZKBIO_BASE_URL if zkbio_client.ZKBIO_ENABLED else None,
+        "portal_sync_last_ok": _SYNC_STATE["last_pull_ok"],
+        "portal_sync_last_message": _SYNC_STATE["last_pull_message"],
     }
 
 
@@ -776,12 +797,15 @@ def sync_pull(db: Session = Depends(get_db)):
     """Pull portal persons into the local DB now (portal → api_app).
 
     Creates rows missing locally, updates renamed rows, and deletes local
-    rows whose PIN was deleted on the admin panel. Safe no-op when the
-    portal is disabled/unreachable (never deletes then).
+    rows whose PIN was deleted on the admin panel (double-confirmed via a
+    per-PIN portal lookup). Safe no-op when the portal is
+    disabled/unreachable/partially fetched (never deletes then).
     """
     result = pull_portal_sync(db)
     if not result["ok"]:
-        raise HTTPException(502 if "unreachable" in result["message"] else 503, result["message"])
+        msg = result["message"]
+        code = 502 if ("INCOMPLETE" in msg or "nreachable" in msg) else 503
+        raise HTTPException(code, msg)
     return SyncPullResponse(
         pulled_at=_SYNC_STATE["last_pull_at"],
         portal_count=_SYNC_STATE["portal_count"],
@@ -791,6 +815,53 @@ def sync_pull(db: Session = Depends(get_db)):
         added_pins=result["added"][:100],
         removed_pins=result["removed"][:100],
     )
+
+
+@app.get("/api/sync/diff", tags=["Sync"])
+def sync_diff(db: Session = Depends(get_db)):
+    """Read-only portal-vs-local diff (changes nothing).
+
+    Use this when a panel delete 'does nothing': it shows per-PIN whether
+    the portal list API still reports the person and what the authoritative
+    per-PIN lookup says, so you can see exactly which side is stale.
+    """
+    if not zkbio_client.ZKBIO_ENABLED:
+        raise HTTPException(503, "ZKBio disabled (ZKBIO_ENABLED=false) — no portal to diff against.")
+    fetched = zkbio_client.fetch_all_portal_persons()
+    if not fetched["complete"]:
+        raise HTTPException(
+            502,
+            f"Portal fetch INCOMPLETE (pages={fetched['pages']}, error={fetched['error']}). Check IP/token.",
+        )
+    portal_pins = set()
+    for item in fetched["items"]:
+        if isinstance(item, dict):
+            pin = _portal_pin(item)
+            if pin:
+                portal_pins.add(pin)
+    local_pins = {s.roll_no for s in db.query(Student).all()}
+    only_portal = sorted(portal_pins - local_pins)
+    only_local = sorted(local_pins - portal_pins)
+    # Authoritative per-PIN verdict for every disputed local row.
+    verdicts = {}
+    for pin in only_local:
+        present = zkbio_client.check_person_present(pin)
+        verdicts[pin] = (
+            "still_on_portal (stale list — kept)"
+            if present is True
+            else "confirmed_gone (next pull deletes it)"
+            if present is False
+            else "lookup_failed (kept this run)"
+        )
+    return {
+        "portal_count": len(portal_pins),
+        "local_count": len(local_pins),
+        "portal_total_reported": fetched["total"],
+        "only_on_portal_will_be_added": only_portal[:200],
+        "only_local": [
+            {"roll_no": pin, "verdict": verdicts[pin]} for pin in only_local[:200]
+        ],
+    }
 
 
 @app.get("/api/sync/status", response_model=SyncStatusResponse, tags=["Sync"])

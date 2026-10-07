@@ -181,35 +181,131 @@ def iter_all_portal_persons(page_size: int = 100, max_pages: int = 50) -> list[d
     Returns [] when disabled/unreachable (caller must distinguish
     'no data' from 'sync disabled' via ZKBIO_ENABLED).
     """
+    result = fetch_all_portal_persons(page_size=page_size, max_pages=max_pages)
+    return result["items"]
+
+
+def fetch_all_portal_persons(
+    page_size: int = 100, max_pages: int = 50
+) -> dict[str, Any]:
+    """Fetch every person on the portal, tracking fetch completeness.
+
+    Returns {"items", "complete", "total", "pages", "error"}.
+    `complete` is True only when every fetched page answered code==0 and
+    pagination terminated cleanly (short page or reached reported total).
+    Callers MUST NOT delete local rows when complete is False — a partial
+    fetch would otherwise look like mass portal deletions.
+    """
+    empty: dict[str, Any] = {"items": [], "complete": False, "total": None, "pages": 0, "error": None}
     if not ZKBIO_ENABLED:
         _log_disabled()
-        return []
+        empty["error"] = "ZKBio disabled"
+        return empty
     all_items: list[dict[str, Any]] = []
+    reported_total: Any = None
     for page in range(1, max_pages + 1):
         data = list_persons(page_no=page, page_size=page_size)
         if not isinstance(data, dict) or data.get("code") != 0:
-            break
+            return {
+                "items": all_items, "complete": False, "total": reported_total,
+                "pages": page - 1,
+                "error": f"page {page}: portal did not answer code==0",
+            }
         payload = data.get("data", [])
         if isinstance(payload, dict):
-            total = payload.get("total", 0)
+            reported_total = payload.get("total", reported_total)
             items = payload.get("data", payload.get("list", []))
             if not isinstance(items, list):
-                break
+                return {
+                    "items": all_items, "complete": False, "total": reported_total,
+                    "pages": page, "error": f"page {page}: unexpected payload shape",
+                }
             all_items.extend(items)
             try:
-                if total and len(all_items) >= int(total):
-                    break
+                if reported_total is not None and len(all_items) >= int(reported_total):
+                    return {
+                        "items": all_items, "complete": True, "total": int(reported_total),
+                        "pages": page, "error": None,
+                    }
             except (TypeError, ValueError):
                 pass
             if len(items) < page_size:
-                break
+                return {
+                    "items": all_items, "complete": True, "total": reported_total,
+                    "pages": page, "error": None,
+                }
         elif isinstance(payload, list):
             all_items.extend(payload)
             if len(payload) < page_size:
-                break
+                return {
+                    "items": all_items, "complete": True, "total": None,
+                    "pages": page, "error": None,
+                }
         else:
-            break
-    return all_items
+            return {
+                "items": all_items, "complete": False, "total": reported_total,
+                "pages": page, "error": f"page {page}: unexpected payload shape",
+            }
+    return {
+        "items": all_items, "complete": True, "total": reported_total,
+        "pages": max_pages, "error": f"hit max_pages={max_pages} (treated complete)",
+    }
+
+
+def check_person_present(pin: str) -> bool | None:
+    """Authoritative per-PIN presence check against the portal.
+
+    Returns True  = portal positively reports the person (found),
+            False = portal reachable but does NOT report the person,
+            None  = cannot tell (disabled / transport error / no portal
+                    response at all — caller must NOT treat as absent).
+    A bare code!=0 reply counts as "absent" ONLY when at least one of the
+    lookup attempts got a portal JSON response; pure exceptions → None.
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    saw_portal_response = False
+    attempts: list[tuple[str, str, dict[str, Any] | None]] = [
+        ("GET", f"/api/person/get/{pin}", None),
+        ("GET", "/api/person/get", {"pin": pin}),
+    ]
+    for method, path, extra in attempts:
+        try:
+            if method == "GET" and extra is None:
+                resp = httpx.get(_url(path), params=_params(), timeout=TIMEOUT)
+            else:
+                resp = httpx.get(_url(path), params=_params(**(extra or {})), timeout=TIMEOUT)
+            data = resp.json()
+        except Exception as e:
+            logger.error(f"check_person_present({pin}) [{path}] failed: {e}")
+            continue
+        if not isinstance(data, dict) or "code" not in data:
+            continue
+        saw_portal_response = True
+        if data.get("code") == 0 and data.get("data"):
+            return True
+    # v2 list with pins filter (authoritative for CVSecurity portals)
+    try:
+        resp = httpx.post(
+            _url("/api/v2/person/getPersonList"),
+            params=_params(),
+            json={"pins": pin, "pageNo": 1, "pageSize": 5},
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+    except Exception as e:
+        logger.error(f"check_person_present({pin}) [v2 list] failed: {e}")
+        return None if not saw_portal_response else False
+    if isinstance(data, dict) and "code" in data:
+        saw_portal_response = True
+        if data.get("code") == 0:
+            payload = data.get("data", {})
+            items = payload.get("data", payload.get("list", [])) if isinstance(payload, dict) else payload
+            if isinstance(items, list) and items:
+                return True
+            return False if saw_portal_response else None
+    return False if saw_portal_response else None
 
 
 # ══════════════════════════════════════════════════════════════════
