@@ -164,7 +164,7 @@ export class MembershipService {
     const msDiff = endDate.getTime() - now.getTime();
     const daysRemaining = Math.max(1, Math.ceil(msDiff / (1000 * 60 * 60 * 24)));
 
-    return {
+    const dto = {
       id: record.id,
       studentId: record.studentId,
       planId: record.planId,
@@ -179,20 +179,48 @@ export class MembershipService {
       paymentId: record.paymentId || undefined,
       createdAt: record.createdAt.toISOString(),
     };
+
+    // ── Push paid state to the gate bridge (api_app → ZKBio) ──
+    // Without this the turnstile keeps denying: api_app never learns
+    // the day-scholar pass was paid. Best-effort (Postgres already committed).
+    try {
+      const { syncPaymentToApiApp } = await import('../device-sync/device-sync.service.js');
+      const [stu] = await db
+        .select({ rollNumber: students.rollNumber })
+        .from(students)
+        .where(eq(students.id, studentId))
+        .limit(1);
+      if (stu?.rollNumber) {
+        await syncPaymentToApiApp(stu.rollNumber, {
+          payment_status: 'paid',
+          payment_valid_from: dto.startDate.slice(0, 10),
+          payment_valid_until: dto.endDate.slice(0, 10),
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, studentId }, 'Device payment sync after activation failed');
+    }
+
+    return dto;
   }
 
   /**
    * Background expiry worker: Mark ended passes as expired
+   * + revoke gate access on api_app/ZKBio so the turnstile denies
+   * with a "please pay to renew" message instead of letting them in.
    */
   public async runDailyMembershipExpiryCheck(): Promise<{ expiredCount: number }> {
     const now = new Date();
 
     const expired = await db
-      .select({ id: memberships.id })
+      .select({ id: memberships.id, studentId: memberships.studentId, endDate: memberships.endDate })
       .from(memberships)
       .where(and(eq(memberships.status, 'active'), lte(memberships.endDate, now)));
 
     let expiredCount = 0;
+    const { syncPaymentToApiApp } = await import('../device-sync/device-sync.service.js').catch(() => ({
+      syncPaymentToApiApp: null as unknown as typeof import('../device-sync/device-sync.service.js').syncPaymentToApiApp,
+    }));
 
     for (const m of expired) {
       await db
@@ -200,6 +228,24 @@ export class MembershipService {
         .set({ status: 'expired', updatedAt: new Date() })
         .where(eq(memberships.id, m.id));
       expiredCount++;
+
+      // Revoke gate access for this student (best-effort).
+      try {
+        const [stu] = await db
+          .select({ rollNumber: students.rollNumber })
+          .from(students)
+          .where(eq(students.id, m.studentId))
+          .limit(1);
+        if (stu?.rollNumber && syncPaymentToApiApp) {
+          await syncPaymentToApiApp(stu.rollNumber, {
+            payment_status: 'expired',
+            payment_valid_from: null,
+            payment_valid_until: new Date(m.endDate).toISOString().slice(0, 10),
+          });
+        }
+      } catch (err) {
+        logger.warn({ err, membershipId: m.id }, 'Device revoke after expiry failed');
+      }
     }
 
     if (expiredCount > 0) {

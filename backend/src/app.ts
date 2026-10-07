@@ -23,6 +23,7 @@ import { integrationRouter } from './modules/integration/integration.routes.js';
 import { notificationRouter } from './modules/notification/notification.routes.js';
 import { sseRouter } from './modules/sse/sse.routes.js';
 import { schedulerRouter } from './modules/scheduler/scheduler.routes.js';
+import { deviceSyncRouter } from './modules/device-sync/device-sync.routes.js';
 import { NotFoundError } from './shared/errors/index.js';
 
 export const createApp = (): Express => {
@@ -70,6 +71,8 @@ export const createApp = (): Express => {
   app.use(`${config.API_PREFIX}/integration`, integrationRouter);
   app.use(`${config.API_PREFIX}/scheduler`, schedulerRouter);
   app.use(`${config.API_PREFIX}/admin/scheduler`, schedulerRouter);
+  app.use(`${config.API_PREFIX}/device-sync`, deviceSyncRouter);
+  app.use(`${config.API_PREFIX}/admin/device-sync`, deviceSyncRouter);
 
   // 404 Handler for undefined routes
   app.use('*', (req, _res, next) => {

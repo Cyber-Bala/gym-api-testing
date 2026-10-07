@@ -5,6 +5,10 @@ import {
   accounts,
   people,
   students,
+  staff,
+  authorizedPersons,
+  trainerProfiles,
+  adminProfiles,
   memberships,
   paymentOrders,
   bookings,
@@ -66,17 +70,22 @@ async function removeUserCompletely(targetEmail: string) {
     logger.info({ studentId }, 'Deleted student domain records (violations, bookings, payments, memberships)');
   }
 
-  // 3. Delete person child records if person exists
+  // 3. Delete person child records if person exists (covers student/staff/trainer/admin person types)
   if (person) {
     await db.delete(accessSessions).where(eq(accessSessions.personId, person.id));
     await db.delete(entryExitLogs).where(eq(entryExitLogs.personId, person.id));
+    await db.delete(staff).where(eq(staff.personId, person.id));
+    await db.delete(authorizedPersons).where(eq(authorizedPersons.personId, person.id));
+    await db.delete(trainerProfiles).where(eq(trainerProfiles.personId, person.id));
     await db.delete(students).where(eq(students.personId, person.id));
     await db.delete(people).where(eq(people.id, person.id));
-    logger.info({ personId: person.id }, 'Deleted person records');
+    logger.info({ personId: person.id }, 'Deleted person records (sessions, logs, staff, trainer, student, person)');
   }
 
-  // 4. Delete account child records and account if account exists
+  // 4. Delete account child records and account if account exists (covers admin/super_admin)
   if (account) {
+    // Force-remove admin profile even if is_protected_super_admin='true' — script is explicit operator action
+    await db.delete(adminProfiles).where(eq(adminProfiles.accountId, account.id));
     await db.delete(oauthProviders).where(eq(oauthProviders.accountId, account.id));
     await db.delete(sessions).where(eq(sessions.accountId, account.id));
     await db.delete(pushSubscriptions).where(eq(pushSubscriptions.accountId, account.id));
@@ -91,10 +100,11 @@ async function removeUserCompletely(targetEmail: string) {
     logger.info({ accountId: account.id }, 'Deleted account records, oauth, sessions, and audit entries');
   }
 
-  // 5. Final fallback sweep on any table with matching email
+  // 5. Final fallback sweep on any table with matching email + orphan admin profiles
   await db.execute(sql`DELETE FROM identity.accounts WHERE lower(email) = ${normalizedEmail}`);
   await db.execute(sql`DELETE FROM people.people WHERE lower(email) = ${normalizedEmail}`);
   await db.execute(sql`DELETE FROM audit.audit_logs WHERE lower(actor_email) = ${normalizedEmail}`);
+  await db.execute(sql`DELETE FROM admin.admin_profiles WHERE account_id NOT IN (SELECT id FROM identity.accounts)`);
 
   logger.info({ targetEmail: normalizedEmail }, 'Successfully removed user completely from database');
 }

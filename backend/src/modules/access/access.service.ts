@@ -244,6 +244,55 @@ export class AccessService {
       };
     }
 
+    // 2b. Student: membership / payment gate (day-scholar passes + hosteller window).
+    // Without this, expired/unpaid students walk in on a booking alone and the
+    // gate never says "you should pay". api_app is synced separately so the
+    // physical turnstile agrees with this decision.
+    if (person.personType === 'student' && person.studentDetails) {
+      try {
+        const { activeMembership, history } = await membershipService.getMyMembership(
+          person.studentDetails.id,
+        );
+        if (!activeMembership) {
+          const residency = person.studentDetails.residency;
+          const hadPassBefore = (history || []).length > 0;
+          const reason =
+            residency === 'day_scholar'
+              ? hadPassBefore
+                ? 'Gym pass expired — please pay to renew'
+                : 'No active gym pass — you should pay to use the gym'
+              : hadPassBefore
+                ? 'Hosteller access window expired — contact the gym admin to renew (free)'
+                : 'No active hosteller pass — complete face enrollment at the admin desk first';
+          const message =
+            residency === 'day_scholar'
+              ? `Access denied for ${person.name}. ${reason}. Complete payment in the gym app under Membership, then retry at the gate.`
+              : `Access denied for ${person.name}. ${reason}.`;
+          await db.insert(entryExitLogs).values({
+            personId: person.id,
+            eventType: 'entry_denied',
+            deviceId: dto.deviceId,
+            result: 'denied',
+            denialReason: reason,
+            rawTelemetry: dto.rawTelemetry || {},
+          });
+          return {
+            accessGranted: false,
+            eventType: 'entry',
+            personId: person.id,
+            name: person.name,
+            role: person.personType,
+            identifier: person.identifier,
+            denialReason: reason,
+            message,
+            timestamp: timestampNow,
+          };
+        }
+      } catch (err) {
+        logger.warn({ err, personId: person.id }, 'Membership gate check failed — failing open to booking check');
+      }
+    }
+
     // 3. Student: Confirmed booking match with ±15-min grace window (ADR-012)
     const todayStr = bookingService.formatISTDate();
     const currentISTTime = bookingService.getISTCurrentTime(); // HH:mm

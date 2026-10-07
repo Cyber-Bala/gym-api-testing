@@ -43,6 +43,14 @@ export class SchedulerService {
       status: 'active',
       totalRuns: 0,
     },
+    membershipExpiryProcessor: {
+      name: 'Membership Expiry + Gate Revoke',
+      intervalMinutes: 5,
+      lastRunAt: null,
+      lastResult: null,
+      status: 'active',
+      totalRuns: 0,
+    },
   };
 
   /**
@@ -221,6 +229,21 @@ export class SchedulerService {
       } catch (err) {
         this.tasks.autoUnbanProcessor.status = 'error';
         this.tasks.autoUnbanProcessor.lastResult = { error: String(err) };
+      }
+
+      // 4. Membership expiry sweeper (also revokes api_app/ZKBio gate access
+      // so expired day-scholar passes show "please pay" instead of opening).
+      try {
+        const { membershipService } = await import('../membership/membership.service.js');
+        const expiryRes = await membershipService.runDailyMembershipExpiryCheck();
+        this.tasks.membershipExpiryProcessor.lastRunAt = new Date().toISOString();
+        this.tasks.membershipExpiryProcessor.lastResult = expiryRes;
+        this.tasks.membershipExpiryProcessor.totalRuns += 1;
+        this.tasks.membershipExpiryProcessor.status = 'active';
+        results.membershipExpiry = expiryRes;
+      } catch (err) {
+        this.tasks.membershipExpiryProcessor.status = 'error';
+        this.tasks.membershipExpiryProcessor.lastResult = { error: String(err) };
       }
 
       return results;

@@ -171,6 +171,7 @@ public generateStudentTemplateBuffer(): Buffer {
           room_no: 'N/A',
           phone: phone || '',
           dept_code: deptCode,
+          residency: residency || undefined,
         }),
       });
 
