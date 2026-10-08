@@ -47,6 +47,8 @@ class Student(Base):
     # Portal-mirrored attributes (nullable so old DBs keep working).
     # residency: hosteller | day_scholar | None — drives pay-wall messaging.
     residency: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
+    # gender: male | female | None — drives 4-way dept routing with residency.
+    gender: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)
     dept_code: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

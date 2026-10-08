@@ -229,6 +229,19 @@ def _portal_pin(item: dict) -> str:
     return ""
 
 
+def _portal_gender(item: dict) -> str | None:
+    for key in ("gender", "sex"):
+        val = item.get(key)
+        if val:
+            s = str(val).strip().lower()
+            if s.startswith("f"):
+                return "female"
+            if s.startswith("m"):
+                return "male"
+            return s
+    return None
+
+
 def _portal_name(item: dict) -> str:
     for key in ("name", "personName", "empName"):
         val = item.get(key)
@@ -334,12 +347,20 @@ def pull_portal_sync(db: Session) -> dict:
     for pin, item in portal_by_pin.items():
         name = _portal_name(item) or pin
         dept = str(item.get("deptCode") or item.get("dept_code") or "") or None
+        portal_gender = _portal_gender(item)
         existing = local_by_pin.get(pin)
         if not existing:
+            # New portal person → resolve 4-way dept locally when portal
+            # didn't carry one, so api_app + gym-app agree on the bucket.
+            if not dept:
+                try:
+                    dept = zkbio_client.resolve_dept_code(None, portal_gender)
+                except Exception:
+                    dept = None
             db.add(Student(
                 roll_no=pin, name=name, room_no="N/A",
                 payment_status=PaymentStatus.UNPAID, access_enabled=False,
-                dept_code=dept,
+                dept_code=dept, gender=portal_gender,
             ))
             added.append(pin)
         else:
@@ -349,6 +370,9 @@ def pull_portal_sync(db: Session) -> dict:
                 changed = True
             if dept and existing.dept_code != dept:
                 existing.dept_code = dept
+                changed = True
+            if portal_gender and existing.gender != portal_gender:
+                existing.gender = portal_gender
                 changed = True
             if changed:
                 existing.updated_at = datetime.utcnow()
@@ -455,9 +479,23 @@ def dashboard():
 def list_students(
     search: Optional[str] = Query(None),
     payment_status: Optional[PaymentStatus] = Query(None),
+    residency: Optional[str] = Query(None, description="hosteller | day_scholar"),
+    gender: Optional[str] = Query(None, description="male | female"),
+    dept_code: Optional[str] = Query(None),
+    category: Optional[str] = Query(None, description="day_scholar_boys | day_scholar_girls | hosteller_boys | hosteller_girls"),
     db: Session = Depends(get_db),
 ):
     _sweep_expired(db)
+    # Combined 4-way bucket (same keys as gym-app) wins over individual fields.
+    if category:
+        if category == "day_scholar_boys":
+            residency, gender = "day_scholar", "male"
+        elif category == "day_scholar_girls":
+            residency, gender = "day_scholar", "female"
+        elif category == "hosteller_boys":
+            residency, gender = "hosteller", "male"
+        elif category == "hosteller_girls":
+            residency, gender = "hosteller", "female"
     q = db.query(Student)
     if search:
         pattern = f"%{search}%"
@@ -468,6 +506,12 @@ def list_students(
         )
     if payment_status:
         q = q.filter(Student.payment_status == payment_status)
+    if residency:
+        q = q.filter(Student.residency == residency)
+    if gender:
+        q = q.filter(Student.gender == gender)
+    if dept_code:
+        q = q.filter(Student.dept_code == dept_code)
     return q.order_by(Student.name).all()
 
 
@@ -476,6 +520,9 @@ def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
     existing = db.query(Student).filter(Student.roll_no == payload.roll_no).first()
     if existing:
         raise HTTPException(400, f"Student with roll_no '{payload.roll_no}' already exists")
+    # Resolve 4-way dept when the caller didn't send an explicit code:
+    # Day Scholar Boys / Day Scholar Girls / Hosteller Boys / Hosteller Girls.
+    dept_code = payload.dept_code or zkbio_client.resolve_dept_code(payload.residency, payload.gender)
     student = Student(
         roll_no=payload.roll_no,
         name=payload.name,
@@ -484,15 +531,22 @@ def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
         payment_status=PaymentStatus.UNPAID,
         access_enabled=False,
         residency=(payload.residency or None),
-        dept_code=payload.dept_code,
+        gender=(payload.gender or None),
+        dept_code=dept_code,
     )
     db.add(student)
     db.commit()
     db.refresh(student)
 
     # ── Sync to ZKBio device ──
-    # Register person on device (no access level yet — unpaid by default)
-    zkbio_client.add_person(pin=student.roll_no, name=student.name, dept_code=payload.dept_code)
+    # Register person on device in the CORRECT dept (no more General pile-up).
+    # POST /api/person/add is upsert per the manual, so re-sending is safe.
+    add_res = zkbio_client.add_person(
+        pin=student.roll_no, name=student.name,
+        dept_code=dept_code, gender=student.gender,
+    )
+    if zkbio_client.ZKBIO_ENABLED and not (isinstance(add_res, dict) and add_res.get("code") == 0):
+        logger.warning(f"[ZKBio] add_person({student.roll_no}, dept={dept_code}) unexpected: {add_res}")
 
     return student
 
@@ -512,11 +566,30 @@ def update_student(roll_no: str, payload: StudentUpdate, db: Session = Depends(g
     if not student:
         raise HTTPException(404, "Student not found")
     update_data = payload.model_dump(exclude_unset=True)
+    # If residency/gender changed without an explicit dept_code, recompute
+    # the 4-way dept so the device panel moves them to the right bucket.
+    if ("residency" in update_data or "gender" in update_data) and "dept_code" not in update_data:
+        new_residency = update_data.get("residency", student.residency)
+        new_gender = update_data.get("gender", student.gender)
+        try:
+            update_data["dept_code"] = zkbio_client.resolve_dept_code(new_residency, new_gender)
+        except Exception:
+            pass
     for key, value in update_data.items():
         setattr(student, key, value)
     student.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(student)
+    # Push dept/gender move to the physical device (person/add is upsert).
+    if any(k in update_data for k in ("dept_code", "gender", "name")):
+        try:
+            zkbio_client.add_person(
+                pin=student.roll_no, name=student.name,
+                dept_code=student.dept_code, gender=student.gender,
+            )
+            zkbio_client.sync_person(pin=student.roll_no)
+        except Exception as e:
+            logger.warning(f"[ZKBio] dept re-sync for {roll_no} failed: {e}")
     return student
 
 
@@ -607,6 +680,25 @@ def list_zkbio_levels():
     return data
 
 
+@app.get("/api/zkbio/departments", tags=["ZKBio"])
+def list_zkbio_departments(
+    page_no: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=200),
+):
+    """List departments on the ZKBio admin panel (manual §2.1.2.6).
+
+    Each item is {name, code, parentCode}. Copy the 4 codes for
+    Day Scholar Boys / Day Scholar Girls / Hosteller Boys / Hosteller
+    Girls into the ZKBIO_DEPT_* env vars (api_app .env + gym-app backend
+    .env) and restart both services. Until then new students fall back to
+    the configured defaults.
+    """
+    data = zkbio_client.list_departments(page_no=page_no, page_size=page_size)
+    if data is None:
+        raise HTTPException(502, "ZKBio disabled or unreachable")
+    return data
+
+
 def _extract_photo_b64(payload: FaceRegisterRequest) -> str | None:
     """Return raw base64 (strip data: URL prefix, whitespace)."""
     raw = payload.photo_base64 or payload.personPhoto
@@ -685,11 +777,15 @@ def register_face(roll_no: str, payload: FaceRegisterRequest, db: Session = Depe
         )
 
     # ── Real device portal flow ──
+    # Resolve the student's 4-way dept so face registration doesn't dump
+    # them in General — reuse their stored dept or recompute from residency/gender.
+    face_dept = student.dept_code or zkbio_client.resolve_dept_code(student.residency, student.gender)
     result = zkbio_client.register_face(
         pin=roll_no,
         photo_base64=photo_b64,
         name=student.name,
-        dept_code=None,
+        dept_code=face_dept,
+        gender=student.gender,
     )
     if not result.get("ok"):
         raise HTTPException(
@@ -711,11 +807,40 @@ def delete_student(roll_no: str, db: Session = Depends(get_db)):
     if not student:
         raise HTTPException(404, "Student not found")
 
-    # ── Revoke access + remove person on ZKBio device before deleting ──
-    # (delete_level alone leaves the person listed in the CVSecurity panel)
-    zkbio_client.delete_level(pin=roll_no)
-    zkbio_client.delete_person(pin=roll_no)
-    zkbio_client.sync_person(pin=roll_no)
+    # ── Remove from ZKBio device BEFORE deleting locally ──
+    # Order matters: revoke level → delete bio templates → delete person.
+    # Do NOT call sync_person() after delete_person — sync re-pushes the
+    # person record to the terminal and resurrects them on the panel.
+    device_errors: list[str] = []
+    if zkbio_client.ZKBIO_ENABLED:
+        try:
+            lvl = zkbio_client.delete_level(pin=roll_no)
+            if isinstance(lvl, dict) and lvl.get("code") not in (0, None):
+                logger.warning(f"[ZKBio] delete_level({roll_no}) answered: {lvl}")
+        except Exception as e:
+            device_errors.append(f"delete_level: {e}")
+        try:
+            bio = zkbio_client.delete_bio_templates(pin=roll_no)
+            if isinstance(bio, dict) and bio.get("code") not in (0, None):
+                logger.warning(f"[ZKBio] delete_bio({roll_no}) answered: {bio}")
+        except Exception as e:
+            device_errors.append(f"delete_bio: {e}")
+        person_res = zkbio_client.delete_person(pin=roll_no)
+        if person_res is None:
+            device_errors.append("delete_person unreachable (no response)")
+            logger.error(f"[ZKBio] delete_person({roll_no}) unreachable — aborting local delete")
+            raise HTTPException(502, f"Device unreachable — '{roll_no}' NOT deleted anywhere. Retry when the panel is reachable.")
+        if isinstance(person_res, dict) and person_res.get("code") not in (0, None):
+            # Code -22 = already gone on the panel — treat as success.
+            if person_res.get("code") == -22:
+                logger.info(f"[ZKBio] delete_person({roll_no}): already absent on panel (-22), continuing")
+            else:
+                logger.error(f"[ZKBio] delete_person({roll_no}) refused: {person_res}")
+                raise HTTPException(
+                    502,
+                    f"Device refused to delete '{roll_no}' (code={person_res.get('code')}, msg={person_res.get('message')}). NOT deleted locally.",
+                )
+        logger.info(f"[ZKBio] {roll_no} removed from device (errors_nonfatal={device_errors})")
 
     db.delete(student)
     db.commit()
@@ -891,7 +1016,8 @@ def sync_push(db: Session = Depends(get_db)):
             if person and person.get("code") == 0:
                 skipped.append(s.roll_no)
                 continue
-            res = zkbio_client.add_person(pin=s.roll_no, name=s.name, dept_code=s.dept_code)
+            dept = s.dept_code or zkbio_client.resolve_dept_code(s.residency, s.gender)
+            res = zkbio_client.add_person(pin=s.roll_no, name=s.name, dept_code=dept, gender=s.gender)
             if res is not None and res.get("code") not in (0, None):
                 failed.append(s.roll_no)
                 continue

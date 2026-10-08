@@ -26,9 +26,10 @@ ZKBIO_LEVEL_IDS = os.getenv("ZKBIO_LEVEL_IDS", "1")
 ZKBIO_DEPT_CODE = os.getenv("ZKBIO_DEPT_CODE", "1")
 # 4-way student department routing on the ZKBio admin panel.
 # Discover the REAL codes via GET /api/zkbio/departments and paste them here.
-# Defaults preserve the legacy behaviour (day scholars share dept 1).
+# Each of the 4 categories gets its OWN dept so nobody sits in General:
+#   Day Scholar Boys / Day Scholar Girls / Hosteller Boys / Hosteller Girls
 ZKBIO_DEPT_DAY_SCHOLAR_BOYS = os.getenv("ZKBIO_DEPT_DAY_SCHOLAR_BOYS", "1")
-ZKBIO_DEPT_DAY_SCHOLAR_GIRLS = os.getenv("ZKBIO_DEPT_DAY_SCHOLAR_GIRLS", "1")
+ZKBIO_DEPT_DAY_SCHOLAR_GIRLS = os.getenv("ZKBIO_DEPT_DAY_SCHOLAR_GIRLS", "4")
 ZKBIO_DEPT_HOSTELLER_BOYS = os.getenv("ZKBIO_DEPT_HOSTELLER_BOYS", "3")
 ZKBIO_DEPT_HOSTELLER_GIRLS = os.getenv("ZKBIO_DEPT_HOSTELLER_GIRLS", "2")
 ZKBIO_ZONE_CODE = os.getenv("ZKBIO_ZONE_CODE", "")
@@ -60,12 +61,30 @@ def _log_disabled():
     logger.debug("ZKBio integration disabled, skipping device call.")
 
 
+def resolve_dept_code(residency: str | None = None, gender: str | None = None) -> str:
+    """4-way dept routing: Day Scholar Boys/Girls + Hosteller Boys/Girls.
+
+    Each category lands in its own admin-panel department so students never
+    pile up in General. Codes come from env (see .env) — set them to the
+    real codes from GET /api/zkbio/departments.
+    """
+    is_female = str(gender or "").strip().lower() in ("female", "f", "girls", "girl")
+    if str(residency or "").strip().lower() == "hosteller":
+        return ZKBIO_DEPT_HOSTELLER_GIRLS if is_female else ZKBIO_DEPT_HOSTELLER_BOYS
+    return ZKBIO_DEPT_DAY_SCHOLAR_GIRLS if is_female else ZKBIO_DEPT_DAY_SCHOLAR_BOYS
+
+
+def to_device_gender(gender: str | None = None) -> str:
+    """Device expects M/F (manual §2.1.1.1 gender: male/female, §2.1.1.4 M/F)."""
+    return "F" if str(gender or "").strip().lower() in ("female", "f", "girls", "girl") else "M"
+
+
 # ══════════════════════════════════════════════════════════════════
 #  Person Management
 # ══════════════════════════════════════════════════════════════════
 
-def add_person(pin: str, name: str, last_name: str = "", dept_code: str | None = None) -> dict[str, Any] | None:
-    """Register a person on the ZKBio device."""
+def add_person(pin: str, name: str, last_name: str = "", dept_code: str | None = None, gender: str | None = None) -> dict[str, Any] | None:
+    """Register a person on the ZKBio device (POST /api/person/add is upsert)."""
     if not ZKBIO_ENABLED:
         _log_disabled()
         return None
@@ -74,6 +93,7 @@ def add_person(pin: str, name: str, last_name: str = "", dept_code: str | None =
         "name": name,
         "lastName": last_name,
         "deptCode": dept_code or ZKBIO_DEPT_CODE,
+        "gender": to_device_gender(gender),
         "accLevelIds": ZKBIO_LEVEL_IDS,
     }
     try:
@@ -140,10 +160,16 @@ def get_person(pin: str) -> dict[str, Any] | None:
 
 
 def delete_person(pin: str) -> dict[str, Any] | None:
-    """Delete a person from the ZKBio device."""
+    """Delete a person from the ZKBio device.
+
+    Manual §2.1.1.2 is DELETE /api/person/delete/{pin}, §2.1.1.3 is the
+    POST fallback /api/person/delete?pin={pin}. Try DELETE first, then POST.
+    Returns the portal JSON on success, None when disabled/unreachable.
+    """
     if not ZKBIO_ENABLED:
         _log_disabled()
         return None
+    # 1. DELETE /api/person/delete/{pin} (primary)
     try:
         resp = httpx.request(
             "DELETE",
@@ -152,10 +178,73 @@ def delete_person(pin: str) -> dict[str, Any] | None:
             timeout=TIMEOUT,
         )
         data = resp.json()
-        logger.info(f"delete_person({pin}): {data}")
+        logger.info(f"delete_person({pin}) [DELETE]: {data}")
+        if isinstance(data, dict) and data.get("code") == 0:
+            return data
+        # Non-zero code — fall through to POST fallback below
+        first_error = data
+    except Exception as e:
+        logger.error(f"delete_person({pin}) [DELETE] failed: {e}")
+        first_error = None
+    # 2. POST /api/person/delete?pin={pin} (fallback, manual §2.1.1.3)
+    try:
+        resp = httpx.post(
+            _url("/api/person/delete"),
+            params=_params(pin=pin),
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        logger.info(f"delete_person({pin}) [POST fallback]: {data}")
+        if isinstance(data, dict) and data.get("code") == 0:
+            return data
+        # Both attempts failed — return whichever error is more informative
+        return data if isinstance(data, dict) else first_error
+    except Exception as e:
+        logger.error(f"delete_person({pin}) [POST fallback] failed: {e}")
+        return None
+
+
+def delete_bio_templates(pin: str) -> dict[str, Any] | None:
+    """Delete face/fingerprint templates for a PIN (manual §2.1.4.6 v2 + §2.1.4.2 v1)."""
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    try:
+        resp = httpx.request(
+            "DELETE",
+            _url(f"/api/bioTemplate/delete/{pin}"),
+            params=_params(),
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        logger.info(f"delete_bio_templates({pin}) [v1]: {data}")
         return data
     except Exception as e:
-        logger.error(f"delete_person({pin}) failed: {e}")
+        logger.error(f"delete_bio_templates({pin}) failed: {e}")
+        return None
+
+
+def list_departments(page_no: int = 1, page_size: int = 100) -> dict[str, Any] | None:
+    """List departments on the portal (manual §2.1.2.6).
+
+    POST /api/department/getDepartmentList?pageNo=&pageSize=
+    Returns raw device JSON — each item has {name, code, parentCode}.
+    Use the codes to set ZKBIO_DEPT_* env vars for 4-way routing.
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    try:
+        resp = httpx.post(
+            _url("/api/department/getDepartmentList"),
+            params=_params(pageNo=page_no, pageSize=page_size),
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        logger.info(f"list_departments: {str(data)[:500]}")
+        return data
+    except Exception as e:
+        logger.error(f"list_departments failed: {e}")
         return None
 
 
@@ -416,6 +505,7 @@ def register_face(
     photo_base64: str,
     name: str = "",
     dept_code: str | None = None,
+    gender: str | None = None,
 ) -> dict[str, Any]:
     """
     Full face-registration flow against the ZKBio device portal.
@@ -446,7 +536,8 @@ def register_face(
     steps["personExistsBefore"] = bool(person and person.get("code") == 0)
     if not steps["personExistsBefore"]:
         created = add_person_with_photo(
-            pin=pin, name=name or pin, dept_code=dept_code, photo_base64=photo_base64
+            pin=pin, name=name or pin, dept_code=dept_code, photo_base64=photo_base64,
+            gender=gender,
         )
         steps["addPerson"] = created
         if created is None or (isinstance(created, dict) and created.get("code") not in (0, None)):
@@ -463,7 +554,8 @@ def register_face(
         if updated is None or (isinstance(updated, dict) and updated.get("code") not in (0, None)):
             # Fallback: re-add person with photo (add is upsert on most firmware)
             readded = add_person_with_photo(
-                pin=pin, name=name or pin, dept_code=dept_code, photo_base64=photo_base64
+                pin=pin, name=name or pin, dept_code=dept_code, photo_base64=photo_base64,
+                gender=gender,
             )
             steps["reAddPerson"] = readded
             if readded is None or (isinstance(readded, dict) and readded.get("code") not in (0, None)):
@@ -549,6 +641,7 @@ def add_person_with_photo(
     name: str,
     dept_code: str | None = None,
     photo_base64: str | None = None,
+    gender: str | None = None,
 ) -> dict[str, Any] | None:
     """Register a person on the device including the comparison photo (upsert)."""
     if not ZKBIO_ENABLED:
@@ -558,6 +651,7 @@ def add_person_with_photo(
         "pin": pin,
         "name": name,
         "deptCode": dept_code or ZKBIO_DEPT_CODE,
+        "gender": to_device_gender(gender),
         "accLevelIds": ZKBIO_LEVEL_IDS,
     }
     if photo_base64:

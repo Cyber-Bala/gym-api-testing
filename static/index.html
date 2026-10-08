@@ -195,13 +195,20 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <option value="unpaid">Unpaid</option>
         <option value="expired">Expired</option>
       </select>
+      <select class="filter-select" id="student-category" title="Filter by department bucket">
+        <option value="">All Departments</option>
+        <option value="day_scholar_boys">Day Scholar — Boys</option>
+        <option value="day_scholar_girls">Day Scholar — Girls</option>
+        <option value="hosteller_boys">Hosteller — Boys</option>
+        <option value="hosteller_girls">Hosteller — Girls</option>
+      </select>
       <button class="btn btn-primary" onclick="openAddStudentModal()">+ Add Student</button>
     </div>
     <div class="table-wrap">
       <table>
         <thead><tr>
           <th>Roll No</th><th>Name</th><th>Batch</th><th>Phone</th>
-          <th>Payment</th><th>Valid Until</th><th>Access</th><th>Actions</th>
+          <th>Dept (Category)</th><th>Payment</th><th>Valid Until</th><th>Access</th><th>Actions</th>
         </tr></thead>
         <tbody id="students-tbody"></tbody>
       </table>
@@ -280,6 +287,21 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <label>Phone (optional)</label>
       <input type="text" id="add-phone" placeholder="e.g. 9876543210">
     </div>
+    <div class="form-group">
+      <label>Residency</label>
+      <select id="add-residency">
+        <option value="day_scholar">Day Scholar</option>
+        <option value="hosteller">Hosteller</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Gender (Boys / Girls)</label>
+      <select id="add-gender">
+        <option value="male">Boys</option>
+        <option value="female">Girls</option>
+      </select>
+    </div>
+    <p style="font-size:.78rem;color:var(--text-muted)" id="add-dept-hint"></p>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-add-student')">Cancel</button>
       <button class="btn btn-primary" onclick="addStudent()">Add Student</button>
@@ -471,12 +493,21 @@ async function loadStudents() {
   try {
     const search = document.getElementById('student-search').value;
     const filter = document.getElementById('student-filter').value;
+    const category = document.getElementById('student-category').value;
     let url = '/api/students?';
     if (search) url += `search=${encodeURIComponent(search)}&`;
     if (filter) url += `payment_status=${filter}&`;
+    if (category) url += `category=${encodeURIComponent(category)}&`;
     studentsData = await api(url);
     renderStudents();
   } catch(e) { toast(e.message, 'error'); }
+}
+
+function categoryLabel(s) {
+  const isGirl = (s.gender || '') === 'female';
+  const isHostel = (s.residency || '') === 'hosteller';
+  if (isHostel) return isGirl ? 'Hosteller • Girls' : 'Hosteller • Boys';
+  return isGirl ? 'Day Scholar • Girls' : 'Day Scholar • Boys';
 }
 
 function renderStudents() {
@@ -494,6 +525,7 @@ function renderStudents() {
       <td>${esc(s.name)}</td>
       <td>${esc(s.room_no)}</td>
       <td>${esc(s.phone || '—')}</td>
+      <td><span class="badge badge-entry">${esc(categoryLabel(s))}</span><br><small style="color:var(--text-muted)">dept ${esc(s.dept_code || '—')}</small></td>
       <td><span class="badge badge-${s.payment_status}">${s.payment_status.toUpperCase()}</span></td>
       <td>${formatDate(s.payment_valid_until)}</td>
       <td><span class="badge ${s.access_enabled?'badge-access-on':'badge-access-off'}">${s.access_enabled?'✓ ON':'✕ OFF'}</span></td>
@@ -515,21 +547,39 @@ document.getElementById('student-search').addEventListener('input', () => {
   searchTimer = setTimeout(loadStudents, 300);
 });
 document.getElementById('student-filter').addEventListener('change', loadStudents);
+document.getElementById('student-category').addEventListener('change', loadStudents);
 
 // Add student
 function openAddStudentModal() {
   ['add-roll','add-name','add-room','add-phone'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('add-residency').value = 'day_scholar';
+  document.getElementById('add-gender').value = 'male';
+  updateAddDeptHint();
   openModal('modal-add-student');
 }
+
+function updateAddDeptHint() {
+  const r = document.getElementById('add-residency').value;
+  const g = document.getElementById('add-gender').value;
+  const isGirl = g === 'female';
+  const label = r === 'hosteller'
+    ? (isGirl ? 'Hosteller • Girls' : 'Hosteller • Boys')
+    : (isGirl ? 'Day Scholar • Girls' : 'Day Scholar • Boys');
+  document.getElementById('add-dept-hint').textContent = `Will be listed under: ${label}`;
+}
+document.getElementById('add-residency').addEventListener('change', updateAddDeptHint);
+document.getElementById('add-gender').addEventListener('change', updateAddDeptHint);
 
 async function addStudent() {
   const roll_no = document.getElementById('add-roll').value.trim();
   const name = document.getElementById('add-name').value.trim();
   const room_no = document.getElementById('add-room').value.trim();
   const phone = document.getElementById('add-phone').value.trim() || null;
+  const residency = document.getElementById('add-residency').value;
+  const gender = document.getElementById('add-gender').value;
   if (!roll_no || !name || !room_no) { toast('Fill required fields','error'); return; }
   try {
-    await api('/api/students', {method:'POST', body:JSON.stringify({roll_no,name,room_no,phone})});
+    await api('/api/students', {method:'POST', body:JSON.stringify({roll_no,name,room_no,phone,residency,gender})});
     closeModal('modal-add-student');
     toast('Student added successfully');
     loadStudents(); loadStats();

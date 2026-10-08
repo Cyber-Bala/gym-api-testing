@@ -15,6 +15,7 @@ class StudentCreate(BaseModel):
     phone: Optional[str] = Field(None, max_length=15)
     dept_code: Optional[str] = Field(None, max_length=10)
     residency: Optional[str] = Field(None, max_length=20, description="hosteller | day_scholar")
+    gender: Optional[str] = Field(None, max_length=10, description="male | female")
 
 
 class StudentUpdate(BaseModel):
@@ -22,6 +23,7 @@ class StudentUpdate(BaseModel):
     room_no: Optional[str] = Field(None, max_length=20)
     phone: Optional[str] = Field(None, max_length=15)
     residency: Optional[str] = Field(None, max_length=20)
+    gender: Optional[str] = Field(None, max_length=10)
     dept_code: Optional[str] = Field(None, max_length=10)
 
 
@@ -60,11 +62,18 @@ class StudentResponse(BaseModel):
     payment_valid_until: Optional[dt_date]
     access_enabled: bool
     residency: Optional[str] = None
+    gender: Optional[str] = None
     dept_code: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DepartmentInfo(BaseModel):
+    name: str = ""
+    code: str = ""
+    parentCode: Optional[str] = None
 
 
 # ── Portal sync / access-check schemas ─────────────────────────────────

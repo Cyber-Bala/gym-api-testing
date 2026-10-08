@@ -37,7 +37,7 @@ def init_db() -> None:
     import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
     # Lightweight auto-migration for SQLite DBs created before
-    # the residency/dept_code columns existed (ALTER is a no-op if present).
+    # the residency/dept_code/gender columns existed (ALTER is a no-op if present).
     try:
         from sqlalchemy import text
         with engine.begin() as conn:
@@ -46,5 +46,7 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE students ADD COLUMN residency VARCHAR(20)"))
             if "dept_code" not in cols:
                 conn.execute(text("ALTER TABLE students ADD COLUMN dept_code VARCHAR(10)"))
+            if "gender" not in cols:
+                conn.execute(text("ALTER TABLE students ADD COLUMN gender VARCHAR(10)"))
     except Exception:
         pass
