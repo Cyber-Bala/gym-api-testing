@@ -176,30 +176,54 @@ public generateStudentTemplateBuffer(): Buffer {
   ) {
     const deptCode = this.resolveDeptCode(residency, gender);
 
+    // 12s cap so a hung ngrok tunnel / offline api_app never blocks admin UX.
+    // api_app always commits its SQLite row BEFORE touching the device, so a
+    // timeout here means "bridge didn't confirm" — Postgres still succeeds
+    // and the next sync push repairs the panel.
+    const withTimeout = () => {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), 12000);
+      return { signal: c.signal, done: () => clearTimeout(t) };
+    };
+
     try {
-      const response = await fetch(`${config.API_APP_URL}/api/students`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-        body: JSON.stringify({
-          roll_no: rollNumber,
-          name: name,
-          room_no: 'N/A',
-          phone: phone || '',
-          dept_code: deptCode,
-          residency: residency || undefined,
-          gender: gender || undefined,
-        }),
-      });
+      const t1 = withTimeout();
+      let response: Response;
+      try {
+        response = await fetch(`${config.API_APP_URL}/api/students`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+          body: JSON.stringify({
+            roll_no: rollNumber,
+            name: name,
+            room_no: 'N/A',
+            phone: phone || '',
+            dept_code: deptCode,
+            residency: residency || undefined,
+            gender: gender || undefined,
+          }),
+          signal: t1.signal,
+        });
+      } finally {
+        t1.done();
+      }
 
       if (response.status === 400) {
         // Already exists on api_app — PATCH dept/gender/residency so the
         // device admin panel moves them out of General into the right dept.
         try {
-          const patchRes = await fetch(`${config.API_APP_URL}/api/students/${encodeURIComponent(rollNumber)}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-            body: JSON.stringify({ dept_code: deptCode, residency, gender }),
-          });
+          const t2 = withTimeout();
+          let patchRes: Response;
+          try {
+            patchRes = await fetch(`${config.API_APP_URL}/api/students/${encodeURIComponent(rollNumber)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+              body: JSON.stringify({ dept_code: deptCode, residency, gender }),
+              signal: t2.signal,
+            });
+          } finally {
+            t2.done();
+          }
           if (!patchRes.ok) {
             logger.warn({ rollNumber, status: patchRes.status, deptCode }, 'api_app PATCH after POST-400 failed');
           } else {
@@ -212,12 +236,13 @@ public generateStudentTemplateBuffer(): Buffer {
       }
 
       if (!response.ok) {
-        logger.warn({ rollNumber, status: response.status, deptCode }, 'Failed to sync student to api_app');
+        const body = await response.text().catch(() => '');
+        logger.warn({ rollNumber, status: response.status, deptCode, body: body.slice(0, 200) }, 'api_app create failed — Postgres row kept, retry sync push later');
       } else {
         logger.info({ rollNumber, deptCode, residency, gender }, 'Student synced to api_app with 4-way dept');
       }
     } catch (err) {
-      logger.warn({ err, rollNumber }, 'Could not reach api_app to sync student');
+      logger.warn({ err, rollNumber, deptCode }, 'api_app sync timeout/unreachable — Postgres row kept, panel sync pending');
     }
   }
 
@@ -227,19 +252,25 @@ public generateStudentTemplateBuffer(): Buffer {
    */
   private async pushDeptUpdateToApiApp(rollNumber: string, residency: string, gender: string): Promise<void> {
     const deptCode = this.resolveDeptCode(residency, gender);
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 12000);
     try {
       const res = await fetch(`${config.API_APP_URL}/api/students/${encodeURIComponent(rollNumber)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
         body: JSON.stringify({ dept_code: deptCode, residency, gender }),
+        signal: c.signal,
       });
       if (!res.ok && res.status !== 404) {
-        logger.warn({ rollNumber, status: res.status, deptCode }, 'api_app dept PATCH failed');
+        const body = await res.text().catch(() => '');
+        logger.warn({ rollNumber, status: res.status, deptCode, body: body.slice(0, 200) }, 'api_app dept PATCH failed');
       } else {
         logger.info({ rollNumber, deptCode, residency, gender }, 'Dept move pushed to api_app');
       }
     } catch (err) {
-      logger.warn({ err, rollNumber }, 'Could not reach api_app for dept move');
+      logger.warn({ err, rollNumber, deptCode }, 'api_app dept PATCH timeout/unreachable');
+    } finally {
+      clearTimeout(t);
     }
   }
 
@@ -1277,8 +1308,11 @@ const items = await db
    *  1. Delete from api_app SQLite DB + ZKBio device FIRST (so a device
    *     failure aborts before Postgres is touched — no orphans).
    *  2. Cascade delete all related rows from our Postgres DB.
+   * Pass force=true to delete from Postgres even when the panel is down
+   * (api_app also gets ?force=true so it drops its SQLite row; the panel
+   * row is cleaned on next sync push).
    */
-  public async deleteStudent(studentId: string, adminEmail: string): Promise<{ deletedRollNumber: string }> {
+  public async deleteStudent(studentId: string, adminEmail: string, force = false): Promise<{ deletedRollNumber: string }> {
     // 1. Resolve student and their associated account ID
     const [stu] = await db
       .select({
@@ -1300,29 +1334,38 @@ const items = await db
 
     // 2. Delete from api_app SQLite DB + ZKBio device FIRST.
     // If api_app is reachable but reports failure, abort so Postgres keeps
-    // the row (admin can retry). If api_app is OFFLINE (fetch throws),
-    // still proceed — device was already unreachable, nothing to orphan.
-    // Either way the portal sync poller can't resurrect the row afterwards
-    // because api_app no longer has it (or was never reachable).
+    // the row (admin can retry with force=true). If api_app is OFFLINE
+    // (fetch throws), still proceed — device was already unreachable.
     let apiAppUnreachable = false;
+    const dc = new AbortController();
+    const dt = setTimeout(() => dc.abort(), 15000);
     try {
-      const apiAppRes = await fetch(`${config.API_APP_URL}/api/students/${encodeURIComponent(rollNumber)}`, {
+      const qs = force ? '?force=true' : '';
+      const apiAppRes = await fetch(`${config.API_APP_URL}/api/students/${encodeURIComponent(rollNumber)}${qs}`, {
         method: 'DELETE',
+        signal: dc.signal,
       });
 
       if (apiAppRes.status === 204 || apiAppRes.status === 404) {
-        logger.info({ rollNumber }, 'Student removed from api_app + ZKBio device');
+        logger.info({ rollNumber, force }, 'Student removed from api_app + ZKBio device');
       } else {
         const body = await apiAppRes.text().catch(() => '');
-        logger.error({ rollNumber, status: apiAppRes.status, body }, 'api_app delete failed — aborting Postgres delete');
-        throw new ConflictError(
-          `Device bridge refused to delete '${rollNumber}' (HTTP ${apiAppRes.status}). Not deleted from app database. Check api_app logs / device connection and retry.`
-        );
+        logger.error({ rollNumber, status: apiAppRes.status, body, force }, 'api_app delete failed');
+        if (force) {
+          apiAppUnreachable = true;
+          logger.warn({ rollNumber }, 'force=true — proceeding with Postgres delete despite bridge error');
+        } else {
+          throw new ConflictError(
+            `Device bridge refused to delete '${rollNumber}' (HTTP ${apiAppRes.status}). Not deleted from app database. Panel says: ${body.slice(0, 200) || 'Bad Gateway'}. Fix panel connection or retry with Force Delete.`
+          );
+        }
       }
     } catch (err) {
       if (err instanceof ConflictError || err instanceof NotFoundError) throw err;
       apiAppUnreachable = true;
-      logger.warn({ err, rollNumber }, 'api_app unreachable for delete — proceeding with Postgres delete only');
+      logger.warn({ err, rollNumber, force }, 'api_app unreachable for delete — proceeding with Postgres delete only');
+    } finally {
+      clearTimeout(dt);
     }
 
     // 3. Cascade delete from Postgres inside a transaction

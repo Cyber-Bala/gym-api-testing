@@ -98,6 +98,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   const [togglingGenderId, setTogglingGenderId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmStudent, setDeleteConfirmStudent] = useState<StudentItem | null>(null);
+  const [forceDelete, setForceDelete] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>('');
   const [category, setCategory] = useState<CategoryKey>('');
@@ -226,13 +227,16 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
     }
   };
 
-  const handleDeleteStudent = async () => {
+  const handleDeleteStudent = async (force = false) => {
     if (!deleteConfirmStudent) return;
     setDeletingId(deleteConfirmStudent.id);
     try {
-      const res = await fetch(`/api/v1/people/students/${deleteConfirmStudent.id}`, {
+      const qs = force ? '?force=true' : '';
+      const res = await fetch(`/api/v1/people/students/${deleteConfirmStudent.id}${qs}`, {
         method: 'DELETE',
         credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: force ? JSON.stringify({ force: true }) : undefined,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error?.message || data.message || 'Delete failed');
@@ -241,6 +245,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
         'Student Deleted'
       );
       setDeleteConfirmStudent(null);
+      setForceDelete(false);
       fetchStudents();
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete student');
@@ -733,10 +738,10 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                 variant="primary"
                 size="sm"
                 loading={deletingId === deleteConfirmStudent.id}
-                onClick={handleDeleteStudent}
+                onClick={() => handleDeleteStudent(forceDelete)}
                 className="bg-danger hover:bg-danger/90 border-danger"
               >
-                <Trash2 className="w-3.5 h-3.5" /> Yes, Delete Permanently
+                <Trash2 className="w-3.5 h-3.5" /> {forceDelete ? 'Force Delete Anyway' : 'Yes, Delete Permanently'}
               </Button>
             </>
           }
@@ -768,6 +773,19 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
             <p className="text-xs text-muted">
               Are you sure you want to delete this student? Type their name to confirm below if in doubt.
             </p>
+            <label className="flex items-start gap-2 text-xs text-muted bg-border-subtle/40 border border-border rounded-lg px-3 py-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={forceDelete}
+                onChange={(e) => setForceDelete(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-bold text-text">Force delete even if device panel is offline.</span>
+                <br />
+                Use when you get HTTP 502 / Bad Gateway — removes from app + api_app now; panel row is cleaned on next sync push.
+              </span>
+            </label>
           </div>
         </Modal>
       )}

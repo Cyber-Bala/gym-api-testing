@@ -356,7 +356,8 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
 export const deleteStudent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
-    const result = await peopleService.deleteStudent(req.params.id, adminEmail);
+    const force = req.query.force === 'true' || req.body?.force === true;
+    const result = await peopleService.deleteStudent(req.params.id, adminEmail, force);
 
     res.status(200).json({
       success: true,
