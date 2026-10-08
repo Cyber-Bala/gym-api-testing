@@ -133,6 +133,7 @@ def ensure_department(code: str, name: str) -> dict[str, Any] | None:
     """Create a department if missing (manual §2.1.2.1 POST /api/department/add).
 
     The endpoint is Add/Edit — safe to call when the dept already exists.
+    Uses a SHORT timeout so an offline panel never blocks student creation.
     """
     if not ZKBIO_ENABLED:
         _log_disabled()
@@ -142,26 +143,38 @@ def ensure_department(code: str, name: str) -> dict[str, Any] | None:
             _url("/api/department/add"),
             params=_params(),
             json={"name": name, "code": str(code)},
-            timeout=TIMEOUT,
+            timeout=4.0,
         )
         data = _safe_json(resp, f"ensure_department({code})")
         logger.info(f"ensure_department({code} '{name}'): {data}")
         return data
     except Exception as e:
-        logger.error(f"ensure_department({code}) failed: {e}")
+        logger.warning(f"ensure_department({code}) skipped (panel unreachable): {e}")
         return None
 
 
-def ensure_four_departments() -> dict[str, Any]:
+# Cache so an offline panel causes ONE fast failure, not 4x10s timeouts on
+# every student create (which made creates hang and api_app logs fill with
+# 'timed out'). Re-attempt at most every 10 minutes.
+_DEPT_ENSURE_CACHE: dict[str, Any] = {"at": 0.0, "ok": False}
+
+def ensure_four_departments(force: bool = False) -> dict[str, Any]:
     """Make sure all 4 student buckets exist on the panel.
 
-    Without this, a dept code with no panel department (e.g. default '4')
-    makes the device silently drop the person into General — exactly the
-    'adding in general only' symptom. Call before add_person.
-    Returns {ok, ensured: [...], failed: [...]}.
+    Cached: skips device calls when a recent attempt already succeeded, or
+    when a recent attempt failed (panel offline) unless force=True.
+    Call explicitly via POST /api/zkbio/departments/ensure; add_person only
+    piggybacks when the cache says departments are confirmed missing.
+    Returns {ok, ensured: [...], failed: [...], cached: bool}.
     """
+    import time as _time
     if not ZKBIO_ENABLED:
         return {"ok": False, "reason": "disabled", "ensured": [], "failed": []}
+    now = _time.time()
+    if not force and (now - float(_DEPT_ENSURE_CACHE.get("at", 0)) < 600):
+        return {"ok": bool(_DEPT_ENSURE_CACHE.get("ok")), "cached": True,
+                "ensured": [], "failed": [],
+                "reason": "cached — use force=true or POST /api/zkbio/departments/ensure to re-check"}
     ensured: list[str] = []
     failed: list[str] = []
     for key, code in _four_dept_map().items():
@@ -171,9 +184,10 @@ def ensure_four_departments() -> dict[str, Any]:
         else:
             failed.append(f"{code} ({DEPT_NAMES[key]}): {res}")
     ok = len(failed) == 0
+    _DEPT_ENSURE_CACHE.update({"at": now, "ok": ok})
     if not ok:
         logger.warning(f"ensure_four_departments partial: ensured={ensured} failed={failed}")
-    return {"ok": ok, "ensured": ensured, "failed": failed}
+    return {"ok": ok, "ensured": ensured, "failed": failed, "cached": False}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -183,17 +197,14 @@ def ensure_four_departments() -> dict[str, Any]:
 def add_person(pin: str, name: str, last_name: str = "", dept_code: str | None = None, gender: str | None = None) -> dict[str, Any] | None:
     """Register a person on the ZKBio device (POST /api/person/add is upsert).
 
-    Ensures the 4 student departments exist first so the person never falls
-    back into General because of a missing dept code.
+    Never blocks student creation on department setup: dept ensure runs only
+    via the explicit ensure endpoint / startup. The dept_code is still sent
+    so a correctly-configured panel files the person in the right bucket.
     """
     if not ZKBIO_ENABLED:
         _log_disabled()
         return None
     code = str(dept_code or ZKBIO_DEPT_CODE)
-    try:
-        ensure_four_departments()
-    except Exception as e:
-        logger.warning(f"add_person({pin}): dept ensure failed (continuing): {e}")
     payload = {
         "pin": pin,
         "name": name,
@@ -213,7 +224,7 @@ def add_person(pin: str, name: str, last_name: str = "", dept_code: str | None =
         logger.info(f"add_person({pin}, dept={code}): {data}")
         return data
     except Exception as e:
-        logger.error(f"add_person({pin}) failed: {e}")
+        logger.warning(f"add_person({pin}) device timeout/unreachable (SQLite row still created): {e}")
         return None
 
 

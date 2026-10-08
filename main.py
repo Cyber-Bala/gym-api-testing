@@ -699,6 +699,19 @@ def list_zkbio_departments(
     return data
 
 
+@app.post("/api/zkbio/departments/ensure", tags=["ZKBio"])
+def ensure_zkbio_departments(force: bool = Query(False)):
+    """Create the 4 student bucket departments on the panel if missing.
+
+    Run once after configuring ZKBIO_DEPT_* codes (or after changing them).
+    Cached — normal student creates never block on this.
+    """
+    result = zkbio_client.ensure_four_departments(force=force)
+    if not result.get("ok") and not result.get("cached"):
+        raise HTTPException(502, f"Department ensure failed: {result}")
+    return result
+
+
 def _extract_photo_b64(payload: FaceRegisterRequest) -> str | None:
     """Return raw base64 (strip data: URL prefix, whitespace)."""
     raw = payload.photo_base64 or payload.personPhoto
