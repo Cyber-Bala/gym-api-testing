@@ -189,6 +189,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({ isOpen, onCl
           Department: 'Computer Science and Engineering',
           'Joining Year': 2024,
           'Residency (hosteller / day_scholar)': 'hosteller',
+          Gender: 'male',
         },
         {
           'Roll Number': `2024IT${Math.floor(100 + Math.random() * 800)}`,
@@ -197,6 +198,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({ isOpen, onCl
           Department: 'Information Technology',
           'Joining Year': 2024,
           'Residency (hosteller / day_scholar)': 'day_scholar',
+          Gender: 'female',
         },
         {
           // Malformed record to test validation
@@ -389,7 +391,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({ isOpen, onCl
                     Official Excel Template
                   </h4>
                   <p className="text-xs text-secondary mt-1">
-                    Includes required headers (Roll No, Email, Department, Residency) with verified sample rows.
+                    Includes required headers (Roll No, Email, Department, Residency, Gender) with verified sample rows.
                   </p>
                 </div>
                 <Button

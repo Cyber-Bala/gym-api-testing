@@ -9,6 +9,10 @@ export interface ExecutiveAnalyticsDto {
   totalRegisteredStudents: number;
   totalHostellers: number;
   totalDayScholars: number;
+  dayScholarBoys: number;
+  dayScholarGirls: number;
+  hostellerBoys: number;
+  hostellerGirls: number;
   activeMembershipsCount: number;
   todayTotalCheckIns: number;
   currentLiveOccupants: number;

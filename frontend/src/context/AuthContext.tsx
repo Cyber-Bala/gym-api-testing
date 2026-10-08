@@ -24,6 +24,7 @@ export interface SessionUser {
     department: string;
     joiningYear: number;
     residency: string;
+    gender?: string;
     isBanned: boolean;
     violationCount: number;
     faceEnrollmentStatus?: string | null;

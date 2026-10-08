@@ -44,6 +44,7 @@ public generateStudentTemplateBuffer(): Buffer {
         Department: 'Computer Science and Engineering',
         'Joining Year': 2024,
         'Residency (hosteller / day_scholar)': 'hosteller',
+        'Gender (male / female)': 'male',
       },
       {
         'Roll Number': '2024IT042',
@@ -52,6 +53,7 @@ public generateStudentTemplateBuffer(): Buffer {
         Department: 'Information Technology',
         'Joining Year': 2024,
         'Residency (hosteller / day_scholar)': 'day_scholar',
+        'Gender (male / female)': 'female',
       },
     ];
 
@@ -67,6 +69,7 @@ public generateStudentTemplateBuffer(): Buffer {
       { wch: 32 },
       { wch: 14 },
       { wch: 32 },
+      { wch: 24 },
     ];
 
     const buf = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
@@ -584,11 +587,37 @@ public async processStaffRows(rawRows: Record<string, unknown>[]): Promise<Inges
 
   /**
    * Paginated student query with filtering and search (FR-SEARCH-001..003)
+   * Supports residency + gender combined buckets:
+   *   day_scholar_boys | day_scholar_girls | hosteller_boys | hosteller_girls
    */
   public async getStudentsList(query: StudentFilterQuery) {
     const page = Math.max(1, query.page || 1);
     const limit = Math.min(100, Math.max(1, query.limit || 20));
     const offset = (page - 1) * limit;
+
+    // Resolve combined category into residency + gender (category wins over individual fields)
+    let residency = query.residency;
+    let gender = query.gender;
+    if (query.category) {
+      switch (query.category) {
+        case 'day_scholar_boys':
+          residency = 'day_scholar';
+          gender = 'male';
+          break;
+        case 'day_scholar_girls':
+          residency = 'day_scholar';
+          gender = 'female';
+          break;
+        case 'hosteller_boys':
+          residency = 'hosteller';
+          gender = 'male';
+          break;
+        case 'hosteller_girls':
+          residency = 'hosteller';
+          gender = 'female';
+          break;
+      }
+    }
 
     const conditions = [];
 
@@ -607,8 +636,12 @@ public async processStaffRows(rawRows: Record<string, unknown>[]): Promise<Inges
       conditions.push(ilike(students.department, `%${query.department}%`));
     }
 
-    if (query.residency) {
-      conditions.push(eq(students.residency, query.residency));
+    if (residency) {
+      conditions.push(eq(students.residency, residency));
+    }
+
+    if (gender) {
+      conditions.push(eq(students.gender, gender));
     }
 
     if (query.isBanned !== undefined) {
@@ -636,6 +669,7 @@ const items = await db
         department: students.department,
         joiningYear: students.joiningYear,
         residency: students.residency,
+        gender: students.gender,
         faceEnrollmentStatus: students.faceEnrollmentStatus,
         isBanned: students.isBanned,
         violationCount: students.violationCount,
@@ -651,6 +685,46 @@ const items = await db
       .limit(limit)
       .offset(offset);
 
+    // Global 4-bucket breakdown (ignores pagination, respects search/department only)
+    // so the admin panel can render Day Scholar Boys/Girls + Hosteller Boys/Girls tabs.
+    const breakdownConditions = [];
+    if (query.search) {
+      const searchPattern = `%${query.search.trim()}%`;
+      breakdownConditions.push(
+        or(
+          ilike(people.name, searchPattern),
+          ilike(students.rollNumber, searchPattern),
+          ilike(people.email, searchPattern)
+        )
+      );
+    }
+    if (query.department) {
+      breakdownConditions.push(ilike(students.department, `%${query.department}%`));
+    }
+    const breakdownWhere = breakdownConditions.length > 0 ? and(...breakdownConditions) : undefined;
+    const breakdownRows = await db
+      .select({ residency: students.residency, gender: students.gender, count: count() })
+      .from(students)
+      .innerJoin(people, eq(students.personId, people.id))
+      .where(breakdownWhere)
+      .groupBy(students.residency, students.gender);
+
+    const breakdown = {
+      dayScholarBoys: 0,
+      dayScholarGirls: 0,
+      hostellerBoys: 0,
+      hostellerGirls: 0,
+    };
+    for (const r of breakdownRows) {
+      const n = Number(r.count || 0);
+      if (r.residency === 'day_scholar' && r.gender === 'male') breakdown.dayScholarBoys = n;
+      else if (r.residency === 'day_scholar' && r.gender === 'female') breakdown.dayScholarGirls = n;
+      else if (r.residency === 'hosteller' && r.gender === 'male') breakdown.hostellerBoys = n;
+      else if (r.residency === 'hosteller' && r.gender === 'female') breakdown.hostellerGirls = n;
+      else if (r.residency === 'day_scholar') breakdown.dayScholarBoys += n;
+      else if (r.residency === 'hosteller') breakdown.hostellerBoys += n;
+    }
+
     return {
       items: items.map((row) => ({ ...row, isTrainer: Boolean(row.trainerProfileId) })),
       pagination: {
@@ -659,6 +733,7 @@ const items = await db
         total,
         totalPages: Math.ceil(total / limit),
       },
+      breakdown,
     };
   }
 
@@ -1018,10 +1093,73 @@ const items = await db
       department: newStudent.department,
       joiningYear: newStudent.joiningYear,
       residency: newStudent.residency,
+      gender: newStudent.gender,
       faceEnrollmentStatus: newStudent.faceEnrollmentStatus,
       status: newPerson.status,
       createdAt: newStudent.createdAt.toISOString(),
     };
+  }
+
+  /**
+   * Admin: update a student's gender (Boys / Girls).
+   * Re-syncs the ZKBio dept code for hostellers:
+   *   day_scholar -> dept 1 (general), hosteller female -> dept 2, hosteller male -> dept 3
+   */
+  public async updateStudentGender(
+    id: string,
+    gender: 'male' | 'female',
+    adminEmail: string = 'system'
+  ): Promise<void> {
+    const [existingStudent] = await db
+      .select({
+        id: students.id,
+        rollNumber: students.rollNumber,
+        residency: students.residency,
+        gender: students.gender,
+        personId: students.personId,
+      })
+      .from(students)
+      .where(eq(students.id, id))
+      .limit(1);
+
+    if (!existingStudent) {
+      throw new NotFoundError(`Student with ID ${id} not found`);
+    }
+
+    await db
+      .update(students)
+      .set({ gender, updatedAt: new Date() })
+      .where(eq(students.id, id));
+
+    await db.insert(auditLogs).values({
+      actorEmail: adminEmail,
+      action: 'update_student_gender',
+      entity: 'student',
+      entityId: existingStudent.rollNumber,
+      previousValue: { gender: existingStudent.gender },
+      newValue: { gender },
+      reason: `Admin updated gender for '${existingStudent.rollNumber}' to '${gender}'`,
+    });
+
+    // Best-effort re-sync so hosteller boys/girls land in the right device group
+    try {
+      const [person] = await db
+        .select({ name: people.name, phone: people.phone })
+        .from(people)
+        .where(eq(people.id, existingStudent.personId))
+        .limit(1);
+      if (person) {
+        await this.syncPersonToZkbio(
+          existingStudent.rollNumber,
+          person.name,
+          person.phone,
+          existingStudent.residency,
+          gender
+        );
+      }
+    } catch (err) {
+      logger.warn({ err, rollNumber: existingStudent.rollNumber }, 'Gender re-sync to api_app failed');
+    }
   }
   public async updateStudentResidency(
     id: string,

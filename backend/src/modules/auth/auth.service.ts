@@ -296,6 +296,7 @@ export class AuthService {
           department: studentRec.department,
           joiningYear: studentRec.joiningYear,
           residency: studentRec.residency,
+          gender: studentRec.gender,
           isBanned: studentRec.isBanned,
           violationCount: studentRec.violationCount,
           faceEnrollmentStatus,

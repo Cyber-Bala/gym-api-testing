@@ -35,10 +35,14 @@ export class AdminService {
     const now = new Date();
 
     // 1. Student Breakdown
-    const allStudents = await db.select({ residency: students.residency }).from(students);
+    const allStudents = await db.select({ residency: students.residency, gender: students.gender }).from(students);
     const totalRegisteredStudents = allStudents.length;
     const totalHostellers = allStudents.filter((s) => s.residency === 'hosteller').length;
     const totalDayScholars = allStudents.filter((s) => s.residency === 'day_scholar').length;
+    const dayScholarBoys = allStudents.filter((s) => s.residency === 'day_scholar' && s.gender === 'male').length;
+    const dayScholarGirls = allStudents.filter((s) => s.residency === 'day_scholar' && s.gender === 'female').length;
+    const hostellerBoys = allStudents.filter((s) => s.residency === 'hosteller' && s.gender === 'male').length;
+    const hostellerGirls = allStudents.filter((s) => s.residency === 'hosteller' && s.gender === 'female').length;
 
     // 2. Active Memberships
     const activeMem = await db
@@ -117,6 +121,10 @@ export class AdminService {
       totalRegisteredStudents,
       totalHostellers,
       totalDayScholars,
+      dayScholarBoys,
+      dayScholarGirls,
+      hostellerBoys,
+      hostellerGirls,
       activeMembershipsCount,
       todayTotalCheckIns,
       currentLiveOccupants,

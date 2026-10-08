@@ -112,14 +112,32 @@ export const listStudents = async (req: Request, res: Response, next: NextFuncti
     const search = req.query.search as string | undefined;
     const department = req.query.department as string | undefined;
     const residency = req.query.residency as 'hosteller' | 'day_scholar' | undefined;
+    const gender = req.query.gender as 'male' | 'female' | undefined;
+    const category = req.query.category as
+      | 'day_scholar_boys'
+      | 'day_scholar_girls'
+      | 'hosteller_boys'
+      | 'hosteller_girls'
+      | undefined;
     const isBanned = req.query.isBanned !== undefined ? req.query.isBanned === 'true' : undefined;
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+
+    if (residency !== undefined && residency !== 'hosteller' && residency !== 'day_scholar') {
+      res.status(400).json({ success: false, message: 'Invalid residency type' });
+      return;
+    }
+    if (gender !== undefined && gender !== 'male' && gender !== 'female') {
+      res.status(400).json({ success: false, message: 'Invalid gender' });
+      return;
+    }
 
     const result = await peopleService.getStudentsList({
       search,
       department,
       residency,
+      gender,
+      category,
       isBanned,
       page,
       limit,
@@ -181,6 +199,30 @@ export const updateStudentResidency = async (
     res.status(200).json({
       success: true,
       message: 'Residency updated successfully',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateStudentGender = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { gender } = req.body;
+    if (gender !== 'male' && gender !== 'female') {
+      res.status(400).json({ success: false, message: 'Invalid gender — use male or female' });
+      return;
+    }
+
+    const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
+    await peopleService.updateStudentGender(req.params.id, gender, adminEmail);
+
+    res.status(200).json({
+      success: true,
+      message: 'Gender updated successfully',
     });
   } catch (err) {
     next(err);

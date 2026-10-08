@@ -31,6 +31,7 @@ interface StudentItem {
   department: string;
   joiningYear: number;
   residency: string;
+  gender: string;
   faceEnrollmentStatus: string;
   isBanned: boolean;
   violationCount: number;
@@ -38,6 +39,34 @@ interface StudentItem {
   createdAt: string;
   isTrainer: boolean;
 }
+
+type CategoryKey =
+  | ''
+  | 'day_scholar_boys'
+  | 'day_scholar_girls'
+  | 'hosteller_boys'
+  | 'hosteller_girls';
+
+interface CategoryBreakdown {
+  dayScholarBoys: number;
+  dayScholarGirls: number;
+  hostellerBoys: number;
+  hostellerGirls: number;
+}
+
+const CATEGORY_OPTIONS: { value: CategoryKey; label: string }[] = [
+  { value: '', label: 'All Students' },
+  { value: 'day_scholar_boys', label: 'Day Scholar — Boys' },
+  { value: 'day_scholar_girls', label: 'Day Scholar — Girls' },
+  { value: 'hosteller_boys', label: 'Hosteller — Boys' },
+  { value: 'hosteller_girls', label: 'Hosteller — Girls' },
+];
+
+const getCategoryLabel = (residency: string, gender: string): string => {
+  const isGirl = gender === 'female';
+  if (residency === 'hosteller') return isGirl ? 'Hosteller • Girls' : 'Hosteller • Boys';
+  return isGirl ? 'Day Scholar • Girls' : 'Day Scholar • Boys';
+};
 
 interface StudentDirectoryProps {
   onOpenImport?: () => void;
@@ -66,11 +95,18 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   const [loading, setLoading] = useState<boolean>(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [togglingResidencyId, setTogglingResidencyId] = useState<string | null>(null);
+  const [togglingGenderId, setTogglingGenderId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmStudent, setDeleteConfirmStudent] = useState<StudentItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>('');
-  const [residency, setResidency] = useState<string>('');
+  const [category, setCategory] = useState<CategoryKey>('');
+  const [breakdown, setBreakdown] = useState<CategoryBreakdown>({
+    dayScholarBoys: 0,
+    dayScholarGirls: 0,
+    hostellerBoys: 0,
+    hostellerGirls: 0,
+  });
   const [page, setPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
@@ -93,6 +129,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
     customDepartment: '',
     joiningYear: new Date().getFullYear(),
     residency: 'day_scholar' as 'day_scholar' | 'hosteller',
+    gender: 'male' as 'male' | 'female',
   });
 
   const fetchStudents = async () => {
@@ -101,7 +138,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
-      if (residency) params.append('residency', residency);
+      if (category) params.append('category', category);
       params.append('page', String(page));
       params.append('limit', '10');
 
@@ -115,6 +152,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
       setStudents(data.data.items || []);
       setTotalPages(data.data.pagination.totalPages || 1);
       setTotalCount(data.data.pagination.total || 0);
+      if (data.data.breakdown) setBreakdown(data.data.breakdown);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -125,7 +163,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
 
   useEffect(() => {
     fetchStudents();
-  }, [page, residency]);
+  }, [page, category]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,14 +195,34 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
       await api.patch(`/api/v1/people/students/${stu.id}/residency`, {
         residency: newResidency,
       });
+      const targetBucket = getCategoryLabel(newResidency, stu.gender || 'male');
       toast.success(
-        `Successfully updated ${stu.name}'s residency to ${newResidency === 'hosteller' ? 'Hosteller' : 'Day Scholar'}`
+        `Successfully updated ${stu.name}'s residency to ${newResidency === 'hosteller' ? 'Hosteller' : 'Day Scholar'} — now listed under ${targetBucket}`
       );
       fetchStudents();
     } catch (err: any) {
       toast.error(err.message || 'Failed to update residency');
     } finally {
       setTogglingResidencyId(null);
+    }
+  };
+
+  const handleToggleGender = async (stu: StudentItem) => {
+    setTogglingGenderId(stu.id);
+    try {
+      const newGender = (stu.gender || 'male') === 'male' ? 'female' : 'male';
+      await api.patch(`/api/v1/people/students/${stu.id}/gender`, {
+        gender: newGender,
+      });
+      const targetBucket = getCategoryLabel(stu.residency, newGender);
+      toast.success(
+        `Successfully updated ${stu.name} to ${newGender === 'female' ? 'Girl' : 'Boy'} — now listed under ${targetBucket}`
+      );
+      fetchStudents();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update gender');
+    } finally {
+      setTogglingGenderId(null);
     }
   };
 
@@ -202,6 +260,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
 
     setAddingStudent(true);
     try {
+      const targetBucket = getCategoryLabel(formData.residency, formData.gender);
       await api.post('/api/v1/people/students', {
         name: formData.name.trim(),
         rollNumber: formData.rollNumber.trim().toUpperCase(),
@@ -209,9 +268,10 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
         department: finalDepartment,
         joiningYear: Number(formData.joiningYear),
         residency: formData.residency,
+        gender: formData.gender,
       });
 
-      toast.success(`Student '${formData.rollNumber.toUpperCase()}' registered successfully!`);
+      toast.success(`Student '${formData.rollNumber.toUpperCase()}' registered successfully! Listed under ${targetBucket}.`);
       setAddModalOpen(false);
       setFormData({
         name: '',
@@ -221,6 +281,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
         customDepartment: '',
         joiningYear: new Date().getFullYear(),
         residency: 'day_scholar',
+        gender: 'male',
       });
       fetchStudents();
     } catch (err: unknown) {
@@ -241,7 +302,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
             <span>Provisioned Student Directory</span>
           </h3>
           <p className="text-xs text-muted">
-            {totalCount} verified student accounts ({students.filter(s => s.residency === 'hosteller').length} Hostellers loaded)
+            {totalCount} verified student accounts • Day Boys {breakdown.dayScholarBoys} • Day Girls {breakdown.dayScholarGirls} • Hostel Boys {breakdown.hostellerBoys} • Hostel Girls {breakdown.hostellerGirls}
           </p>
         </div>
 
@@ -275,6 +336,41 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
         </div>
       </div>
 
+      {/* Category Tabs — 4 buckets */}
+      <div className="flex flex-wrap gap-2">
+        {CATEGORY_OPTIONS.map((opt) => {
+          const count =
+            opt.value === ''
+              ? totalCount
+              : opt.value === 'day_scholar_boys'
+                ? breakdown.dayScholarBoys
+                : opt.value === 'day_scholar_girls'
+                  ? breakdown.dayScholarGirls
+                  : opt.value === 'hosteller_boys'
+                    ? breakdown.hostellerBoys
+                    : breakdown.hostellerGirls;
+          const active = category === opt.value;
+          return (
+            <button
+              key={opt.value || 'all'}
+              type="button"
+              onClick={() => {
+                setCategory(opt.value);
+                setPage(1);
+              }}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+                active
+                  ? 'bg-primary text-white border-primary shadow-sm'
+                  : 'bg-surface-elevated text-muted border-border hover:text-text'
+              )}
+            >
+              {opt.label} ({count})
+            </button>
+          );
+        })}
+      </div>
+
       {/* Filters Bar */}
       <div className="flex flex-col sm:flex-row items-center gap-3">
         <form onSubmit={handleSearchSubmit} className="relative flex-1 w-full">
@@ -285,17 +381,19 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
           />
         </form>
 
-        <div className="w-full sm:w-52 shrink-0">
+        <div className="w-full sm:w-60 shrink-0">
           <Select
-            value={residency}
+            value={category}
             onChange={(e) => {
-              setResidency(e.target.value);
+              setCategory(e.target.value as CategoryKey);
               setPage(1);
             }}
           >
-            <option value="">All Residencies</option>
-            <option value="hosteller">Hostellers (Free)</option>
-            <option value="day_scholar">Day Scholars (Pass Required)</option>
+            {CATEGORY_OPTIONS.map((opt) => (
+              <option key={opt.value || 'all'} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </Select>
         </div>
       </div>
@@ -316,7 +414,8 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
             <tr>
               <th className="py-3 px-4">Student</th>
               <th className="py-3 px-4">Department & Year</th>
-              <th className="py-3 px-4">Residency</th>
+              <th className="py-3 px-4">Category</th>
+              <th className="py-3 px-4">Gender</th>
               <th className="py-3 px-4">Role</th>
               <th className="py-3 px-4">Face Scan</th>
               <th className="py-3 px-4">Discipline</th>
@@ -327,13 +426,13 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
           <tbody className="divide-y divide-border text-text">
             {loading && students.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-muted">
+                <td colSpan={9} className="py-8 text-center text-muted">
                   Loading directory records...
                 </td>
               </tr>
             ) : students.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-muted">
+                <td colSpan={9} className="py-8 text-center text-muted">
                   No students found matching current filters.
                 </td>
               </tr>
@@ -357,10 +456,26 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                         'transition-all cursor-pointer disabled:opacity-50 disabled:cursor-wait',
                         togglingResidencyId === stu.id && 'animate-pulse'
                       )}
-                      title="Click to toggle residency"
+                      title="Click to toggle residency (Day Scholar / Hosteller)"
                     >
                       <Badge tone={stu.residency === 'hosteller' ? 'accent' : 'neutral'}>
-                        {stu.residency === 'hosteller' ? 'Hosteller' : 'Day Scholar'}
+                        {getCategoryLabel(stu.residency, stu.gender || 'male')}
+                      </Badge>
+                    </button>
+                  </td>
+                  <td className="py-3 px-4">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleGender(stu)}
+                      disabled={togglingGenderId === stu.id}
+                      className={cn(
+                        'transition-all cursor-pointer disabled:opacity-50 disabled:cursor-wait',
+                        togglingGenderId === stu.id && 'animate-pulse'
+                      )}
+                      title="Click to toggle Boys / Girls"
+                    >
+                      <Badge tone={(stu.gender || 'male') === 'female' ? 'primary' : 'neutral'}>
+                        {(stu.gender || 'male') === 'female' ? 'Girls' : 'Boys'}
                       </Badge>
                     </button>
                   </td>
@@ -559,14 +674,29 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
             />
           )}
 
-          <Select
-            label="Residency Type"
-            value={formData.residency}
-            onChange={(e) => setFormData({ ...formData, residency: e.target.value as 'day_scholar' | 'hosteller' })}
-          >
-            <option value="day_scholar">Day Scholar (Gym Membership Pass Required)</option>
-            <option value="hosteller">Hosteller (Free Inclusive Access)</option>
-          </Select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Select
+              label="Residency Type"
+              value={formData.residency}
+              onChange={(e) => setFormData({ ...formData, residency: e.target.value as 'day_scholar' | 'hosteller' })}
+            >
+              <option value="day_scholar">Day Scholar (Gym Membership Pass Required)</option>
+              <option value="hosteller">Hosteller (Free Inclusive Access)</option>
+            </Select>
+
+            <Select
+              label="Gender (Boys / Girls)"
+              value={formData.gender}
+              onChange={(e) => setFormData({ ...formData, gender: e.target.value as 'male' | 'female' })}
+            >
+              <option value="male">Boys</option>
+              <option value="female">Girls</option>
+            </Select>
+          </div>
+          <p className="text-[11px] text-muted bg-border-subtle/40 border border-border rounded-lg px-3 py-2">
+            Will be listed under: <span className="font-bold text-text">{getCategoryLabel(formData.residency, formData.gender)}</span>
+            {' '}— Day Scholar Boys / Day Scholar Girls / Hosteller Boys / Hosteller Girls auto-routing.
+          </p>
         </form>
       </Modal>
 

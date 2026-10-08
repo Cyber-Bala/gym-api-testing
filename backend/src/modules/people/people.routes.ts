@@ -13,6 +13,7 @@ import {
   setStudentTrainerRole,
   bulkSetTrainerRoles,
   updateStudentResidency,
+  updateStudentGender,
 } from './people.controller.js';
 import { requireAuth, requireRole } from '../auth/auth.middleware.js';
 
@@ -32,6 +33,7 @@ peopleRouter.get('/students', requireRole(['admin', 'super_admin', 'trainer']), 
 peopleRouter.post('/students', requireRole(['admin', 'super_admin']), createStudent);
 peopleRouter.delete('/students/:id', requireRole(['super_admin']), deleteStudent);
 peopleRouter.patch('/students/:id/residency', requireRole(['admin', 'super_admin']), updateStudentResidency);
+peopleRouter.patch('/students/:id/gender', requireRole(['admin', 'super_admin']), updateStudentGender);
 
 // Trainer role management (students who are trainers)
 peopleRouter.patch('/students/:id/trainer-role', requireRole(['admin', 'super_admin']), setStudentTrainerRole);
