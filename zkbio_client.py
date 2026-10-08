@@ -24,6 +24,13 @@ ZKBIO_BASE_URL = os.getenv("ZKBIO_BASE_URL", "http://192.168.1.100:8088").rstrip
 ZKBIO_ACCESS_TOKEN = os.getenv("ZKBIO_ACCESS_TOKEN", "")
 ZKBIO_LEVEL_IDS = os.getenv("ZKBIO_LEVEL_IDS", "1")
 ZKBIO_DEPT_CODE = os.getenv("ZKBIO_DEPT_CODE", "1")
+# 4-way student department routing on the ZKBio admin panel.
+# Discover the REAL codes via GET /api/zkbio/departments and paste them here.
+# Defaults preserve the legacy behaviour (day scholars share dept 1).
+ZKBIO_DEPT_DAY_SCHOLAR_BOYS = os.getenv("ZKBIO_DEPT_DAY_SCHOLAR_BOYS", "1")
+ZKBIO_DEPT_DAY_SCHOLAR_GIRLS = os.getenv("ZKBIO_DEPT_DAY_SCHOLAR_GIRLS", "1")
+ZKBIO_DEPT_HOSTELLER_BOYS = os.getenv("ZKBIO_DEPT_HOSTELLER_BOYS", "3")
+ZKBIO_DEPT_HOSTELLER_GIRLS = os.getenv("ZKBIO_DEPT_HOSTELLER_GIRLS", "2")
 ZKBIO_ZONE_CODE = os.getenv("ZKBIO_ZONE_CODE", "")
 ZKBIO_POLL_INTERVAL = int(os.getenv("ZKBIO_POLL_INTERVAL", "5"))
 ZKBIO_SYNC_INTERVAL = int(os.getenv("ZKBIO_SYNC_INTERVAL", "30"))
