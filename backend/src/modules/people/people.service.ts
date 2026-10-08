@@ -150,7 +150,22 @@ public generateStudentTemplateBuffer(): Buffer {
   }
 
   /**
-   * Helper to push a person directly to ZKBio via api_app
+   * 4-way department routing for the ZKBio admin panel.
+   * Day Scholar Boys / Day Scholar Girls / Hosteller Boys / Hosteller Girls
+   * each land in their own device department (codes from env, see config).
+   */
+  public resolveDeptCode(residency: string, gender: string): string {
+    const isFemale = (gender || 'male').toLowerCase() === 'female';
+    if (residency === 'hosteller') {
+      return isFemale ? config.ZKBIO_DEPT_HOSTELLER_GIRLS : config.ZKBIO_DEPT_HOSTELLER_BOYS;
+    }
+    return isFemale ? config.ZKBIO_DEPT_DAY_SCHOLAR_GIRLS : config.ZKBIO_DEPT_DAY_SCHOLAR_BOYS;
+  }
+
+  /**
+   * Helper to push a person directly to ZKBio via api_app.
+   * POST creates the row; if it already exists (400) we PATCH dept/gender/residency
+   * so residency/gender changes actually move the person to the right dept.
    */
   private async syncPersonToZkbio(
     rollNumber: string,
@@ -159,10 +174,7 @@ public generateStudentTemplateBuffer(): Buffer {
     residency: string,
     gender: string
   ) {
-    let deptCode = '1'; // Default Day Scholar (General)
-    if (residency === 'hosteller') {
-      deptCode = gender === 'female' ? '2' : '3';
-    }
+    const deptCode = this.resolveDeptCode(residency, gender);
 
     try {
       const response = await fetch(`${config.API_APP_URL}/api/students`, {
@@ -175,14 +187,59 @@ public generateStudentTemplateBuffer(): Buffer {
           phone: phone || '',
           dept_code: deptCode,
           residency: residency || undefined,
+          gender: gender || undefined,
         }),
       });
 
-      if (!response.ok && response.status !== 400) {
-        logger.warn({ rollNumber, status: response.status }, 'Failed to sync student to api_app');
+      if (response.status === 400) {
+        // Already exists on api_app — PATCH dept/gender/residency so the
+        // device admin panel moves them out of General into the right dept.
+        try {
+          const patchRes = await fetch(`${config.API_APP_URL}/api/students/${encodeURIComponent(rollNumber)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+            body: JSON.stringify({ dept_code: deptCode, residency, gender }),
+          });
+          if (!patchRes.ok) {
+            logger.warn({ rollNumber, status: patchRes.status, deptCode }, 'api_app PATCH after POST-400 failed');
+          } else {
+            logger.info({ rollNumber, deptCode, residency, gender }, 'Student dept re-synced to api_app via PATCH');
+          }
+        } catch (patchErr) {
+          logger.warn({ err: patchErr, rollNumber }, 'api_app PATCH retry failed');
+        }
+        return;
+      }
+
+      if (!response.ok) {
+        logger.warn({ rollNumber, status: response.status, deptCode }, 'Failed to sync student to api_app');
+      } else {
+        logger.info({ rollNumber, deptCode, residency, gender }, 'Student synced to api_app with 4-way dept');
       }
     } catch (err) {
       logger.warn({ err, rollNumber }, 'Could not reach api_app to sync student');
+    }
+  }
+
+  /**
+   * Push a dept/gender/residency move to api_app for an EXISTING student
+   * (used by residency/gender toggles — POST would 400, so PATCH directly).
+   */
+  private async pushDeptUpdateToApiApp(rollNumber: string, residency: string, gender: string): Promise<void> {
+    const deptCode = this.resolveDeptCode(residency, gender);
+    try {
+      const res = await fetch(`${config.API_APP_URL}/api/students/${encodeURIComponent(rollNumber)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ dept_code: deptCode, residency, gender }),
+      });
+      if (!res.ok && res.status !== 404) {
+        logger.warn({ rollNumber, status: res.status, deptCode }, 'api_app dept PATCH failed');
+      } else {
+        logger.info({ rollNumber, deptCode, residency, gender }, 'Dept move pushed to api_app');
+      }
+    } catch (err) {
+      logger.warn({ err, rollNumber }, 'Could not reach api_app for dept move');
     }
   }
 
@@ -1102,8 +1159,8 @@ const items = await db
 
   /**
    * Admin: update a student's gender (Boys / Girls).
-   * Re-syncs the ZKBio dept code for hostellers:
-   *   day_scholar -> dept 1 (general), hosteller female -> dept 2, hosteller male -> dept 3
+   * Re-syncs the ZKBio dept code for the 4-way routing:
+   *   Day Scholar Boys / Day Scholar Girls / Hosteller Boys / Hosteller Girls
    */
   public async updateStudentGender(
     id: string,
@@ -1141,25 +1198,8 @@ const items = await db
       reason: `Admin updated gender for '${existingStudent.rollNumber}' to '${gender}'`,
     });
 
-    // Best-effort re-sync so hosteller boys/girls land in the right device group
-    try {
-      const [person] = await db
-        .select({ name: people.name, phone: people.phone })
-        .from(people)
-        .where(eq(people.id, existingStudent.personId))
-        .limit(1);
-      if (person) {
-        await this.syncPersonToZkbio(
-          existingStudent.rollNumber,
-          person.name,
-          person.phone,
-          existingStudent.residency,
-          gender
-        );
-      }
-    } catch (err) {
-      logger.warn({ err, rollNumber: existingStudent.rollNumber }, 'Gender re-sync to api_app failed');
-    }
+    // Push dept move to api_app + device so Boys/Girls land in the right dept
+    await this.pushDeptUpdateToApiApp(existingStudent.rollNumber, existingStudent.residency, gender);
   }
   public async updateStudentResidency(
     id: string,
@@ -1167,10 +1207,11 @@ const items = await db
     adminEmail: string = 'system'
   ): Promise<void> {
     const [existingStudent] = await db
-      .select({ 
-        id: students.id, 
+      .select({
+        id: students.id,
         rollNumber: students.rollNumber,
         residency: students.residency,
+        gender: students.gender,
         personId: students.personId
       })
       .from(students)
@@ -1221,23 +1262,28 @@ const items = await db
         .set({ residency, updatedAt: new Date() })
         .where(eq(students.id, id));
     }
+
+    // Always push the dept move so the device panel leaves General
+    // and lands in Day Scholar Boys/Girls or Hosteller Boys/Girls.
+    await this.pushDeptUpdateToApiApp(
+      existingStudent.rollNumber,
+      residency,
+      existingStudent.gender || 'male'
+    );
   }
 
   /**
    * Fully delete a student:
-   *  1. Cascade delete all related rows from our Postgres DB (bookings, violations,
-   *     memberships, payment orders, access sessions, trainer profile, student, person, account)
-   *  2. Call api_app DELETE /api/students/{roll_no} which:
-   *       a. Revokes access level on the physical ZKBio turnstile device
-   *       b. Syncs the device
-   *       c. Deletes the student from the api_app SQLite DB
+   *  1. Delete from api_app SQLite DB + ZKBio device FIRST (so a device
+   *     failure aborts before Postgres is touched — no orphans).
+   *  2. Cascade delete all related rows from our Postgres DB.
    */
   public async deleteStudent(studentId: string, adminEmail: string): Promise<{ deletedRollNumber: string }> {
     // 1. Resolve student and their associated account ID
     const [stu] = await db
-      .select({ 
-        id: students.id, 
-        personId: students.personId, 
+      .select({
+        id: students.id,
+        personId: students.personId,
         rollNumber: students.rollNumber,
         accountId: people.accountId
       })
@@ -1252,7 +1298,34 @@ const items = await db
 
     const rollNumber = stu.rollNumber;
 
-    // 2. Cascade delete from Postgres inside a transaction
+    // 2. Delete from api_app SQLite DB + ZKBio device FIRST.
+    // If api_app is reachable but reports failure, abort so Postgres keeps
+    // the row (admin can retry). If api_app is OFFLINE (fetch throws),
+    // still proceed — device was already unreachable, nothing to orphan.
+    // Either way the portal sync poller can't resurrect the row afterwards
+    // because api_app no longer has it (or was never reachable).
+    let apiAppUnreachable = false;
+    try {
+      const apiAppRes = await fetch(`${config.API_APP_URL}/api/students/${encodeURIComponent(rollNumber)}`, {
+        method: 'DELETE',
+      });
+
+      if (apiAppRes.status === 204 || apiAppRes.status === 404) {
+        logger.info({ rollNumber }, 'Student removed from api_app + ZKBio device');
+      } else {
+        const body = await apiAppRes.text().catch(() => '');
+        logger.error({ rollNumber, status: apiAppRes.status, body }, 'api_app delete failed — aborting Postgres delete');
+        throw new ConflictError(
+          `Device bridge refused to delete '${rollNumber}' (HTTP ${apiAppRes.status}). Not deleted from app database. Check api_app logs / device connection and retry.`
+        );
+      }
+    } catch (err) {
+      if (err instanceof ConflictError || err instanceof NotFoundError) throw err;
+      apiAppUnreachable = true;
+      logger.warn({ err, rollNumber }, 'api_app unreachable for delete — proceeding with Postgres delete only');
+    }
+
+    // 3. Cascade delete from Postgres inside a transaction
     // (All child tables have ON DELETE CASCADE FKs — no manual child deletes needed)
     await db.transaction(async (tx) => {
       // All child tables (bookings, memberships, violations, paymentOrders,
@@ -1268,7 +1341,9 @@ const items = await db
         actorEmail: adminEmail,
         entity: 'student',
         entityId: rollNumber,
-        reason: `Student ${rollNumber} permanently deleted by admin`,
+        reason: apiAppUnreachable
+          ? `Student ${rollNumber} deleted from app DB while device bridge offline (device cleanup pending)`
+          : `Student ${rollNumber} permanently deleted by admin`,
         newValue: { studentId: stu.id, rollNumber },
       });
 
@@ -1282,24 +1357,7 @@ const items = await db
     });
 
 
-    logger.info({ rollNumber, adminEmail }, 'Student deleted from Postgres DB');
-
-    // 3. Delete from api_app SQLite DB + ZKBio device (best-effort)
-    try {
-      const apiAppRes = await fetch(`${config.API_APP_URL}/api/students/${rollNumber}`, {
-        method: 'DELETE',
-      });
-
-      if (apiAppRes.status === 204 || apiAppRes.status === 404) {
-        logger.info({ rollNumber }, 'Student removed from api_app + ZKBio device');
-      } else {
-        const body = await apiAppRes.text().catch(() => '');
-        logger.warn({ rollNumber, status: apiAppRes.status, body }, 'api_app delete returned unexpected status');
-      }
-    } catch (err) {
-      // api_app may be offline (no device connected). Postgres deletion already succeeded.
-      logger.warn({ err, rollNumber }, 'Could not reach api_app to delete from device (device may be offline)');
-    }
+    logger.info({ rollNumber, adminEmail, apiAppUnreachable }, 'Student deleted from Postgres DB');
 
     return { deletedRollNumber: rollNumber };
   }

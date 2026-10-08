@@ -56,6 +56,14 @@ const envSchema = z.object({
     .string()
     .default('http://localhost:44444')
     .transform((v) => v.replace(/\/+$/, '')),
+
+  // 4-way ZKBio department routing. These must match the department codes
+  // created on the ZKBio CVSecurity admin panel. Discover them via
+  // GET <api_app>/api/zkbio/departments, then set here + restart backend.
+  ZKBIO_DEPT_DAY_SCHOLAR_BOYS: z.string().default('1'),
+  ZKBIO_DEPT_DAY_SCHOLAR_GIRLS: z.string().default('4'),
+  ZKBIO_DEPT_HOSTELLER_BOYS: z.string().default('3'),
+  ZKBIO_DEPT_HOSTELLER_GIRLS: z.string().default('2'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
