@@ -79,20 +79,126 @@ def to_device_gender(gender: str | None = None) -> str:
     return "F" if str(gender or "").strip().lower() in ("female", "f", "girls", "girl") else "M"
 
 
+def _safe_json(resp: Any, label: str) -> dict[str, Any] | None:
+    """Parse device JSON without crashing on Bad Gateway HTML pages.
+
+    The panel (or ngrok/proxy in front of it) sometimes answers 502 with an
+    HTML page. resp.json() then throws — previously that looked like
+    'unreachable'. Return the dict on success, else a normalized error dict
+    carrying the HTTP status so callers can surface the real cause.
+    """
+    try:
+        status = getattr(resp, "status_code", None)
+    except Exception:
+        status = None
+    try:
+        data = resp.json()
+        if isinstance(data, dict):
+            if status is not None and status >= 500:
+                logger.error(f"{label}: portal HTTP {status} with JSON body: {str(data)[:300]}")
+            return data
+        return {"code": -1, "message": f"Unexpected portal body (HTTP {status})", "data": data}
+    except Exception:
+        try:
+            body = resp.text[:300] if hasattr(resp, "text") else ""
+        except Exception:
+            body = ""
+        logger.error(f"{label}: portal returned non-JSON (HTTP {status}): {body[:300]}")
+        return {"code": -1, "message": f"Portal Bad Gateway / non-JSON (HTTP {status})", "httpStatus": status, "body": body[:300]}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  Department Management (4-way routing)
+# ══════════════════════════════════════════════════════════════════
+
+# Canonical names for the 4 student buckets on the admin panel.
+DEPT_NAMES = {
+    "day_scholar_boys": "Day Scholar - Boys",
+    "day_scholar_girls": "Day Scholar - Girls",
+    "hosteller_boys": "Hosteller - Boys",
+    "hosteller_girls": "Hosteller - Girls",
+}
+
+
+def _four_dept_map() -> dict[str, str]:
+    return {
+        "day_scholar_boys": ZKBIO_DEPT_DAY_SCHOLAR_BOYS,
+        "day_scholar_girls": ZKBIO_DEPT_DAY_SCHOLAR_GIRLS,
+        "hosteller_boys": ZKBIO_DEPT_HOSTELLER_BOYS,
+        "hosteller_girls": ZKBIO_DEPT_HOSTELLER_GIRLS,
+    }
+
+
+def ensure_department(code: str, name: str) -> dict[str, Any] | None:
+    """Create a department if missing (manual §2.1.2.1 POST /api/department/add).
+
+    The endpoint is Add/Edit — safe to call when the dept already exists.
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    try:
+        resp = httpx.post(
+            _url("/api/department/add"),
+            params=_params(),
+            json={"name": name, "code": str(code)},
+            timeout=TIMEOUT,
+        )
+        data = _safe_json(resp, f"ensure_department({code})")
+        logger.info(f"ensure_department({code} '{name}'): {data}")
+        return data
+    except Exception as e:
+        logger.error(f"ensure_department({code}) failed: {e}")
+        return None
+
+
+def ensure_four_departments() -> dict[str, Any]:
+    """Make sure all 4 student buckets exist on the panel.
+
+    Without this, a dept code with no panel department (e.g. default '4')
+    makes the device silently drop the person into General — exactly the
+    'adding in general only' symptom. Call before add_person.
+    Returns {ok, ensured: [...], failed: [...]}.
+    """
+    if not ZKBIO_ENABLED:
+        return {"ok": False, "reason": "disabled", "ensured": [], "failed": []}
+    ensured: list[str] = []
+    failed: list[str] = []
+    for key, code in _four_dept_map().items():
+        res = ensure_department(code, DEPT_NAMES[key])
+        if isinstance(res, dict) and res.get("code") == 0:
+            ensured.append(f"{code} ({DEPT_NAMES[key]})")
+        else:
+            failed.append(f"{code} ({DEPT_NAMES[key]}): {res}")
+    ok = len(failed) == 0
+    if not ok:
+        logger.warning(f"ensure_four_departments partial: ensured={ensured} failed={failed}")
+    return {"ok": ok, "ensured": ensured, "failed": failed}
+
+
 # ══════════════════════════════════════════════════════════════════
 #  Person Management
 # ══════════════════════════════════════════════════════════════════
 
 def add_person(pin: str, name: str, last_name: str = "", dept_code: str | None = None, gender: str | None = None) -> dict[str, Any] | None:
-    """Register a person on the ZKBio device (POST /api/person/add is upsert)."""
+    """Register a person on the ZKBio device (POST /api/person/add is upsert).
+
+    Ensures the 4 student departments exist first so the person never falls
+    back into General because of a missing dept code.
+    """
     if not ZKBIO_ENABLED:
         _log_disabled()
         return None
+    code = str(dept_code or ZKBIO_DEPT_CODE)
+    try:
+        ensure_four_departments()
+    except Exception as e:
+        logger.warning(f"add_person({pin}): dept ensure failed (continuing): {e}")
     payload = {
         "pin": pin,
         "name": name,
         "lastName": last_name,
-        "deptCode": dept_code or ZKBIO_DEPT_CODE,
+        "deptCode": code,
         "gender": to_device_gender(gender),
         "accLevelIds": ZKBIO_LEVEL_IDS,
     }
@@ -103,8 +209,8 @@ def add_person(pin: str, name: str, last_name: str = "", dept_code: str | None =
             json=payload,
             timeout=TIMEOUT,
         )
-        data = resp.json()
-        logger.info(f"add_person({pin}): {data}")
+        data = _safe_json(resp, f"add_person({pin})")
+        logger.info(f"add_person({pin}, dept={code}): {data}")
         return data
     except Exception as e:
         logger.error(f"add_person({pin}) failed: {e}")
@@ -164,7 +270,9 @@ def delete_person(pin: str) -> dict[str, Any] | None:
 
     Manual §2.1.1.2 is DELETE /api/person/delete/{pin}, §2.1.1.3 is the
     POST fallback /api/person/delete?pin={pin}. Try DELETE first, then POST.
-    Returns the portal JSON on success, None when disabled/unreachable.
+    Returns the portal JSON on success, None only when disabled/unreachable
+    (transport exception). A portal 502/HTML page returns an error dict
+    (code -1) instead of None so callers can tell 'refused' from 'offline'.
     """
     if not ZKBIO_ENABLED:
         _log_disabled()
@@ -177,15 +285,14 @@ def delete_person(pin: str) -> dict[str, Any] | None:
             params=_params(),
             timeout=TIMEOUT,
         )
-        data = resp.json()
+        data = _safe_json(resp, f"delete_person({pin}) [DELETE]")
         logger.info(f"delete_person({pin}) [DELETE]: {data}")
         if isinstance(data, dict) and data.get("code") == 0:
             return data
-        # Non-zero code — fall through to POST fallback below
         first_error = data
     except Exception as e:
-        logger.error(f"delete_person({pin}) [DELETE] failed: {e}")
-        first_error = None
+        logger.error(f"delete_person({pin}) [DELETE] transport failed: {e}")
+        return None
     # 2. POST /api/person/delete?pin={pin} (fallback, manual §2.1.1.3)
     try:
         resp = httpx.post(
@@ -193,14 +300,13 @@ def delete_person(pin: str) -> dict[str, Any] | None:
             params=_params(pin=pin),
             timeout=TIMEOUT,
         )
-        data = resp.json()
+        data = _safe_json(resp, f"delete_person({pin}) [POST]")
         logger.info(f"delete_person({pin}) [POST fallback]: {data}")
         if isinstance(data, dict) and data.get("code") == 0:
             return data
-        # Both attempts failed — return whichever error is more informative
         return data if isinstance(data, dict) else first_error
     except Exception as e:
-        logger.error(f"delete_person({pin}) [POST fallback] failed: {e}")
+        logger.error(f"delete_person({pin}) [POST fallback] transport failed: {e}")
         return None
 
 
@@ -216,7 +322,7 @@ def delete_bio_templates(pin: str) -> dict[str, Any] | None:
             params=_params(),
             timeout=TIMEOUT,
         )
-        data = resp.json()
+        data = _safe_json(resp, f"delete_bio_templates({pin})")
         logger.info(f"delete_bio_templates({pin}) [v1]: {data}")
         return data
     except Exception as e:
@@ -240,7 +346,7 @@ def list_departments(page_no: int = 1, page_size: int = 100) -> dict[str, Any] |
             params=_params(pageNo=page_no, pageSize=page_size),
             timeout=TIMEOUT,
         )
-        data = resp.json()
+        data = _safe_json(resp, "list_departments")
         logger.info(f"list_departments: {str(data)[:500]}")
         return data
     except Exception as e:

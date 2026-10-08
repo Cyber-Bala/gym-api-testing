@@ -802,7 +802,11 @@ def register_face(roll_no: str, payload: FaceRegisterRequest, db: Session = Depe
 
 
 @app.delete("/api/students/{roll_no}", status_code=204, tags=["Students"])
-def delete_student(roll_no: str, db: Session = Depends(get_db)):
+def delete_student(
+    roll_no: str,
+    force: bool = Query(False, description="Delete locally even if the device panel is unreachable"),
+    db: Session = Depends(get_db),
+):
     student = db.query(Student).filter(Student.roll_no == roll_no).first()
     if not student:
         raise HTTPException(404, "Student not found")
@@ -827,20 +831,27 @@ def delete_student(roll_no: str, db: Session = Depends(get_db)):
             device_errors.append(f"delete_bio: {e}")
         person_res = zkbio_client.delete_person(pin=roll_no)
         if person_res is None:
-            device_errors.append("delete_person unreachable (no response)")
-            logger.error(f"[ZKBio] delete_person({roll_no}) unreachable — aborting local delete")
-            raise HTTPException(502, f"Device unreachable — '{roll_no}' NOT deleted anywhere. Retry when the panel is reachable.")
-        if isinstance(person_res, dict) and person_res.get("code") not in (0, None):
+            msg = f"Device transport failed for '{roll_no}' (panel/IP/token unreachable)."
+            if force:
+                logger.warning(f"[ZKBio] {msg} force=true — deleting locally anyway.")
+            else:
+                logger.error(f"[ZKBio] {msg} Aborting local delete; retry with ?force=true to override.")
+                raise HTTPException(502, msg + " NOT deleted anywhere. Fix panel connection or retry with ?force=true.")
+        elif isinstance(person_res, dict) and person_res.get("code") not in (0, None):
             # Code -22 = already gone on the panel — treat as success.
             if person_res.get("code") == -22:
                 logger.info(f"[ZKBio] delete_person({roll_no}): already absent on panel (-22), continuing")
             else:
-                logger.error(f"[ZKBio] delete_person({roll_no}) refused: {person_res}")
-                raise HTTPException(
-                    502,
-                    f"Device refused to delete '{roll_no}' (code={person_res.get('code')}, msg={person_res.get('message')}). NOT deleted locally.",
-                )
-        logger.info(f"[ZKBio] {roll_no} removed from device (errors_nonfatal={device_errors})")
+                msg = (f"Device refused to delete '{roll_no}' "
+                       f"(code={person_res.get('code')}, msg={person_res.get('message')}, http={person_res.get('httpStatus')}).")
+                if force:
+                    logger.warning(f"[ZKBio] {msg} force=true — deleting locally anyway.")
+                    device_errors.append(msg)
+                else:
+                    logger.error(f"[ZKBio] {msg} NOT deleted locally; retry with ?force=true to override.")
+                    raise HTTPException(502, msg + " NOT deleted locally. Retry with ?force=true to delete anyway.")
+        else:
+            logger.info(f"[ZKBio] {roll_no} removed from device (errors_nonfatal={device_errors})")
 
     db.delete(student)
     db.commit()
