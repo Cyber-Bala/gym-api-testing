@@ -504,6 +504,12 @@ async function loadStudents() {
 }
 
 function categoryLabel(s) {
+  if (s.dept_code === '2') return 'Hosteller • Girls';
+  if (s.dept_code === '3') return 'Hosteller • Boys';
+  if (s.dept_code === '7') return 'Day Scholar • Boys';
+  if (s.dept_code === '8') return 'Day Scholar • Girls';
+  if (s.dept_code === '1') return 'General';
+  
   const isGirl = (s.gender || '') === 'female';
   const isHostel = (s.residency || '') === 'hosteller';
   if (isHostel) return isGirl ? 'Hosteller • Girls' : 'Hosteller • Boys';

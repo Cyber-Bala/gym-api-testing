@@ -6,7 +6,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 import base64
 import binascii
@@ -87,7 +87,12 @@ _seen_txn_ids: set[str] = set()
 
 
 async def poll_transactions():
-    """Background task: poll ZKBio device for new face-scan transactions."""
+    """Background task: poll ZKBio device for new face-scan transactions.
+
+    Runs the blocking httpx call in a thread so it never stalls the event loop.
+    Uses exponential back-off (up to _POLL_BACKOFF_MAX_S) when the device is
+    unreachable so log spam is suppressed during outages.
+    """
     global _last_poll_time
 
     if not zkbio_client.ZKBIO_ENABLED:
@@ -99,17 +104,22 @@ async def poll_transactions():
     # Start polling from 1 hour ago to catch recent events on startup
     _last_poll_time = datetime.utcnow() - timedelta(hours=1)
 
+    _POLL_BACKOFF_MAX_S = 300  # 5 minutes
+    _backoff = 0  # seconds; 0 means "use normal interval"
+
     while True:
         try:
             now = datetime.utcnow()
             start_str = _last_poll_time.strftime("%Y-%m-%d %H:%M:%S")
             end_str = now.strftime("%Y-%m-%d %H:%M:%S")
 
-            transactions = zkbio_client.get_transactions(
-                start_date=start_str,
-                end_date=end_str,
-                page_no=1,
-                page_size=100,
+            # Run the blocking synchronous call off the event loop
+            transactions = await asyncio.to_thread(
+                zkbio_client.get_transactions,
+                start_str,
+                end_str,
+                1,
+                100,
             )
 
             if transactions:
@@ -121,11 +131,14 @@ async def poll_transactions():
                     db.close()
 
             _last_poll_time = now
+            _backoff = 0  # success — reset back-off
 
         except Exception as e:
-            logger.error(f"[Poller] Error: {e}")
+            # Exponential back-off: 10s → 20s → 40s … capped at _POLL_BACKOFF_MAX_S
+            _backoff = min(_backoff * 2 if _backoff else 10, _POLL_BACKOFF_MAX_S)
 
-        await asyncio.sleep(zkbio_client.ZKBIO_POLL_INTERVAL)
+        sleep_for = _backoff if _backoff else zkbio_client.ZKBIO_POLL_INTERVAL
+        await asyncio.sleep(sleep_for)
 
 
 async def _process_transaction(txn: dict, db: Session):
@@ -348,19 +361,26 @@ def pull_portal_sync(db: Session) -> dict:
         name = _portal_name(item) or pin
         dept = str(item.get("deptCode") or item.get("dept_code") or "") or None
         portal_gender = _portal_gender(item)
+        # Derive residency and gender from the device deptCode
+        derived_residency, derived_gender = zkbio_client.reverse_dept_code(dept)
+        # Use device gender if available, otherwise fall back to derived
+        final_gender = portal_gender or derived_gender
+        final_residency = derived_residency
+
         existing = local_by_pin.get(pin)
         if not existing:
             # New portal person → resolve 4-way dept locally when portal
             # didn't carry one, so api_app + gym-app agree on the bucket.
             if not dept:
                 try:
-                    dept = zkbio_client.resolve_dept_code(None, portal_gender)
+                    dept = zkbio_client.resolve_dept_code(None, final_gender)
                 except Exception:
                     dept = None
             db.add(Student(
                 roll_no=pin, name=name, room_no="N/A",
                 payment_status=PaymentStatus.UNPAID, access_enabled=False,
-                dept_code=dept, gender=portal_gender,
+                dept_code=dept, gender=final_gender,
+                residency=final_residency,
             ))
             added.append(pin)
         else:
@@ -371,8 +391,11 @@ def pull_portal_sync(db: Session) -> dict:
             if dept and existing.dept_code != dept:
                 existing.dept_code = dept
                 changed = True
-            if portal_gender and existing.gender != portal_gender:
-                existing.gender = portal_gender
+            if final_gender and existing.gender != final_gender:
+                existing.gender = final_gender
+                changed = True
+            if final_residency and existing.residency != final_residency:
+                existing.residency = final_residency
                 changed = True
             if changed:
                 existing.updated_at = datetime.utcnow()
@@ -413,22 +436,43 @@ def pull_portal_sync(db: Session) -> dict:
 
 
 async def poll_person_sync():
-    """Background task: reconcile portal persons into SQLite every SYNC_INTERVAL."""
+    """Background task: reconcile portal persons into SQLite every SYNC_INTERVAL.
+
+    Runs the blocking sync in a thread so it never stalls the event loop.
+    Uses exponential back-off (up to 5 minutes) when the device is unreachable.
+    """
     if not zkbio_client.ZKBIO_ENABLED:
         logger.info("[Sync] ZKBio disabled, portal sync poller will not run.")
         return
     logger.info(f"[Sync] Starting portal sync poller (interval={zkbio_client.ZKBIO_SYNC_INTERVAL}s)")
     await asyncio.sleep(10)  # let the app finish startup first
+
+    _SYNC_BACKOFF_MAX_S = 300  # 5 minutes
+    _backoff = 0
+
     while True:
         try:
-            db = SessionLocal()
-            try:
-                pull_portal_sync(db)
-            finally:
-                db.close()
+            def _do_sync():
+                db = SessionLocal()
+                try:
+                    return pull_portal_sync(db)
+                finally:
+                    db.close()
+
+            # Run the blocking sync entirely off the event loop (including DB session)
+            result = await asyncio.to_thread(_do_sync)
+            
+            # Back-off only when the sync itself signals a failure
+            if isinstance(result, dict) and not result.get("ok"):
+                _backoff = min(_backoff * 2 if _backoff else 10, _SYNC_BACKOFF_MAX_S)
+            else:
+                _backoff = 0  # success — reset
         except Exception as e:
             logger.error(f"[Sync] poller error: {e}")
-        await asyncio.sleep(zkbio_client.ZKBIO_SYNC_INTERVAL)
+            _backoff = min(_backoff * 2 if _backoff else 10, _SYNC_BACKOFF_MAX_S)
+
+        sleep_for = _backoff if _backoff else zkbio_client.ZKBIO_SYNC_INTERVAL
+        await asyncio.sleep(sleep_for)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -545,8 +589,13 @@ def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
         pin=student.roll_no, name=student.name,
         dept_code=dept_code, gender=student.gender,
     )
-    if zkbio_client.ZKBIO_ENABLED and not (isinstance(add_res, dict) and add_res.get("code") == 0):
-        logger.warning(f"[ZKBio] add_person({student.roll_no}, dept={dept_code}) unexpected: {add_res}")
+    if zkbio_client.ZKBIO_ENABLED:
+        if not (isinstance(add_res, dict) and add_res.get("code") == 0):
+            logger.warning(f"[ZKBio] add_person({student.roll_no}, dept={dept_code}) unexpected: {add_res}")
+        else:
+            # Grant access level and push to the physical turnstile
+            zkbio_client.add_level_person(pin=student.roll_no)
+            zkbio_client.sync_person(pin=student.roll_no)
 
     return student
 

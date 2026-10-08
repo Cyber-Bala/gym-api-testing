@@ -74,6 +74,26 @@ def resolve_dept_code(residency: str | None = None, gender: str | None = None) -
     return ZKBIO_DEPT_DAY_SCHOLAR_GIRLS if is_female else ZKBIO_DEPT_DAY_SCHOLAR_BOYS
 
 
+def reverse_dept_code(dept_code: str | None) -> tuple[str | None, str | None]:
+    """Convert a ZKBio deptCode back to (residency, gender).
+
+    Returns (residency, gender) based on the configured department mapping.
+    Returns (None, None) if the code doesn't match any known mapping.
+    """
+    if not dept_code:
+        return (None, None)
+    code = str(dept_code).strip()
+    if code == ZKBIO_DEPT_DAY_SCHOLAR_BOYS:
+        return ("day_scholar", "male")
+    if code == ZKBIO_DEPT_DAY_SCHOLAR_GIRLS:
+        return ("day_scholar", "female")
+    if code == ZKBIO_DEPT_HOSTELLER_BOYS:
+        return ("hosteller", "male")
+    if code == ZKBIO_DEPT_HOSTELLER_GIRLS:
+        return ("hosteller", "female")
+    return (None, None)
+
+
 def to_device_gender(gender: str | None = None) -> str:
     """Device expects M/F (manual §2.1.1.1 gender: male/female, §2.1.1.4 M/F)."""
     return "F" if str(gender or "").strip().lower() in ("female", "f", "girls", "girl") else "M"
@@ -261,8 +281,7 @@ def get_person(pin: str) -> dict[str, Any] | None:
     try:
         resp = httpx.post(
             _url("/api/v2/person/getPersonList"),
-            params=_params(),
-            json={"pins": pin, "pageNo": 1, "pageSize": 5},
+            params=_params(pins=pin, pageNo=1, pageSize=5),
             timeout=TIMEOUT,
         )
         data = resp.json()
@@ -379,8 +398,7 @@ def list_persons(page_no: int = 1, page_size: int = 100) -> dict[str, Any] | Non
     try:
         resp = httpx.post(
             _url("/api/v2/person/getPersonList"),
-            params=_params(),
-            json={"pageNo": page_no, "pageSize": page_size},
+            params=_params(pageNo=page_no, pageSize=page_size),
             timeout=TIMEOUT,
         )
         data = resp.json()
@@ -511,8 +529,7 @@ def check_person_present(pin: str) -> bool | None:
     try:
         resp = httpx.post(
             _url("/api/v2/person/getPersonList"),
-            params=_params(),
-            json={"pins": pin, "pageNo": 1, "pageSize": 5},
+            params=_params(pins=pin, pageNo=1, pageSize=5),
             timeout=TIMEOUT,
         )
         data = resp.json()
@@ -1016,7 +1033,7 @@ def get_transactions(
         return []
     except Exception as e:
         logger.error(f"get_transactions failed: {e}")
-        return []
+        raise e
 
 
 # ══════════════════════════════════════════════════════════════════
