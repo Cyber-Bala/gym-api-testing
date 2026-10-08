@@ -60,8 +60,8 @@ const envSchema = z.object({
   // 4-way ZKBio department routing. These must match the department codes
   // created on the ZKBio CVSecurity admin panel. Discover them via
   // GET <api_app>/api/zkbio/departments, then set here + restart backend.
-  ZKBIO_DEPT_DAY_SCHOLAR_BOYS: z.string().default('1'),
-  ZKBIO_DEPT_DAY_SCHOLAR_GIRLS: z.string().default('4'),
+  ZKBIO_DEPT_DAY_SCHOLAR_BOYS: z.string().default('7'),
+  ZKBIO_DEPT_DAY_SCHOLAR_GIRLS: z.string().default('8'),
   ZKBIO_DEPT_HOSTELLER_BOYS: z.string().default('3'),
   ZKBIO_DEPT_HOSTELLER_GIRLS: z.string().default('2'),
 });
@@ -75,3 +75,4 @@ if (!parsedEnv.success) {
 
 export const config = parsedEnv.data;
 export type Config = typeof config;
+
