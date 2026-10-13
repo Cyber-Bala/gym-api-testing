@@ -73,7 +73,11 @@ export interface StudentFilterQuery {
   residency?: 'hosteller' | 'day_scholar';
   gender?: 'male' | 'female';
   /** Combined bucket: day_scholar_boys | day_scholar_girls | hosteller_boys | hosteller_girls */
-  category?: 'day_scholar_boys' | 'day_scholar_girls' | 'hosteller_boys' | 'hosteller_girls';
+  category?: 'day_scholar_boys' | 'day_scholar_girls' | 'hosteller_boys' | 'hosteller_girls' | 'other';
+  /** face_enrollment_status: enrolled (on gate) | pending (saved, waiting) | not_enrolled | on_zkbio (imported) */
+  face?: 'enrolled' | 'pending' | 'not_enrolled' | 'on_zkbio';
+  /** app = added in the gym app, zkbio = brought in from ZKBio */
+  source?: 'app' | 'zkbio';
   isBanned?: boolean;
   page?: number;
   limit?: number;

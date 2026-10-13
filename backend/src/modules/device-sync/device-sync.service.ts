@@ -3,6 +3,8 @@ import { db } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { config } from '../../config/index.js';
 import { students } from '../../db/schema/index.js';
+import { ServiceUnavailableError } from '../../shared/errors/index.js';
+import { faceMlService } from '../face-ml/face-ml.service.js';
 
 /**
  * Bridge helper: gym-app (Postgres, app truth for payment) → api_app
@@ -157,11 +159,21 @@ export async function reconcileFromApiApp(deleteMissingLocally = false): Promise
 
   const apiRolls = new Set(apiRows.map((r) => r.roll_no));
   const localRows = await db
-    .select({ id: students.id, rollNumber: students.rollNumber })
+    .select({
+      id: students.id,
+      rollNumber: students.rollNumber,
+      source: students.source,
+      zkbioSynced: students.zkbioSynced,
+    })
     .from(students);
   const localRolls = new Set(localRows.map((r) => r.rollNumber));
+  // Students that were never sent to ZKBio (waiting for a face / payment) are not "missing": they
+  // simply are not there yet. Only people that came from ZKBio, or that we added, can go missing.
+  const trackedRolls = new Set(
+    localRows.filter((r) => r.source === 'zkbio' || r.zkbioSynced).map((r) => r.rollNumber)
+  );
 
-  const missingInApi = [...localRolls].filter((r) => !apiRolls.has(r));
+  const missingInApi = [...trackedRolls].filter((r) => !apiRolls.has(r));
   const missingLocally = [...apiRolls].filter((r) => !localRolls.has(r));
   const deletedLocally: string[] = [];
 
@@ -195,4 +207,87 @@ export async function reconcileFromApiApp(deleteMissingLocally = false): Promise
     deletedLocally,
     dryRun: !deleteMissingLocally,
   };
+}
+
+
+/* ───────────── Health: is every connected app turned on? ───────────── */
+
+export const GYM_API_OFFLINE_MSG =
+  'The Gym API is not running. Turn on the Gym API app (and its ngrok tunnel), then try again.';
+export const FACE_SERVICE_OFFLINE_MSG =
+  'The face service is not running. Turn on face_ML (start.bat), then try again.';
+export const ZKBIO_OFFLINE_MSG =
+  'The Gym API cannot reach the ZKBio portal. Turn on the ZKBio server and check its IP address and token.';
+
+export interface BridgeHealth {
+  ok: boolean;
+  gymApi: { up: boolean; message: string };
+  zkbio: { up: boolean | null; message: string; lastPullAt: string | null };
+  faceService: { up: boolean; message: string; registered?: number };
+  issues: string[];
+}
+
+async function probeGymApi(): Promise<{
+  up: boolean;
+  status?: { zkbio_enabled?: boolean; last_pull_ok?: boolean | null; last_pull_at?: string | null };
+}> {
+  try {
+    const res = await fetch(`${baseUrl()}/api/sync/status`, {
+      headers: { 'ngrok-skip-browser-warning': 'true' },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (res.ok) return { up: true, status: (await res.json()) as any };
+    // Older api_app without /api/sync/status: fall back to a plain reachability check.
+    const alt = await fetch(`${baseUrl()}/api/stats`, {
+      headers: { 'ngrok-skip-browser-warning': 'true' },
+      signal: AbortSignal.timeout(6000),
+    });
+    return { up: alt.ok };
+  } catch {
+    return { up: false };
+  }
+}
+
+export async function getBridgeHealth(): Promise<BridgeHealth> {
+  const [api, face] = await Promise.all([probeGymApi(), faceMlService.health()]);
+  const issues: string[] = [];
+
+  const gymApi = api.up
+    ? { up: true, message: 'Gym API is running.' }
+    : { up: false, message: GYM_API_OFFLINE_MSG };
+  if (!gymApi.up) issues.push(GYM_API_OFFLINE_MSG);
+
+  let zkbio: BridgeHealth['zkbio'] = { up: null, message: 'Unknown until the Gym API is running.', lastPullAt: null };
+  if (api.up) {
+    const st = api.status;
+    if (st?.zkbio_enabled === false) {
+      zkbio = { up: null, message: 'ZKBio sync is switched off in the Gym API (manual mode).', lastPullAt: null };
+    } else if (st?.last_pull_ok === false) {
+      zkbio = { up: false, message: ZKBIO_OFFLINE_MSG, lastPullAt: st.last_pull_at ?? null };
+      issues.push(ZKBIO_OFFLINE_MSG);
+    } else if (st?.last_pull_ok === true) {
+      zkbio = { up: true, message: 'ZKBio portal is reachable.', lastPullAt: st.last_pull_at ?? null };
+    }
+  }
+
+  const faceService = face.online
+    ? { up: true, message: 'Face service is running.', registered: face.registered }
+    : { up: false, message: FACE_SERVICE_OFFLINE_MSG };
+  if (!faceService.up) issues.push(FACE_SERVICE_OFFLINE_MSG);
+
+  return { ok: issues.length === 0, gymApi, zkbio, faceService, issues };
+}
+
+/**
+ * Block an admin write (create / import / delete) while a connected app is off,
+ * so the apps never drift apart. Tells the admin exactly what to turn on.
+ */
+export async function assertSyncReady(opts: { needFaceService?: boolean; skipGymApi?: boolean } = {}): Promise<void> {
+  if (config.NODE_ENV === 'test' && !process.env.FORCE_SYNC_CHECK) return; // unit tests run without the connected apps
+  const [api, face] = await Promise.all([
+    opts.skipGymApi ? Promise.resolve({ up: true }) : probeGymApi(),
+    opts.needFaceService ? faceMlService.health() : Promise.resolve({ online: true }),
+  ]);
+  if (!api.up) throw new ServiceUnavailableError(GYM_API_OFFLINE_MSG, { service: 'gym_api' });
+  if (!face.online) throw new ServiceUnavailableError(FACE_SERVICE_OFFLINE_MSG, { service: 'face_service' });
 }

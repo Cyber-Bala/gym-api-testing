@@ -57,6 +57,14 @@ const envSchema = z.object({
     .default('http://localhost:44444')
     .transform((v) => v.replace(/\/+$/, '')),
 
+  // face_ML service (run face_ML/start_service.bat). Plain HTTP on this machine.
+  FACE_ML_URL: z
+    .string()
+    .default('http://127.0.0.1:8001')
+    .transform((v) => v.replace(/\/+$/, '')),
+  // Must equal the face_ML admin token (face_ML/data/admin.token, or its ADMIN_TOKEN env var).
+  FACE_ML_TOKEN: z.string().default(''),
+
   // 4-way ZKBio department routing. These must match the department codes
   // created on the ZKBio CVSecurity admin panel. Discover them via
   // GET <api_app>/api/zkbio/departments, then set here + restart backend.

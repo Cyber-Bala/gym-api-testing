@@ -24,6 +24,7 @@ import { notificationRouter } from './modules/notification/notification.routes.j
 import { sseRouter } from './modules/sse/sse.routes.js';
 import { schedulerRouter } from './modules/scheduler/scheduler.routes.js';
 import { deviceSyncRouter } from './modules/device-sync/device-sync.routes.js';
+import { faceMlRouter } from './modules/face-ml/face-ml.routes.js';
 import { NotFoundError } from './shared/errors/index.js';
 
 export const createApp = (): Express => {
@@ -63,6 +64,7 @@ export const createApp = (): Express => {
   app.use(`${config.API_PREFIX}/trainer`, trainerRouter);
   app.use(`${config.API_PREFIX}/admin`, adminRouter);
   app.use(`${config.API_PREFIX}/biometrics`, biometricsRouter);
+  app.use(`${config.API_PREFIX}/face-ml`, faceMlRouter);
   app.use(`${config.API_PREFIX}/violations`, violationsRouter);
   app.use(`${config.API_PREFIX}/floor`, floorRouter);
   app.use(`${config.API_PREFIX}/reports`, reportsRouter);

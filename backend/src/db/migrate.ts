@@ -87,6 +87,44 @@ export const runMigrations = async (): Promise<void> => {
 
     ALTER TABLE people.students ADD COLUMN IF NOT EXISTS gender VARCHAR(20) NOT NULL DEFAULT 'male';
     ALTER TABLE people.students ADD COLUMN IF NOT EXISTS face_enrollment_status VARCHAR(50) NOT NULL DEFAULT 'not_enrolled';
+    ALTER TABLE people.students ADD COLUMN IF NOT EXISTS zkbio_synced BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE people.students ADD COLUMN IF NOT EXISTS zkbio_synced_at TIMESTAMPTZ;
+    ALTER TABLE people.students ADD COLUMN IF NOT EXISTS zkbio_sync_note TEXT;
+
+    ALTER TABLE people.students ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'app';
+    ALTER TABLE people.students ADD COLUMN IF NOT EXISTS category VARCHAR(30) NOT NULL DEFAULT 'day_scholar_boys';
+
+    -- category follows residency + gender automatically, except 'other' (staff / unknown from ZKBio).
+    CREATE OR REPLACE FUNCTION people.set_student_category() RETURNS trigger AS $$
+    BEGIN
+      IF NEW.category IS DISTINCT FROM 'other' THEN
+        NEW.category := CASE
+          WHEN NEW.residency = 'hosteller' AND NEW.gender = 'female' THEN 'hosteller_girls'
+          WHEN NEW.residency = 'hosteller' THEN 'hosteller_boys'
+          WHEN NEW.gender = 'female' THEN 'day_scholar_girls'
+          ELSE 'day_scholar_boys'
+        END;
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS student_category ON people.students;
+    CREATE TRIGGER student_category BEFORE INSERT OR UPDATE OF residency, gender, category ON people.students
+      FOR EACH ROW EXECUTE FUNCTION people.set_student_category();
+    UPDATE people.students SET category = category
+      WHERE source = 'app' AND category = 'day_scholar_boys' AND (residency <> 'day_scholar' OR gender <> 'male');
+
+    -- Students enrolled before provisioning existed are already on ZKBio.
+    UPDATE people.students SET zkbio_synced = true
+      WHERE face_enrollment_status = 'enrolled' AND zkbio_synced = false AND zkbio_synced_at IS NULL;
+
+    -- Face photo kept in the gym app so ZKBio can be re-populated after a renewal.
+    CREATE TABLE IF NOT EXISTS people.student_face_photos (
+      student_id UUID PRIMARY KEY REFERENCES people.students(id) ON DELETE CASCADE,
+      photo BYTEA NOT NULL,
+      source VARCHAR(20) NOT NULL DEFAULT 'upload',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
     CREATE TABLE IF NOT EXISTS people.staff (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

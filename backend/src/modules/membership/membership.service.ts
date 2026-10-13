@@ -180,25 +180,12 @@ export class MembershipService {
       createdAt: record.createdAt.toISOString(),
     };
 
-    // ── Push paid state to the gate bridge (api_app → ZKBio) ──
-    // Without this the turnstile keeps denying: api_app never learns
-    // the day-scholar pass was paid. Best-effort (Postgres already committed).
+    // Paid: add to ZKBio if a face is already registered (or refresh the pass dates).
     try {
-      const { syncPaymentToApiApp } = await import('../device-sync/device-sync.service.js');
-      const [stu] = await db
-        .select({ rollNumber: students.rollNumber })
-        .from(students)
-        .where(eq(students.id, studentId))
-        .limit(1);
-      if (stu?.rollNumber) {
-        await syncPaymentToApiApp(stu.rollNumber, {
-          payment_status: 'paid',
-          payment_valid_from: dto.startDate.slice(0, 10),
-          payment_valid_until: dto.endDate.slice(0, 10),
-        });
-      }
+      const { reconcileStudent } = await import('../device-sync/zkbio-provision.service.js');
+      await reconcileStudent(studentId);
     } catch (err) {
-      logger.warn({ err, studentId }, 'Device payment sync after activation failed');
+      logger.warn({ err, studentId }, 'ZKBio provisioning after activation failed');
     }
 
     return dto;
@@ -218,9 +205,7 @@ export class MembershipService {
       .where(and(eq(memberships.status, 'active'), lte(memberships.endDate, now)));
 
     let expiredCount = 0;
-    const { syncPaymentToApiApp } = await import('../device-sync/device-sync.service.js').catch(() => ({
-      syncPaymentToApiApp: null as unknown as typeof import('../device-sync/device-sync.service.js').syncPaymentToApiApp,
-    }));
+    const { reconcileStudent, reconcileAll } = await import('../device-sync/zkbio-provision.service.js');
 
     for (const m of expired) {
       await db
@@ -229,23 +214,19 @@ export class MembershipService {
         .where(eq(memberships.id, m.id));
       expiredCount++;
 
-      // Revoke gate access for this student (best-effort).
+      // Pass ended: remove them from ZKBio (they stay in the gym app).
       try {
-        const [stu] = await db
-          .select({ rollNumber: students.rollNumber })
-          .from(students)
-          .where(eq(students.id, m.studentId))
-          .limit(1);
-        if (stu?.rollNumber && syncPaymentToApiApp) {
-          await syncPaymentToApiApp(stu.rollNumber, {
-            payment_status: 'expired',
-            payment_valid_from: null,
-            payment_valid_until: new Date(m.endDate).toISOString().slice(0, 10),
-          });
-        }
+        await reconcileStudent(m.studentId);
       } catch (err) {
-        logger.warn({ err, membershipId: m.id }, 'Device revoke after expiry failed');
+        logger.warn({ err, membershipId: m.id }, 'ZKBio removal after expiry failed');
       }
+    }
+
+    // Also retries anything that failed earlier (Gym API or ZKBio was off).
+    try {
+      await reconcileAll();
+    } catch (err) {
+      logger.warn({ err }, 'ZKBio reconcile pass failed');
     }
 
     if (expiredCount > 0) {

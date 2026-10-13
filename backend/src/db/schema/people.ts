@@ -31,6 +31,14 @@ export const students = peopleSchema.table('students', {
   emergencyContact: varchar('emergency_contact', { length: 20 }), // optional
   address: text('address'), // optional
   healthConcerns: text('health_concerns'), // optional
+  // 'app' = added in the gym app, 'zkbio' = brought in from ZKBio (never written back to ZKBio).
+  source: varchar('source', { length: 20 }).notNull().default('app'),
+  // day_scholar_boys | day_scholar_girls | hosteller_boys | hosteller_girls | other (kept by a DB trigger)
+  category: varchar('category', { length: 30 }).notNull().default('day_scholar_boys'),
+  // ZKBio provisioning state (see device-sync/zkbio-provision.service.ts)
+  zkbioSynced: boolean('zkbio_synced').notNull().default(false),
+  zkbioSyncedAt: timestamp('zkbio_synced_at', { withTimezone: true }),
+  zkbioSyncNote: text('zkbio_sync_note'),
   isBanned: boolean('is_banned').notNull().default(false),
   banExpiresAt: timestamp('ban_expires_at', { withTimezone: true }),
   violationCount: integer('violation_count').notNull().default(0),

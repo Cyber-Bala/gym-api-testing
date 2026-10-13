@@ -1,3 +1,4 @@
+import { assertSyncReady } from '../device-sync/device-sync.service.js';
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { peopleService } from './people.service.js';
@@ -78,6 +79,7 @@ export const importStudents = async (req: Request, res: Response, next: NextFunc
       throw new ValidationError('Invalid row data format', parseResult.error.format());
     }
 
+    await assertSyncReady();
     const report = await peopleService.processStudentRows(parseResult.data.rows);
 
     res.status(200).json({
@@ -118,7 +120,10 @@ export const listStudents = async (req: Request, res: Response, next: NextFuncti
       | 'day_scholar_girls'
       | 'hosteller_boys'
       | 'hosteller_girls'
+      | 'other'
       | undefined;
+    const face = req.query.face as 'enrolled' | 'pending' | 'not_enrolled' | 'on_zkbio' | undefined;
+    const source = req.query.source as 'app' | 'zkbio' | undefined;
     const isBanned = req.query.isBanned !== undefined ? req.query.isBanned === 'true' : undefined;
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
@@ -138,6 +143,8 @@ export const listStudents = async (req: Request, res: Response, next: NextFuncti
       residency,
       gender,
       category,
+      face,
+      source,
       isBanned,
       page,
       limit,
@@ -340,6 +347,7 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
       throw new ValidationError('Invalid student data', parseResult.error.format());
     }
 
+    await assertSyncReady();
     const adminEmail = req.user?.email || 'admin@rajalakshmi.edu.in';
     const result = await peopleService.createSingleStudent(parseResult.data, adminEmail);
 

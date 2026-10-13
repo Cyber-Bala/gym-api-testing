@@ -6,6 +6,7 @@ import { LoginPage } from './components/LoginPage';
 import { HomeDashboard } from './components/HomeDashboard';
 import { SlotBookingView } from './components/SlotBookingView';
 import { MyBookingsCard } from './components/MyBookingsCard';
+import { FaceUploadAdmin } from './components/FaceUploadAdmin';
 import { FaceRegistrationStatus } from './components/FaceRegistrationStatus';
 import { MembershipStore } from './components/MembershipStore';
 import { MyAccessHistory } from './components/MyAccessHistory';
@@ -130,6 +131,8 @@ export const App: React.FC = () => {
         return <DeviceBiometricsManager />;
       case 'face_registration':
         return <FaceRegistrationAdmin />;
+      case 'face_upload':
+        return <FaceUploadAdmin />;
       case 'violations':
         return <ViolationManager />;
       case 'conflicts':

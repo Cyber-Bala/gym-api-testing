@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { config } from '../../config/index.js';
-import { reconcileFromApiApp } from './device-sync.service.js';
+import { reconcileFromApiApp, getBridgeHealth, assertSyncReady } from './device-sync.service.js';
+import { reconcileAll } from './zkbio-provision.service.js';
+import { importFromZkbio } from './zkbio-import.service.js';
 
 const headers = {
   'Content-Type': 'application/json',
@@ -70,6 +72,44 @@ export const getReconcilePreview = async (_req: Request, res: Response, next: Ne
   try {
     const reconcile = await reconcileFromApiApp(false);
     res.status(200).json({ success: true, data: reconcile });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /device-sync/health: is the Gym API, ZKBio portal and face service turned on?
+ */
+export const getBridgeHealthStatus = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    res.status(200).json({ success: true, data: await getBridgeHealth() });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /device-sync/provision: apply the ZKBio rules to every student now.
+ * Adds eligible students (face + hosteller / paid pass), removes ended passes,
+ * retries earlier failures. Needs the Gym API to be on.
+ */
+export const postProvisionAll = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    await assertSyncReady();
+    res.status(200).json({ success: true, data: await reconcileAll() });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /device-sync/import-zkbio: show everyone that is in ZKBio in the gym app.
+ * Read-only toward ZKBio: nothing in ZKBio is changed.
+ */
+export const postImportFromZkbio = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    await assertSyncReady();
+    res.status(200).json({ success: true, data: await importFromZkbio() });
   } catch (err) {
     next(err);
   }

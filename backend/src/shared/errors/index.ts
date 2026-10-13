@@ -50,3 +50,9 @@ export class CapacityExceededError extends AppError {
     super(message, 409, 'CAPACITY_EXCEEDED', details);
   }
 }
+
+export class ServiceUnavailableError extends AppError {
+  constructor(message = 'A required service is not running', details?: unknown) {
+    super(message, 503, 'SERVICE_UNAVAILABLE', details);
+  }
+}

@@ -20,6 +20,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
+import { SyncStatusBanner } from './SyncStatusBanner';
 
 interface StudentItem {
   id: string;
@@ -33,6 +34,9 @@ interface StudentItem {
   residency: string;
   gender: string;
   faceEnrollmentStatus: string;
+  category: string;
+  source: 'app' | 'zkbio';
+  zkbioSynced: boolean;
   isBanned: boolean;
   violationCount: number;
   status: string;
@@ -45,13 +49,18 @@ type CategoryKey =
   | 'day_scholar_boys'
   | 'day_scholar_girls'
   | 'hosteller_boys'
-  | 'hosteller_girls';
+  | 'hosteller_girls'
+  | 'other';
+
+type FaceFilter = '' | 'enrolled' | 'on_zkbio' | 'pending' | 'not_enrolled';
+type SourceFilter = '' | 'app' | 'zkbio';
 
 interface CategoryBreakdown {
   dayScholarBoys: number;
   dayScholarGirls: number;
   hostellerBoys: number;
   hostellerGirls: number;
+  other: number;
 }
 
 const CATEGORY_OPTIONS: { value: CategoryKey; label: string }[] = [
@@ -60,7 +69,29 @@ const CATEGORY_OPTIONS: { value: CategoryKey; label: string }[] = [
   { value: 'day_scholar_girls', label: 'Day Scholar — Girls' },
   { value: 'hosteller_boys', label: 'Hosteller — Boys' },
   { value: 'hosteller_girls', label: 'Hosteller — Girls' },
+  { value: 'other', label: 'Staff / Other' },
 ];
+
+const FACE_OPTIONS: { value: FaceFilter; label: string }[] = [
+  { value: '', label: 'Face: any' },
+  { value: 'enrolled', label: 'Face: on gate (ZKBio)' },
+  { value: 'on_zkbio', label: 'Face: in ZKBio (imported)' },
+  { value: 'pending', label: 'Face: saved, waiting' },
+  { value: 'not_enrolled', label: 'Face: not registered' },
+];
+
+const SOURCE_OPTIONS: { value: SourceFilter; label: string }[] = [
+  { value: '', label: 'Source: any' },
+  { value: 'app', label: 'Source: added in this app' },
+  { value: 'zkbio', label: 'Source: from ZKBio' },
+];
+
+const faceBadge = (status: string): { tone: 'success' | 'warning' | 'danger' | 'neutral'; label: string } => {
+  if (status === 'enrolled') return { tone: 'success', label: 'On gate' };
+  if (status === 'on_zkbio') return { tone: 'neutral', label: 'In ZKBio' };
+  if (status === 'pending') return { tone: 'warning', label: 'Saved, waiting' };
+  return { tone: 'danger', label: 'No face' };
+};
 
 const getCategoryLabel = (residency: string, gender: string): string => {
   const isGirl = gender === 'female';
@@ -102,11 +133,14 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>('');
   const [category, setCategory] = useState<CategoryKey>('');
+  const [face, setFace] = useState<FaceFilter>('');
+  const [source, setSource] = useState<SourceFilter>('');
   const [breakdown, setBreakdown] = useState<CategoryBreakdown>({
     dayScholarBoys: 0,
     dayScholarGirls: 0,
     hostellerBoys: 0,
     hostellerGirls: 0,
+    other: 0,
   });
   const [page, setPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
@@ -140,6 +174,8 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (category) params.append('category', category);
+      if (face) params.append('face', face);
+      if (source) params.append('source', source);
       params.append('page', String(page));
       params.append('limit', '10');
 
@@ -164,7 +200,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
 
   useEffect(() => {
     fetchStudents();
-  }, [page, category]);
+  }, [page, category, face, source]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -241,7 +277,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error?.message || data.message || 'Delete failed');
       toast.success(
-        `${deleteConfirmStudent.name} (${deleteConfirmStudent.rollNumber}) permanently deleted from system, database, and device.`,
+        `${deleteConfirmStudent.name} (${deleteConfirmStudent.rollNumber}) deleted from this app, the Gym API, ZKBio and the face service.`,
         'Student Deleted'
       );
       setDeleteConfirmStudent(null);
@@ -299,6 +335,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
 
   return (
     <Card className="space-y-6">
+      <SyncStatusBanner />
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -307,7 +344,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
             <span>Provisioned Student Directory</span>
           </h3>
           <p className="text-xs text-muted">
-            {totalCount} verified student accounts • Day Boys {breakdown.dayScholarBoys} • Day Girls {breakdown.dayScholarGirls} • Hostel Boys {breakdown.hostellerBoys} • Hostel Girls {breakdown.hostellerGirls}
+            {totalCount} verified student accounts • Day Boys {breakdown.dayScholarBoys} • Day Girls {breakdown.dayScholarGirls} • Hostel Boys {breakdown.hostellerBoys} • Hostel Girls {breakdown.hostellerGirls} • Staff / Other {breakdown.other}
           </p>
         </div>
 
@@ -353,7 +390,9 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                   ? breakdown.dayScholarGirls
                   : opt.value === 'hosteller_boys'
                     ? breakdown.hostellerBoys
-                    : breakdown.hostellerGirls;
+                    : opt.value === 'hosteller_girls'
+                      ? breakdown.hostellerGirls
+                      : breakdown.other;
           const active = category === opt.value;
           return (
             <button
@@ -396,6 +435,38 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
           >
             {CATEGORY_OPTIONS.map((opt) => (
               <option key={opt.value || 'all'} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="w-full sm:w-52 shrink-0">
+          <Select
+            value={face}
+            onChange={(e) => {
+              setFace(e.target.value as FaceFilter);
+              setPage(1);
+            }}
+          >
+            {FACE_OPTIONS.map((opt) => (
+              <option key={opt.value || 'any'} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="w-full sm:w-52 shrink-0">
+          <Select
+            value={source}
+            onChange={(e) => {
+              setSource(e.target.value as SourceFilter);
+              setPage(1);
+            }}
+          >
+            {SOURCE_OPTIONS.map((opt) => (
+              <option key={opt.value || 'any'} value={opt.value}>
                 {opt.label}
               </option>
             ))}
@@ -445,14 +516,23 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
               students.map((stu) => (
                 <tr key={stu.id} className="hover:bg-border-subtle/30 transition-colors">
                   <td className="py-3 px-4">
-                    <div className="font-semibold text-text">{stu.name}</div>
-                    <div className="text-[11px] font-mono text-muted">{stu.rollNumber} • {stu.email}</div>
+                    <div className="font-semibold text-text flex items-center gap-1.5">
+                      {stu.name}
+                      {stu.source === 'zkbio' && <Badge tone="neutral">ZKBio</Badge>}
+                    </div>
+                    <div className="text-[11px] font-mono text-muted">
+                      {stu.rollNumber}
+                      {stu.source === 'zkbio' ? '' : ` • ${stu.email}`}
+                    </div>
                   </td>
                   <td className="py-3 px-4">
                     <div className="text-secondary">{stu.department}</div>
                     <div className="text-[11px] text-muted">Batch of {stu.joiningYear}</div>
                   </td>
                   <td className="py-3 px-4">
+                    {stu.category === 'other' ? (
+                      <Badge tone="neutral">Staff / Other</Badge>
+                    ) : (
                     <button
                       type="button"
                       onClick={() => handleToggleResidency(stu)}
@@ -467,6 +547,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                         {getCategoryLabel(stu.residency, stu.gender || 'male')}
                       </Badge>
                     </button>
+                    )}
                   </td>
                   <td className="py-3 px-4">
                     <button
@@ -503,8 +584,8 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                     </button>
                   </td>
                   <td className="py-3 px-4">
-                    <Badge tone={stu.faceEnrollmentStatus === 'enrolled' ? 'success' : 'warning'}>
-                      {stu.faceEnrollmentStatus === 'enrolled' ? 'Enrolled' : 'Pending'}
+                    <Badge tone={faceBadge(stu.faceEnrollmentStatus).tone}>
+                      {faceBadge(stu.faceEnrollmentStatus).label}
                     </Badge>
                   </td>
                   <td className="py-3 px-4">
@@ -756,9 +837,18 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                     This will permanently remove the student from:
                   </p>
                   <ul className="text-xs text-muted list-disc list-inside mt-1 space-y-0.5">
-                    <li>Our Postgres database (bookings, memberships, violations, etc.)</li>
-                    <li>The api_app SQLite database</li>
-                    <li>The physical ZKBio turnstile device (access revoked)</li>
+                    <li>The gym app database (bookings, memberships, violations, etc.)</li>
+                    <li>The face service (their photo and face data)</li>
+                    {deleteConfirmStudent.source === 'zkbio' ? (
+                      <li className="font-semibold text-text">
+                        ZKBio is NOT changed: this person came from ZKBio, so only the gym app copy is removed.
+                      </li>
+                    ) : (
+                      <>
+                        <li>The Gym API database</li>
+                        <li>ZKBio (their face and access are removed)</li>
+                      </>
+                    )}
                   </ul>
                 </div>
               </div>

@@ -21,6 +21,7 @@ import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 import { FaceIdIcon } from './FaceIdIcon';
+import { SyncStatusBanner } from './SyncStatusBanner';
 
 /* ─────────── Types ─────────── */
 
@@ -48,6 +49,9 @@ export const FaceRegistrationAdmin: React.FC = () => {
   const [searchResults, setSearchResults] = useState<StudentSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<StudentSearchResult | null>(null);
+
+  // Is the student's photo already uploaded (Face Upload)? Needed before camera capture.
+  const [photoState, setPhotoState] = useState<'checking' | 'yes' | 'no' | 'offline'>('checking');
 
   // Camera state
   const [step, setStep] = useState<CaptureStep>('idle');
@@ -260,22 +264,31 @@ export const FaceRegistrationAdmin: React.FC = () => {
       // Extract base64 data from data URL
       const base64Data = capturedImage.split(',')[1];
 
-      const result = await api.post<{ message?: string; enrolled?: boolean; status?: string }>(
-        '/api/v1/biometrics/admin-face-enroll',
-        {
-          studentId: selectedStudent.id,
-          personId: selectedStudent.personId,
-          rollNumber: selectedStudent.rollNumber,
-          faceImageBase64: base64Data,
-        }
-      );
+      const result = await api.post<{
+        status: string;
+        message: string;
+        gateStatus?: 'enrolled' | 'pending';
+        score?: number;
+      }>('/api/v1/face-ml/capture-enroll', {
+        studentId: selectedStudent.id,
+        imageBase64: base64Data,
+      });
 
-      const msg = (result as any).message || 'Face enrolled successfully!';
-      const status = (result as any).status || 'enrolled';
+      // Anything but REGISTERED means: no uploaded photo, face does not match, bad capture, ...
+      if (result.status !== 'REGISTERED') {
+        setSubmitError(result.message);
+        setStep('error');
+        toast.error(result.message, 'Not Registered');
+        if (result.status === 'NO_PHOTO') setPhotoState('no');
+        return;
+      }
+
+      const msg = result.message;
+      const status = result.gateStatus === 'enrolled' ? 'enrolled' : 'pending';
       setSuccessMessage(msg);
       setStep('success');
       if (status === 'pending') {
-        toast.error(msg, 'Saved Locally — Device Sync Pending');
+        toast.success(msg, 'Face Saved');
       } else {
         toast.success(msg, 'Face Registered');
       }
@@ -315,6 +328,13 @@ export const FaceRegistrationAdmin: React.FC = () => {
       setSuccessMessage(null);
       setSearchResults([]);
       setSearchQuery('');
+      setPhotoState('checking');
+      api
+        .get<{ registered: boolean; online: boolean }>(
+          `/api/v1/face-ml/status/${encodeURIComponent(student.rollNumber)}`
+        )
+        .then((r) => setPhotoState(!r.online ? 'offline' : r.registered ? 'yes' : 'no'))
+        .catch(() => setPhotoState('offline'));
     },
     [stopCamera]
   );
@@ -323,6 +343,7 @@ export const FaceRegistrationAdmin: React.FC = () => {
 
   const enrollmentBadge = (status: string) => {
     if (status === 'enrolled') return <Badge tone="success">✓ Enrolled</Badge>;
+    if (status === 'on_zkbio') return <Badge tone="neutral">In ZKBio</Badge>;
     if (status === 'pending') return <Badge tone="warning">Pending</Badge>;
     return <Badge tone="danger">Not Enrolled</Badge>;
   };
@@ -331,6 +352,7 @@ export const FaceRegistrationAdmin: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <SyncStatusBanner />
       {/* Header Card */}
       <Card className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -525,12 +547,45 @@ export const FaceRegistrationAdmin: React.FC = () => {
               </Alert>
             )}
 
+            {photoState === 'checking' && (
+              <Alert tone="info">
+                <span className="text-xs">Checking for the student's uploaded photo...</span>
+              </Alert>
+            )}
+            {photoState === 'no' && (
+              <Alert tone="warning">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span className="text-xs">
+                    No photo uploaded for this student. Upload it in <b>Face Upload</b> first, then come back to capture.
+                  </span>
+                </div>
+              </Alert>
+            )}
+            {photoState === 'offline' && (
+              <Alert tone="danger">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span className="text-xs">Face service is not reachable. Start face_ML/start.bat and reselect the student.</span>
+                </div>
+              </Alert>
+            )}
+            {photoState === 'yes' && (
+              <Alert tone="success">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span className="text-xs">Student photo found. The capture will be checked against it.</span>
+                </div>
+              </Alert>
+            )}
+
             {step !== 'camera' && step !== 'preview' && step !== 'submitting' && step !== 'success' && (
               <Button
                 variant="primary"
                 size="md"
                 className="w-full"
                 onClick={startCamera}
+                disabled={photoState !== 'yes'}
               >
                 <Camera className="w-4 h-4" />
                 <span>{selectedStudent.faceEnrollmentStatus === 'enrolled' ? 'Re-capture Face' : 'Start Camera'}</span>

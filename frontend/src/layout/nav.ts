@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   DoorOpen,
   ScanFace,
+  ScanLine,
   UserRound,
 } from 'lucide-react';
 import type { SessionUser, UserRole } from '../context/AuthContext';
@@ -32,6 +33,7 @@ export type AppView =
   | 'floor_management'
   | 'biometrics'
   | 'face_registration'
+  | 'face_upload'
   | 'violations'
   | 'conflicts'
   | 'reports'
@@ -139,6 +141,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Face Registration',
     shortLabel: 'Face Reg',
     icon: ScanFace,
+    roles: ['admin', 'super_admin'],
+  },
+  {
+    id: 'face_upload',
+    label: 'Face Upload',
+    shortLabel: 'Face Upload',
+    icon: ScanLine,
     roles: ['admin', 'super_admin'],
   },
   {

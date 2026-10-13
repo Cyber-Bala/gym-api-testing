@@ -7,7 +7,10 @@ import { db } from '../../shared/database/index.js';
 import { s3Client } from '../../shared/storage/index.js';
 import { config } from '../../config/index.js';
 import { logger } from '../../shared/logging/index.js';
-import { NotFoundError, ValidationError, ConflictError } from '../../shared/errors/index.js';
+import { NotFoundError, ValidationError, ConflictError, ServiceUnavailableError } from '../../shared/errors/index.js';
+import { assertSyncReady, GYM_API_OFFLINE_MSG } from '../device-sync/device-sync.service.js';
+import { faceMlService } from '../face-ml/face-ml.service.js';
+import { reconcileStudent } from '../device-sync/zkbio-provision.service.js';
 import {
   people,
   students,
@@ -475,14 +478,7 @@ if (cleanKey.includes('roll') || cleanKey.includes('regno')) normalized.rollNumb
 
         successfulIds.push(newStudent.id);
         
-        // Push to ZKBio device asynchronously
-        this.syncPersonToZkbio(
-          rowData.rollNumber,
-          rowData.name,
-          null, // phone not in excel yet
-          rowData.residency,
-          rowData.gender
-        );
+        // Stored in the gym app only. ZKBio gets them after face registration (+ payment for day scholars).
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error({ err, rowData }, 'Failed to insert student record');
@@ -683,29 +679,8 @@ public async processStaffRows(rawRows: Record<string, unknown>[]): Promise<Inges
     const limit = Math.min(100, Math.max(1, query.limit || 20));
     const offset = (page - 1) * limit;
 
-    // Resolve combined category into residency + gender (category wins over individual fields)
-    let residency = query.residency;
-    let gender = query.gender;
-    if (query.category) {
-      switch (query.category) {
-        case 'day_scholar_boys':
-          residency = 'day_scholar';
-          gender = 'male';
-          break;
-        case 'day_scholar_girls':
-          residency = 'day_scholar';
-          gender = 'female';
-          break;
-        case 'hosteller_boys':
-          residency = 'hosteller';
-          gender = 'male';
-          break;
-        case 'hosteller_girls':
-          residency = 'hosteller';
-          gender = 'female';
-          break;
-      }
-    }
+    const residency = query.residency;
+    const gender = query.gender;
 
     const conditions = [];
 
@@ -730,6 +705,18 @@ public async processStaffRows(rawRows: Record<string, unknown>[]): Promise<Inges
 
     if (gender) {
       conditions.push(eq(students.gender, gender));
+    }
+
+    if (query.category) {
+      conditions.push(eq(students.category, query.category));
+    }
+
+    if (query.face) {
+      conditions.push(eq(students.faceEnrollmentStatus, query.face));
+    }
+
+    if (query.source) {
+      conditions.push(eq(students.source, query.source));
     }
 
     if (query.isBanned !== undefined) {
@@ -759,6 +746,9 @@ const items = await db
         residency: students.residency,
         gender: students.gender,
         faceEnrollmentStatus: students.faceEnrollmentStatus,
+        category: students.category,
+        source: students.source,
+        zkbioSynced: students.zkbioSynced,
         isBanned: students.isBanned,
         violationCount: students.violationCount,
         status: people.status,
@@ -791,26 +781,26 @@ const items = await db
     }
     const breakdownWhere = breakdownConditions.length > 0 ? and(...breakdownConditions) : undefined;
     const breakdownRows = await db
-      .select({ residency: students.residency, gender: students.gender, count: count() })
+      .select({ category: students.category, count: count() })
       .from(students)
       .innerJoin(people, eq(students.personId, people.id))
       .where(breakdownWhere)
-      .groupBy(students.residency, students.gender);
+      .groupBy(students.category);
 
     const breakdown = {
       dayScholarBoys: 0,
       dayScholarGirls: 0,
       hostellerBoys: 0,
       hostellerGirls: 0,
+      other: 0,
     };
     for (const r of breakdownRows) {
       const n = Number(r.count || 0);
-      if (r.residency === 'day_scholar' && r.gender === 'male') breakdown.dayScholarBoys = n;
-      else if (r.residency === 'day_scholar' && r.gender === 'female') breakdown.dayScholarGirls = n;
-      else if (r.residency === 'hosteller' && r.gender === 'male') breakdown.hostellerBoys = n;
-      else if (r.residency === 'hosteller' && r.gender === 'female') breakdown.hostellerGirls = n;
-      else if (r.residency === 'day_scholar') breakdown.dayScholarBoys += n;
-      else if (r.residency === 'hosteller') breakdown.hostellerBoys += n;
+      if (r.category === 'day_scholar_boys') breakdown.dayScholarBoys = n;
+      else if (r.category === 'day_scholar_girls') breakdown.dayScholarGirls = n;
+      else if (r.category === 'hosteller_boys') breakdown.hostellerBoys = n;
+      else if (r.category === 'hosteller_girls') breakdown.hostellerGirls = n;
+      else breakdown.other += n;
     }
 
     return {
@@ -1163,14 +1153,7 @@ const items = await db
       reason: `Admin created student '${newStudent.rollNumber}'`,
     });
 
-    // Push single-added student to ZKBio device via api_app (async, best-effort)
-    this.syncPersonToZkbio(
-      newStudent.rollNumber,
-      newPerson.name,
-      newPerson.phone || null,
-      newStudent.residency,
-      newStudent.gender
-    );
+    // Stored in the gym app only. ZKBio gets them after face registration (+ payment for day scholars).
 
     return {
       id: newStudent.id,
@@ -1230,7 +1213,7 @@ const items = await db
     });
 
     // Push dept move to api_app + device so Boys/Girls land in the right dept
-    await this.pushDeptUpdateToApiApp(existingStudent.rollNumber, existingStudent.residency, gender);
+    await reconcileStudent(id);
   }
   public async updateStudentResidency(
     id: string,
@@ -1240,6 +1223,7 @@ const items = await db
     const [existingStudent] = await db
       .select({
         id: students.id,
+        source: students.source,
         rollNumber: students.rollNumber,
         residency: students.residency,
         gender: students.gender,
@@ -1274,8 +1258,8 @@ const items = await db
         .where(eq(people.id, existingStudent.personId));
         
       try {
-         // Revoke access on ZKBio via api_app
-         await fetch(`${config.API_APP_URL}/api/students/${existingStudent.rollNumber}/payment`, {
+         // Revoke access on ZKBio via api_app (never for people that came from ZKBio)
+         if (existingStudent.source !== 'zkbio') await fetch(`${config.API_APP_URL}/api/students/${existingStudent.rollNumber}/payment`, {
            method: 'PATCH',
            headers: { 'Content-Type': 'application/json' },
            body: JSON.stringify({ payment_status: 'expired', payment_valid_from: null, payment_valid_until: null })
@@ -1296,11 +1280,7 @@ const items = await db
 
     // Always push the dept move so the device panel leaves General
     // and lands in Day Scholar Boys/Girls or Hosteller Boys/Girls.
-    await this.pushDeptUpdateToApiApp(
-      existingStudent.rollNumber,
-      residency,
-      existingStudent.gender || 'male'
-    );
+    await reconcileStudent(id);
   }
 
   /**
@@ -1319,6 +1299,7 @@ const items = await db
         id: students.id,
         personId: students.personId,
         rollNumber: students.rollNumber,
+        source: students.source,
         accountId: people.accountId
       })
       .from(students)
@@ -1332,43 +1313,65 @@ const items = await db
 
     const rollNumber = stu.rollNumber;
 
-    // 2. Delete from api_app SQLite DB + ZKBio device FIRST.
-    // If api_app is reachable but reports failure, abort so Postgres keeps
-    // the row (admin can retry with force=true). If api_app is OFFLINE
-    // (fetch throws), still proceed — device was already unreachable.
-    let apiAppUnreachable = false;
-    const dc = new AbortController();
-    const dt = setTimeout(() => dc.abort(), 15000);
-    try {
-      const qs = force ? '?force=true' : '';
-      const apiAppRes = await fetch(`${config.API_APP_URL}/api/students/${encodeURIComponent(rollNumber)}${qs}`, {
-        method: 'DELETE',
-        signal: dc.signal,
-      });
+    // People that came from ZKBio are never changed in ZKBio from here: this only removes
+    // them from the gym app (and their face data in the face service).
+    const fromZkbio = stu.source === 'zkbio';
 
-      if (apiAppRes.status === 204 || apiAppRes.status === 404) {
-        logger.info({ rollNumber, force }, 'Student removed from api_app + ZKBio device');
-      } else {
-        const body = await apiAppRes.text().catch(() => '');
-        logger.error({ rollNumber, status: apiAppRes.status, body, force }, 'api_app delete failed');
-        if (force) {
-          apiAppUnreachable = true;
-          logger.warn({ rollNumber }, 'force=true — proceeding with Postgres delete despite bridge error');
-        } else {
-          throw new ConflictError(
-            `Device bridge refused to delete '${rollNumber}' (HTTP ${apiAppRes.status}). Not deleted from app database. Panel says: ${body.slice(0, 200) || 'Bad Gateway'}. Fix panel connection or retry with Force Delete.`
-          );
-        }
-      }
-    } catch (err) {
-      if (err instanceof ConflictError || err instanceof NotFoundError) throw err;
-      apiAppUnreachable = true;
-      logger.warn({ err, rollNumber, force }, 'api_app unreachable for delete — proceeding with Postgres delete only');
-    } finally {
-      clearTimeout(dt);
+    // 2. Every connected app must be on, otherwise they drift apart. (force = admin override)
+    if (!force) {
+      await assertSyncReady({ needFaceService: true, skipGymApi: fromZkbio });
     }
 
-    // 3. Cascade delete from Postgres inside a transaction
+    // 3. Delete from api_app SQLite DB + ZKBio device FIRST.
+    // If api_app answers with a failure, abort so Postgres keeps the row
+    // (admin can retry with force=true).
+    let apiAppUnreachable = false;
+    if (fromZkbio) {
+      logger.info({ rollNumber }, 'ZKBio-origin student: removed from the gym app only, ZKBio left unchanged');
+    } else {
+      const dc = new AbortController();
+      const dt = setTimeout(() => dc.abort(), 15000);
+      try {
+        const qs = force ? '?force=true' : '';
+        const apiAppRes = await fetch(`${config.API_APP_URL}/api/students/${encodeURIComponent(rollNumber)}${qs}`, {
+          method: 'DELETE',
+          headers: { 'ngrok-skip-browser-warning': 'true' },
+          signal: dc.signal,
+        });
+
+        if (apiAppRes.status === 204 || apiAppRes.status === 404) {
+          logger.info({ rollNumber, force }, 'Student removed from api_app + ZKBio device');
+        } else {
+          const body = await apiAppRes.text().catch(() => '');
+          logger.error({ rollNumber, status: apiAppRes.status, body, force }, 'api_app delete failed');
+          if (force) {
+            apiAppUnreachable = true;
+            logger.warn({ rollNumber }, 'force=true: proceeding with Postgres delete despite bridge error');
+          } else {
+            throw new ConflictError(
+              `Device bridge refused to delete '${rollNumber}' (HTTP ${apiAppRes.status}). Not deleted from app database. Panel says: ${body.slice(0, 200) || 'Bad Gateway'}. Fix panel connection or retry with Force Delete.`
+            );
+          }
+        }
+      } catch (err) {
+        if (err instanceof ConflictError || err instanceof NotFoundError) throw err;
+        if (!force) {
+          throw new ServiceUnavailableError(GYM_API_OFFLINE_MSG, { service: 'gym_api' });
+        }
+        apiAppUnreachable = true;
+        logger.warn({ err, rollNumber, force }, 'api_app unreachable for delete: force=true, Postgres delete only');
+      } finally {
+        clearTimeout(dt);
+      }
+    }
+
+    // 4. Remove the student's face data from the face service too.
+    const faceResult = await faceMlService.remove(rollNumber);
+    if (faceResult === 'failed') {
+      logger.warn({ rollNumber }, 'Face data not removed from face service: remove it from the face_ML admin page');
+    }
+
+    // 5. Cascade delete from Postgres inside a transaction
     // (All child tables have ON DELETE CASCADE FKs — no manual child deletes needed)
     await db.transaction(async (tx) => {
       // All child tables (bookings, memberships, violations, paymentOrders,
