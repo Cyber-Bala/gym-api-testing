@@ -23,6 +23,8 @@ from schemas import (
     StudentCreate,
     StudentResponse,
     StudentUpdate,
+    FaceRegistrationRequest,
+    FaceRegistrationResponse,
 )
 import zkbio_client
 
@@ -483,6 +485,36 @@ def get_active_students(db: Session = Depends(get_db)):
         )
         for log in logs
     ]
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  FACE REGISTRATION (admin webcam / Face Upload -> ZKBio)
+# ══════════════════════════════════════════════════════════════════════
+@app.post("/api/students/{roll_no}/register-face", response_model=FaceRegistrationResponse, tags=["Students"])
+def register_student_face(roll_no: str, payload: FaceRegistrationRequest, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.roll_no == roll_no).first()
+    if not student:
+        student = Student(
+            roll_no=roll_no,
+            name=roll_no,
+            room_no="N/A",
+            phone="",
+            payment_status=PaymentStatus.PAID,
+            access_enabled=True,
+        )
+        db.add(student)
+        db.commit()
+        db.refresh(student)
+
+    zkbio_client.upload_person_photo(pin=roll_no, photo_base64=payload.photo_base64)
+    zkbio_client.sync_person(pin=roll_no)
+
+    return FaceRegistrationResponse(
+        success=True,
+        message=f"Face registered successfully for student {roll_no} and synced to device gate.",
+        roll_no=roll_no,
+        zkbio_synced=bool(zkbio_client.ZKBIO_ENABLED),
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════

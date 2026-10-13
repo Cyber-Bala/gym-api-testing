@@ -317,3 +317,53 @@ def determine_event_type(transaction: dict) -> str:
     else:
         # toggle or unknown — default to entry
         return "entry"
+
+
+def upload_person_photo(pin: str, photo_base64: str):
+    """Upload face photo for a person to ZKBio device server."""
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+
+    if "," in photo_base64:
+        photo_base64 = photo_base64.split(",", 1)[1]
+
+    payload = {
+        "pin": pin,
+        "personPhoto": photo_base64,
+    }
+    try:
+        resp = httpx.post(
+            _url("/api/person/updatePersonnelPhoto"),
+            params=_params(),
+            json=payload,
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        logger.info("upload_person_photo %s: %s", pin, data)
+
+        if data.get("code") != 0:
+            p_data = get_person(pin)
+            p_name = pin
+            p_dept = ZKBIO_DEPT_CODE
+            if p_data and p_data.get("code") == 0 and "data" in p_data:
+                p_name = p_data["data"].get("name", pin)
+                p_dept = p_data["data"].get("deptCode", ZKBIO_DEPT_CODE)
+            add_resp = httpx.post(
+                _url("/api/person/add"),
+                params=_params(),
+                json={
+                    "pin": pin,
+                    "name": p_name,
+                    "deptCode": p_dept,
+                    "personPhoto": photo_base64,
+                },
+                timeout=TIMEOUT,
+            )
+            data = add_resp.json()
+            logger.info("add_person photo fallback %s: %s", pin, data)
+
+        return data
+    except Exception as e:
+        logger.error("upload_person_photo %s failed: %s", pin, e)
+        return None

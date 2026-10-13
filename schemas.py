@@ -73,3 +73,14 @@ class StatsResponse(BaseModel):
     unpaid_count: int
     expired_count: int
     currently_inside: int
+
+
+class FaceRegistrationRequest(BaseModel):
+    photo_base64: str = Field(..., min_length=1)
+
+
+class FaceRegistrationResponse(BaseModel):
+    success: bool
+    message: str
+    roll_no: str
+    zkbio_synced: bool
