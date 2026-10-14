@@ -81,21 +81,32 @@ async def poll_transactions():
 
     logger.info(f"[Poller] Starting transaction poller (interval={zkbio_client.ZKBIO_POLL_INTERVAL}s)")
 
-    # Start polling from 1 hour ago to catch recent events on startup
-    _last_poll_time = datetime.utcnow() - timedelta(hours=1)
+    # ZKBio stamps events in server-local time, so poll in local time too.
+    # Start 1 hour back to catch recent events on startup.
+    _last_poll_time = datetime.now() - timedelta(hours=1)
 
     while True:
         try:
-            now = datetime.utcnow()
-            start_str = _last_poll_time.strftime("%Y-%m-%d %H:%M:%S")
+            now = datetime.now()
+            # 60 s overlap: the device can upload a scan late. Duplicates are
+            # dropped by the txn id check in _process_transaction.
+            start_str = (_last_poll_time - timedelta(seconds=60)).strftime("%Y-%m-%d %H:%M:%S")
             end_str = now.strftime("%Y-%m-%d %H:%M:%S")
 
-            transactions = zkbio_client.get_transactions(
-                start_date=start_str,
-                end_date=end_str,
-                page_no=1,
-                page_size=100,
-            )
+            transactions = []
+            for page_no in range(1, 11):
+                batch = zkbio_client.get_transactions(
+                    start_date=start_str,
+                    end_date=end_str,
+                    page_no=page_no,
+                    page_size=100,
+                )
+                transactions.extend(batch)
+                if len(batch) < 100:
+                    break
+            # ZKBio returns newest first; log oldest first so the latest
+            # event per student is the last row (used by "currently inside").
+            transactions.sort(key=lambda t: str(t.get("eventTime", t.get("event_time", ""))))
 
             if transactions:
                 db = SessionLocal()
@@ -129,15 +140,38 @@ async def _process_transaction(txn: dict, db: Session):
     if len(_seen_txn_ids) > 10000:
         _seen_txn_ids.clear()
 
+    # Only successful scans at gym doors (not pool, door-open events, failures)
+    if not zkbio_client.is_gym_scan(txn):
+        return
+
     # Find student by PIN (roll_no)
     pin = str(txn.get("pin", ""))
     if not pin:
         return
 
+    # Already logged (e.g. after a restart or an overlapping poll window)
+    note = f"ZKBio txn:{txn_id}"
+    if db.query(AccessLog.id).filter(AccessLog.notes == note).first():
+        return
+
     student = db.query(Student).filter(Student.roll_no == pin).first()
     if not student:
-        logger.warning(f"[Poller] Transaction for unknown PIN: {pin}")
-        return
+        # Someone ZKBio let in who is not in our table yet (staff, new person):
+        # add them so the entry shows up.
+        dept_name = txn.get("deptName") or ""
+        name = " ".join(x for x in (txn.get("name"), txn.get("lastName")) if x).strip() or pin
+        student = Student(
+            roll_no=pin,
+            name=name,
+            room_no=dept_name,
+            category=_category_for(None, dept_name),
+            payment_status=PaymentStatus.NOT_REQUIRED,
+            access_enabled=True,
+        )
+        db.add(student)
+        db.commit()
+        db.refresh(student)
+        logger.info(f"[Poller] Added unknown PIN {pin} ({name}, {dept_name}) from a gym scan")
 
     # Determine entry vs exit
     event_type_str = zkbio_client.determine_event_type(txn)
@@ -153,14 +187,15 @@ async def _process_transaction(txn: dict, db: Session):
         student.payment_status = PaymentStatus.EXPIRED
         student.access_enabled = False
 
-    status = AccessStatus.ALLOWED if student.access_enabled else AccessStatus.DENIED
+    # ZKBio only reports a success when the gate opened: that is what happened
+    status = AccessStatus.ALLOWED
 
     # Parse transaction timestamp
     event_time_str = txn.get("event_time", txn.get("eventTime", ""))
     try:
         timestamp = datetime.strptime(event_time_str, "%Y-%m-%d %H:%M:%S")
     except (ValueError, TypeError):
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now()
 
     # Create access log
     log = AccessLog(
@@ -168,7 +203,7 @@ async def _process_transaction(txn: dict, db: Session):
         event_type=event_type,
         status=status,
         timestamp=timestamp,
-        notes=f"ZKBio txn:{txn_id}",
+        notes=note,
     )
     db.add(log)
     db.commit()
@@ -190,6 +225,157 @@ async def _process_transaction(txn: dict, db: Session):
 
 
 # ══════════════════════════════════════════════════════════════════════
+#  ZKBIO PERSON IMPORT (ZKBio → local students table)
+# ══════════════════════════════════════════════════════════════════════
+
+# Departments that hold gym students (see ZKBIO_DEPT_* in .env)
+_STUDENT_DEPT_CODES = {
+    c.strip()
+    for c in (
+        os.getenv("ZKBIO_DEPT_DAY_SCHOLAR_BOYS", ""),
+        os.getenv("ZKBIO_DEPT_DAY_SCHOLAR_GIRLS", ""),
+        os.getenv("ZKBIO_DEPT_HOSTELLER_BOYS", ""),
+        os.getenv("ZKBIO_DEPT_HOSTELLER_GIRLS", ""),
+    )
+    if c.strip()
+}
+# Category label per ZKBio department code (used for filtering)
+_CATEGORY_BY_DEPT = {
+    os.getenv("ZKBIO_DEPT_DAY_SCHOLAR_BOYS", "").strip(): "Day Scholar Boys",
+    os.getenv("ZKBIO_DEPT_DAY_SCHOLAR_GIRLS", "").strip(): "Day Scholar Girls",
+    os.getenv("ZKBIO_DEPT_HOSTELLER_BOYS", "").strip(): "Hosteller Boys",
+    os.getenv("ZKBIO_DEPT_HOSTELLER_GIRLS", "").strip(): "Hosteller Girls",
+}
+_CATEGORY_BY_DEPT.pop("", None)
+
+
+def _category_for(dept_code, dept_name=None) -> str | None:
+    cat = _CATEGORY_BY_DEPT.get(str(dept_code).strip())
+    return cat or (dept_name or None)
+
+
+# Access level per category: each department goes to its own ZKBio level
+_LEVEL_BY_CATEGORY = {
+    "Day Scholar Boys": os.getenv("ZKBIO_LEVEL_DAY_SCHOLAR_BOYS", "").strip(),
+    "Day Scholar Girls": os.getenv("ZKBIO_LEVEL_DAY_SCHOLAR_GIRLS", "").strip(),
+    "Hosteller Boys": os.getenv("ZKBIO_LEVEL_HOSTELLER_BOYS", "").strip(),
+    "Hosteller Girls": os.getenv("ZKBIO_LEVEL_HOSTELLER_GIRLS", "").strip(),
+}
+
+
+def _level_for(category: str | None) -> str | None:
+    """ZKBio level id for a category; None falls back to ZKBIO_LEVEL_IDS (General)."""
+    return _LEVEL_BY_CATEGORY.get(category or "") or None
+
+
+# Hostellers get free gym access: no payment tracked
+_HOSTELLER_DEPT_CODES = {
+    c.strip()
+    for c in (
+        os.getenv("ZKBIO_DEPT_HOSTELLER_BOYS", ""),
+        os.getenv("ZKBIO_DEPT_HOSTELLER_GIRLS", ""),
+    )
+    if c.strip()
+}
+# Access levels that grant gym entry
+_GYM_LEVEL_IDS = {
+    v.strip()
+    for k, v in os.environ.items()
+    if k.startswith("ZKBIO_LEVEL_") and v.strip()
+}
+_IMPORT_INTERVAL = int(os.getenv("ZKBIO_IMPORT_INTERVAL", "600"))
+_IMPORT_PAGE_SIZE = 500
+
+# Health of the ZKBio -> students pull, served by GET /api/sync/status
+_sync_state: dict = {"last_pull_ok": None, "last_pull_at": None, "last_result": None}
+
+
+def import_zkbio_persons(db: Session, all_departments: bool = False) -> dict:
+    """Pull persons from ZKBio into students. New rows are created; existing
+    rows only get name/phone refreshed (payment data is never overwritten)."""
+    created = updated = skipped = 0
+    page = 1
+    while True:
+        persons = zkbio_client.get_person_list(page_no=page, page_size=_IMPORT_PAGE_SIZE)
+        if persons is None:
+            db.commit()
+            raise RuntimeError(f"ZKBio person list failed on page {page}")
+        if not persons:
+            break
+        for p in persons:
+            pin = str(p.get("pin") or "").strip()
+            if not pin:
+                continue
+            if not all_departments and str(p.get("deptCode")) not in _STUDENT_DEPT_CODES:
+                skipped += 1
+                continue
+            name = " ".join(x for x in (p.get("name"), p.get("lastName")) if x).strip() or pin
+            phone = (p.get("mobilePhone") or "").strip()[:15] or None
+            is_hosteller = str(p.get("deptCode")) in _HOSTELLER_DEPT_CODES
+            student = db.query(Student).filter(Student.roll_no == pin).first()
+            if student:
+                changed = False
+                category = _category_for(p.get("deptCode"), p.get("deptName"))
+                if student.category != category:
+                    student.category = category
+                    changed = True
+                if student.name != name or (phone and student.phone != phone):
+                    student.name = name
+                    student.phone = phone or student.phone
+                    changed = True
+                # Hostellers never pay: fix rows imported earlier as paid/unpaid
+                if is_hosteller and (
+                    student.payment_status != PaymentStatus.NOT_REQUIRED
+                    or student.access_enabled == bool(p.get("isDisabled"))
+                ):
+                    student.payment_status = PaymentStatus.NOT_REQUIRED
+                    student.payment_valid_from = student.payment_valid_until = None
+                    student.access_enabled = not p.get("isDisabled")
+                    changed = True
+                updated += changed
+                continue
+            if is_hosteller:
+                payment_status = PaymentStatus.NOT_REQUIRED
+                has_access = not p.get("isDisabled")
+            else:
+                level_ids = {x.strip() for x in (p.get("accLevelIds") or "").split(",") if x.strip()}
+                has_access = bool(level_ids & _GYM_LEVEL_IDS) and not p.get("isDisabled")
+                payment_status = PaymentStatus.PAID if has_access else PaymentStatus.UNPAID
+            db.add(Student(
+                roll_no=pin,
+                name=name,
+                room_no=p.get("deptName") or "",
+                phone=phone,
+                category=_category_for(p.get("deptCode"), p.get("deptName")),
+                payment_status=payment_status,
+                access_enabled=has_access,
+            ))
+            created += 1
+        db.commit()
+        if len(persons) < _IMPORT_PAGE_SIZE:
+            break
+        page += 1
+    return {"created": created, "updated": updated, "skipped_other_departments": skipped}
+
+
+async def import_persons_loop():
+    """Background task: keep students in sync with ZKBio persons."""
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                result = await asyncio.to_thread(import_zkbio_persons, db)
+            finally:
+                db.close()
+            _sync_state.update(last_pull_ok=True, last_pull_at=datetime.utcnow().isoformat(), last_result=result)
+            logger.info(f"[Import] ZKBio persons → students: {result}")
+        except Exception as e:
+            _sync_state.update(last_pull_ok=False, last_pull_at=datetime.utcnow().isoformat())
+            logger.error(f"[Import] Error: {e}")
+        await asyncio.sleep(_IMPORT_INTERVAL)
+
+
+# ══════════════════════════════════════════════════════════════════════
 #  STARTUP
 # ══════════════════════════════════════════════════════════════════════
 
@@ -199,6 +385,7 @@ async def startup():
     logger.info("[Startup] Gym Access DB initialized.")
     if zkbio_client.ZKBIO_ENABLED:
         logger.info(f"[Startup] ZKBio integration ENABLED → {zkbio_client.ZKBIO_BASE_URL}")
+        asyncio.create_task(import_persons_loop())
         asyncio.create_task(poll_transactions())
     else:
         logger.info("[Startup] ZKBio integration DISABLED (manual mode)")
@@ -218,10 +405,40 @@ def dashboard():
 #  STUDENTS API
 # ══════════════════════════════════════════════════════════════════════
 
+@app.post("/api/zkbio/import-students", tags=["Students"])
+def import_students_now(all_departments: bool = Query(False), db: Session = Depends(get_db)):
+    """Pull persons from ZKBio into students right now."""
+    if not zkbio_client.ZKBIO_ENABLED:
+        raise HTTPException(400, "ZKBio integration disabled")
+    result = import_zkbio_persons(db, all_departments=all_departments)
+    _sync_state.update(last_pull_ok=True, last_pull_at=datetime.utcnow().isoformat(), last_result=result)
+    return result
+
+
+@app.get("/api/sync/status", tags=["Stats"])
+def sync_status():
+    """Health of the ZKBio bridge, polled by the gym-app backend."""
+    return {"zkbio_enabled": zkbio_client.ZKBIO_ENABLED, **_sync_state}
+
+
+@app.get("/api/categories", tags=["Students"])
+def list_categories(db: Session = Depends(get_db)):
+    """Distinct student categories with counts, for filter dropdowns."""
+    rows = (
+        db.query(Student.category, func.count(Student.id))
+        .filter(Student.category.isnot(None))
+        .group_by(Student.category)
+        .order_by(Student.category)
+        .all()
+    )
+    return [{"category": c, "count": n} for c, n in rows]
+
+
 @app.get("/api/students", response_model=list[StudentResponse], tags=["Students"])
 def list_students(
     search: Optional[str] = Query(None),
     payment_status: Optional[PaymentStatus] = Query(None),
+    category: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     q = db.query(Student)
@@ -234,6 +451,8 @@ def list_students(
         )
     if payment_status:
         q = q.filter(Student.payment_status == payment_status)
+    if category:
+        q = q.filter(Student.category == category)
     return q.order_by(Student.name).all()
 
 
@@ -247,16 +466,26 @@ def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
         name=payload.name,
         room_no=payload.room_no,
         phone=payload.phone,
+        category=_category_for(payload.dept_code),
         payment_status=PaymentStatus.UNPAID,
         access_enabled=False,
     )
+    if payload.dept_code and payload.dept_code in _HOSTELLER_DEPT_CODES:
+        student.payment_status = PaymentStatus.NOT_REQUIRED
+        student.access_enabled = True
     db.add(student)
     db.commit()
     db.refresh(student)
 
     # ── Sync to ZKBio device ──
-    # Register person on device (no access level yet — unpaid by default)
-    zkbio_client.add_person(pin=student.roll_no, name=student.name, dept_code=payload.dept_code)
+    # Hostellers get their hostel level at once; day scholars get none until paid
+    level = _level_for(student.category)
+    zkbio_client.add_person(
+        pin=student.roll_no,
+        name=student.name,
+        dept_code=payload.dept_code,
+        level_ids=(level or "") if student.access_enabled else "",
+    )
 
     return student
 
@@ -319,9 +548,16 @@ def delete_student(roll_no: str, db: Session = Depends(get_db)):
     if not student:
         raise HTTPException(404, "Student not found")
 
-    # ── Revoke access on ZKBio device before deleting ──
-    zkbio_client.delete_level(pin=roll_no)
-    zkbio_client.sync_person(pin=roll_no)
+    # ── Remove the person from ZKBio first, then locally ──
+    # If ZKBio fails we keep the local row: otherwise the person import
+    # would bring the student straight back and the two systems would differ.
+    level = _level_for(student.category)
+    zkbio_client.delete_level(pin=roll_no, level_ids=level)
+    zkbio_client.sync_person(pin=roll_no, level_ids=level)
+    result = zkbio_client.delete_person(pin=roll_no)
+    if result == "failed":
+        raise HTTPException(502, f"Could not delete {roll_no} from ZKBio; nothing was deleted")
+    logger.info(f"[ZKBio] Delete {roll_no}: {result}")
 
     db.delete(student)
     db.commit()
@@ -332,6 +568,10 @@ def update_payment(roll_no: str, payload: PaymentUpdate, db: Session = Depends(g
     student = db.query(Student).filter(Student.roll_no == roll_no).first()
     if not student:
         raise HTTPException(404, "Student not found")
+
+    # Hostellers have no payment: ignore payment updates
+    if student.payment_status == PaymentStatus.NOT_REQUIRED:
+        return student
 
     student.payment_status = payload.payment_status
     student.payment_valid_from = payload.payment_valid_from
@@ -353,13 +593,14 @@ def update_payment(roll_no: str, payload: PaymentUpdate, db: Session = Depends(g
     db.refresh(student)
 
     # ── Sync access level on ZKBio device ──
+    level = _level_for(student.category)
     if student.access_enabled:
-        zkbio_client.add_level_person(pin=roll_no)
-        zkbio_client.sync_person(pin=roll_no)
+        zkbio_client.add_level_person(pin=roll_no, level_ids=level)
+        zkbio_client.sync_person(pin=roll_no, level_ids=level)
         logger.info(f"[ZKBio] Access ENABLED for {roll_no} on device")
     else:
-        zkbio_client.delete_level(pin=roll_no)
-        zkbio_client.sync_person(pin=roll_no)
+        zkbio_client.delete_level(pin=roll_no, level_ids=level)
+        zkbio_client.sync_person(pin=roll_no, level_ids=level)
         logger.info(f"[ZKBio] Access DISABLED for {roll_no} on device")
 
     return student
@@ -507,7 +748,7 @@ def register_student_face(roll_no: str, payload: FaceRegistrationRequest, db: Se
         db.refresh(student)
 
     zkbio_client.upload_person_photo(pin=roll_no, photo_base64=payload.photo_base64)
-    zkbio_client.sync_person(pin=roll_no)
+    zkbio_client.sync_person(pin=roll_no, level_ids=_level_for(student.category))
 
     return FaceRegistrationResponse(
         success=True,
@@ -527,6 +768,7 @@ def get_stats(db: Session = Depends(get_db)):
     paid = db.query(func.count(Student.id)).filter(Student.payment_status == PaymentStatus.PAID).scalar() or 0
     unpaid = db.query(func.count(Student.id)).filter(Student.payment_status == PaymentStatus.UNPAID).scalar() or 0
     expired = db.query(func.count(Student.id)).filter(Student.payment_status == PaymentStatus.EXPIRED).scalar() or 0
+    not_required = db.query(func.count(Student.id)).filter(Student.payment_status == PaymentStatus.NOT_REQUIRED).scalar() or 0
 
     latest_subq = (
         db.query(
@@ -552,6 +794,7 @@ def get_stats(db: Session = Depends(get_db)):
         paid_count=paid,
         unpaid_count=unpaid,
         expired_count=expired,
+        not_required_count=not_required,
         currently_inside=inside,
     )
 

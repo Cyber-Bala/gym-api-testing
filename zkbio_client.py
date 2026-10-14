@@ -8,8 +8,10 @@ All methods are no-ops when ZKBIO_ENABLED is false.
 
 import logging
 import os
+import re
 from datetime import datetime
 from typing import Any, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -28,6 +30,10 @@ ZKBIO_ENTRY_READERS = [int(r.strip()) for r in os.getenv("ZKBIO_ENTRY_READER", "
 ZKBIO_EXIT_READERS = [int(r.strip()) for r in os.getenv("ZKBIO_EXIT_READER", "1").split(",") if r.strip()]
 ZKBIO_ENTRY_DOOR_IDS = [d.strip() for d in os.getenv("ZKBIO_ENTRY_DOOR_ID", "1").split(",") if d.strip()]
 ZKBIO_EXIT_DOOR_IDS = [d.strip() for d in os.getenv("ZKBIO_EXIT_DOOR_ID", "2").split(",") if d.strip()]
+
+# Only transactions from doors whose name contains this text are gym scans
+# (case-insensitive). Empty string = accept every door.
+ZKBIO_GYM_DOOR_FILTER = os.getenv("ZKBIO_GYM_DOOR_FILTER", "gym entrance").strip().lower()
 
 TIMEOUT = 10.0  # seconds
 
@@ -52,8 +58,17 @@ def _log_disabled():
 #  Person Management
 # ══════════════════════════════════════════════════════════════════
 
-def add_person(pin: str, name: str, last_name: str = "", dept_code: str | None = None) -> dict[str, Any] | None:
-    """Register a person on the ZKBio device."""
+def add_person(
+    pin: str,
+    name: str,
+    last_name: str = "",
+    dept_code: str | None = None,
+    level_ids: str | None = None,
+) -> dict[str, Any] | None:
+    """Register a person on the ZKBio device.
+
+    level_ids: access level(s) to grant; "" grants none; None uses ZKBIO_LEVEL_IDS.
+    """
     if not ZKBIO_ENABLED:
         _log_disabled()
         return None
@@ -62,8 +77,10 @@ def add_person(pin: str, name: str, last_name: str = "", dept_code: str | None =
         "name": name,
         "lastName": last_name,
         "deptCode": dept_code or ZKBIO_DEPT_CODE,
-        "accLevelIds": ZKBIO_LEVEL_IDS,
     }
+    ids = ZKBIO_LEVEL_IDS if level_ids is None else level_ids
+    if ids:
+        payload["accLevelIds"] = ids
     try:
         resp = httpx.post(
             _url("/api/person/add"),
@@ -95,6 +112,60 @@ def get_person(pin: str) -> dict[str, Any] | None:
     except Exception as e:
         logger.error(f"get_person({pin}) failed: {e}")
         return None
+
+
+def get_person_list(page_no: int = 1, page_size: int = 500) -> list[dict[str, Any]] | None:
+    """List persons registered in ZKBio (POST, pageNo is 1-based). None on failure."""
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    try:
+        resp = httpx.post(
+            _url("/api/person/getPersonList"),
+            params=_params(pageNo=page_no, pageSize=page_size),
+            timeout=60.0,
+        )
+        data = resp.json()
+        if data.get("code") == 0 and isinstance(data.get("data"), list):
+            return data["data"]
+        logger.warning(f"get_person_list unexpected response: {str(data)[:200]}")
+        return None
+    except Exception as e:
+        logger.error(f"get_person_list(page {page_no}) failed: {e}")
+        return None
+
+
+def delete_person(pin: str) -> str:
+    """Delete one person from ZKBio by exact PIN. This cannot be undone.
+
+    Returns "deleted", "missing" (already gone), "skipped" (integration off)
+    or "failed" (ZKBio unreachable or refused).
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return "skipped"
+    pin = (pin or "").strip()
+    # Never build a delete URL from an empty or path-like PIN
+    if not pin or "/" in pin or "\\" in pin or ".." in pin:
+        logger.error(f"delete_person refused unsafe pin: {pin!r}")
+        return "failed"
+    try:
+        resp = httpx.post(
+            _url(f"/api/person/delete/{quote(pin, safe='')}"),
+            params=_params(),
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        code = data.get("code")
+        logger.info(f"delete_person({pin}): {data}")
+        if code == 0:
+            return "deleted"
+        if code == -22:  # "Person does not exist"
+            return "missing"
+        return "failed"
+    except Exception as e:
+        logger.error(f"delete_person({pin}) failed: {e}")
+        return "failed"
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -293,6 +364,19 @@ def remote_close_door(door_id: str) -> dict[str, Any] | None:
         return None
 
 
+def is_gym_scan(transaction: dict) -> bool:
+    """True for a successful verification at a gym door."""
+    name = str(transaction.get("eventName", "")).lower()
+    if not ("success" in name or name == "normal verify open"):
+        return False
+    if not ZKBIO_GYM_DOOR_FILTER:
+        return True
+    door = " ".join(
+        str(transaction.get(k, "")) for k in ("doorName", "eventPointName", "devName")
+    ).lower()
+    return ZKBIO_GYM_DOOR_FILTER in door
+
+
 def determine_event_type(transaction: dict) -> str:
     """
     Determine if a transaction is an 'entry' or 'exit' based on config mode.
@@ -302,6 +386,13 @@ def determine_event_type(transaction: dict) -> str:
     - two_doors: door ID determines direction
     - toggle: not used in real-time, fallback to 'entry'
     """
+    # Door/device names carry the direction ("Gym Entrance-IN-2-1",
+    # "Gym Entrance OUT-1-1"). The reader name always ends in "-In", so skip it.
+    for key in ("doorName", "eventPointName", "devName"):
+        match = re.search(r"(?<![A-Z])(IN|OUT)(?![A-Z])", str(transaction.get(key, "")).upper())
+        if match:
+            return "entry" if match.group(1) == "IN" else "exit"
+
     if ZKBIO_ENTRY_EXIT_MODE == "two_readers":
         reader = transaction.get("reader", transaction.get("readerNo", 0))
         try:

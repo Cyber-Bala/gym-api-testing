@@ -34,6 +34,7 @@ class StudentResponse(BaseModel):
     name: str
     room_no: str
     phone: Optional[str]
+    category: Optional[str] = None
     payment_status: PaymentStatus
     payment_valid_from: Optional[dt_date]
     payment_valid_until: Optional[dt_date]
@@ -72,6 +73,7 @@ class StatsResponse(BaseModel):
     paid_count: int
     unpaid_count: int
     expired_count: int
+    not_required_count: int = 0
     currently_inside: int
 
 

@@ -36,3 +36,9 @@ def get_db() -> Generator[Session, None, None]:
 def init_db() -> None:
     import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    # create_all never alters existing tables: add newer columns by hand
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(students)")}
+        if "category" not in cols:
+            conn.exec_driver_sql("ALTER TABLE students ADD COLUMN category VARCHAR(40)")
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_students_category ON students (category)")

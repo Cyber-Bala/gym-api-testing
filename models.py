@@ -11,6 +11,7 @@ class PaymentStatus(str, PyEnum):
     PAID = "paid"
     UNPAID = "unpaid"
     EXPIRED = "expired"
+    NOT_REQUIRED = "not_required"  # hostellers: no gym payment
 
 
 class EventType(str, PyEnum):
@@ -43,6 +44,7 @@ class Student(Base):
     )
     payment_valid_from: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
     payment_valid_until: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     access_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

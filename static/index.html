@@ -93,6 +93,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .badge-paid{background:var(--green-bg);color:var(--green)}
 .badge-unpaid{background:var(--red-bg);color:var(--red)}
 .badge-expired{background:var(--orange-bg);color:var(--orange)}
+.badge-not_required{background:rgba(148,163,184,.15);color:#94a3b8}
 .badge-allowed{background:var(--green-bg);color:var(--green)}
 .badge-denied{background:var(--red-bg);color:var(--red)}
 .badge-entry{background:var(--blue-bg);color:var(--blue)}
@@ -194,13 +195,17 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <option value="paid">Paid</option>
         <option value="unpaid">Unpaid</option>
         <option value="expired">Expired</option>
+        <option value="not_required">No Payment</option>
+      </select>
+      <select class="filter-select" id="student-category">
+        <option value="">All Categories</option>
       </select>
       <button class="btn btn-primary" onclick="openAddStudentModal()">+ Add Student</button>
     </div>
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>Roll No</th><th>Name</th><th>Batch</th><th>Phone</th>
+          <th>Roll No</th><th>Name</th><th>Batch</th><th>Category</th><th>Phone</th>
           <th>Payment</th><th>Valid Until</th><th>Access</th><th>Actions</th>
         </tr></thead>
         <tbody id="students-tbody"></tbody>
@@ -474,6 +479,8 @@ async function loadStudents() {
     let url = '/api/students?';
     if (search) url += `search=${encodeURIComponent(search)}&`;
     if (filter) url += `payment_status=${filter}&`;
+    const category = document.getElementById('student-category').value;
+    if (category) url += `category=${encodeURIComponent(category)}&`;
     studentsData = await api(url);
     renderStudents();
   } catch(e) { toast(e.message, 'error'); }
@@ -493,12 +500,13 @@ function renderStudents() {
       <td><strong>${esc(s.roll_no)}</strong></td>
       <td>${esc(s.name)}</td>
       <td>${esc(s.room_no)}</td>
+      <td>${esc(s.category || '—')}</td>
       <td>${esc(s.phone || '—')}</td>
-      <td><span class="badge badge-${s.payment_status}">${s.payment_status.toUpperCase()}</span></td>
-      <td>${formatDate(s.payment_valid_until)}</td>
+      <td><span class="badge badge-${s.payment_status}">${s.payment_status === 'not_required' ? 'NO PAYMENT' : s.payment_status.toUpperCase()}</span></td>
+      <td>${s.payment_status === 'not_required' ? '—' : formatDate(s.payment_valid_until)}</td>
       <td><span class="badge ${s.access_enabled?'badge-access-on':'badge-access-off'}">${s.access_enabled?'✓ ON':'✕ OFF'}</span></td>
       <td>
-        <button class="btn btn-sm btn-success" onclick="openPaymentModal('${esc(s.roll_no)}','${s.payment_status}','${s.payment_valid_from||''}','${s.payment_valid_until||''}')">💳</button>
+        ${s.payment_status === 'not_required' ? '' : `<button class="btn btn-sm btn-success" onclick="openPaymentModal('${esc(s.roll_no)}','${s.payment_status}','${s.payment_valid_from||''}','${s.payment_valid_until||''}')">💳</button>`}
         <button class="btn btn-sm btn-ghost" onclick="openEditStudentModal('${esc(s.roll_no)}','${esc(s.name)}','${esc(s.room_no)}','${esc(s.phone||'')}')">✏️</button>
         <button class="btn btn-sm btn-danger" onclick="deleteStudent('${esc(s.roll_no)}')">🗑️</button>
       </td>
@@ -515,6 +523,19 @@ document.getElementById('student-search').addEventListener('input', () => {
   searchTimer = setTimeout(loadStudents, 300);
 });
 document.getElementById('student-filter').addEventListener('change', loadStudents);
+document.getElementById('student-category').addEventListener('change', loadStudents);
+
+async function loadCategories() {
+  try {
+    const sel = document.getElementById('student-category');
+    const keep = sel.value;
+    const cats = await api('/api/categories');
+    sel.innerHTML = '<option value="">All Categories</option>' +
+      cats.map(c => `<option value="${esc(c.category)}">${esc(c.category)} (${c.count})</option>`).join('');
+    sel.value = keep;
+  } catch(e) {}
+}
+loadCategories();
 
 // Add student
 function openAddStudentModal() {
