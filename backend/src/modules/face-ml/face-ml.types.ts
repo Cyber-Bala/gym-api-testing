@@ -29,6 +29,25 @@ export interface FaceMlResult {
   score?: number;
 }
 
+export const faceMlSelfSchema = z.object({
+  imageBase64: z.string().min(1000, 'Captured photo is too small'),
+});
+
+export type FaceMlSelfState =
+  | 'ready'
+  | 'no_id_photo'
+  | 'already'
+  | 'managed'
+  | 'not_student'
+  | 'service_offline';
+
+export interface FaceMlSelfStatus {
+  state: FaceMlSelfState;
+  canRegister: boolean;
+  message: string;
+  rollNumber?: string;
+}
+
 export const faceMlCaptureSchema = z.object({
   studentId: z.string().min(1),
   imageBase64: z.string().min(1000, 'Captured photo is too small'),

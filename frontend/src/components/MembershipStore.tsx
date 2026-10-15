@@ -191,7 +191,7 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
             <RecLogo alt="REC Gym Logo" className="h-24 w-60 mx-auto mb-2" />
             <h1 className="text-2xl font-bold text-foreground">Gym Pass Required</h1>
             <p className="text-base text-muted-foreground max-w-md mx-auto leading-relaxed">
-              As a Day Scholar, buy an active gym pass first. Personal details and face enrollment come after payment.
+              Your face is registered. As a Day Scholar, buy an active gym pass to get gym access and book slots.
             </p>
           </div>
 

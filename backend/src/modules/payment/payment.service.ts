@@ -5,6 +5,7 @@ import { logger } from '../../shared/logging/index.js';
 import { NotFoundError, ValidationError } from '../../shared/errors/index.js';
 import { paymentOrders, membershipPlans, students, people, memberships } from '../../db/schema/index.js';
 import { membershipService } from '../membership/membership.service.js';
+import { hasFacePhoto } from '../device-sync/zkbio-provision.service.js';
 import { config } from '../../config/index.js';
 import {
   PayUNotifyOutcome,
@@ -202,7 +203,7 @@ export class PaymentService {
     let membership;
     const [stu] = await db.select().from(students).where(eq(students.id, studentId)).limit(1);
     
-    if (stu?.residency === 'day_scholar' && stu?.faceEnrollmentStatus !== 'enrolled') {
+    if (stu?.residency === 'day_scholar' && stu?.faceEnrollmentStatus !== 'enrolled' && !(await hasFacePhoto(studentId))) {
       const now = new Date();
       const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, order.planId)).limit(1);
       
@@ -333,7 +334,7 @@ export class PaymentService {
 
       const [stu] = await db.select().from(students).where(eq(students.id, order.studentId)).limit(1);
       
-      if (stu?.residency === 'day_scholar' && stu?.faceEnrollmentStatus !== 'enrolled') {
+      if (stu?.residency === 'day_scholar' && stu?.faceEnrollmentStatus !== 'enrolled' && !(await hasFacePhoto(order.studentId))) {
         const now = new Date();
         const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, order.planId)).limit(1);
         

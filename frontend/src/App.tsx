@@ -24,6 +24,7 @@ import { ExecutiveAnalyticsDashboard } from './components/ExecutiveAnalyticsDash
 import { DataLifecycleManager } from './components/DataLifecycleManager';
 import { AdminManagement } from './components/AdminManagement';
 import { UserProfileView } from './components/UserProfileView';
+import { StudentFaceGate } from './components/StudentFaceGate';
 import { Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -61,9 +62,8 @@ export const App: React.FC = () => {
   // NOR a pending_activation one. If they've paid (hasPendingMembership=true)
   // but haven't registered their face yet, let them through — the face
   // registration flow will guide them to the next step.
-  if (isDayScholar && user.hasActiveMembership === false && !user.hasPendingMembership) {
-    return <MembershipStore mandatoryMode />;
-  }
+  // The face gate (step 1) wraps this, so the face is registered before the day scholar pays.
+  const needsPayment = isDayScholar && user.hasActiveMembership === false && !user.hasPendingMembership;
 
   // ─────────────────────────────────────────────
   // 2. ROLE-SPECIFIC CONTENT RENDERING
@@ -152,9 +152,16 @@ export const App: React.FC = () => {
     }
   };
 
-  return (
+  const shell = (
     <AppShell active={activeView} onNavigate={setActiveView}>
       {renderContent()}
     </AppShell>
+  );
+
+  // 3. STUDENTS: face registration first, then payment (day scholars only), then slot booking.
+  return isStudent ? (
+    <StudentFaceGate>{needsPayment ? <MembershipStore mandatoryMode /> : shell}</StudentFaceGate>
+  ) : (
+    shell
   );
 };

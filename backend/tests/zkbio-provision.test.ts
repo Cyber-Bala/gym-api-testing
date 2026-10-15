@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 /** Results handed back by db.select()...limit(), in call order. */
 const limits: unknown[][] = [];
@@ -27,7 +27,13 @@ vi.mock('../src/shared/database/index.js', () => {
   return { db: chain, pool };
 });
 
-import { reconcileStudent } from '../src/modules/device-sync/zkbio-provision.service.js';
+import { reconcileStudent, reconcileAll } from '../src/modules/device-sync/zkbio-provision.service.js';
+import { config } from '../src/config/index.js';
+
+// The real .env may switch sync off for local testing; tests choose explicitly.
+beforeEach(() => {
+  config.ZKBIO_SYNC_ENABLED = true;
+});
 
 const student = (over: Record<string, unknown> = {}) => ({
   id: 's1',
@@ -156,5 +162,40 @@ describe('ZKBio provisioning rules', () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
     const r = await reconcileStudent('s1');
     expect(r).toMatchObject({ action: 'failed', onGate: true });
+  });
+});
+
+describe('testing mode (ZKBIO_SYNC_ENABLED=false)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    limits.length = 0;
+    calls.length = 0;
+    state.photo = true;
+    config.ZKBIO_SYNC_ENABLED = false;
+  });
+  afterEach(() => {
+    config.ZKBIO_SYNC_ENABLED = true;
+  });
+
+  it('eligible student with a face: saved in the gym app, nothing sent to ZKBio', async () => {
+    limits.push([student({ residency: 'hosteller' })]);
+    const f = bridge();
+    const r = await reconcileStudent('s1');
+    expect(r.action).toBe('kept_local');
+    expect(r.message).toContain('switched off');
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('paid day scholar: still nothing sent to ZKBio', async () => {
+    limits.push([student()], [pass]);
+    const f = bridge();
+    await reconcileStudent('s1');
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('daily / manual sync does nothing', async () => {
+    const f = bridge();
+    expect(await reconcileAll()).toEqual({ checked: 0, provisioned: 0, deprovisioned: 0, failed: 0 });
+    expect(f).not.toHaveBeenCalled();
   });
 });

@@ -35,7 +35,7 @@ interface BulkRow {
 }
 
 const STATUS_LABEL: Record<FaceStatus, string> = {
-  REGISTERED: 'Registered',
+  REGISTERED: 'ID photo saved',
   NOT_FOUND: 'Not in records',
   DETAILS_MISMATCH: 'Details differ',
   ALREADY_REGISTERED: 'Already registered',
@@ -153,7 +153,7 @@ export const FaceUploadAdmin: React.FC = () => {
     setResult(r);
     setBusy(false);
     if (r.status === 'REGISTERED') {
-      toast.success(r.message, 'Face registered');
+      toast.success(r.message, 'ID photo saved');
       setRoll('');
       setName('');
       setPhoto(null);
@@ -218,7 +218,7 @@ export const FaceUploadAdmin: React.FC = () => {
     <div className="space-y-6">
       <PageHeader
         title="Face Upload"
-        description="Upload one photo or many. The student must already be in the records; otherwise go to the admin to check."
+        description="Upload ID photos, one or many. The student must already be in the records. The photo is the reference: students then register their own face from the student portal, or a teacher does it with the camera."
         badge={
           service && (
             <Badge tone={service.online ? 'success' : 'danger'}>
@@ -256,7 +256,7 @@ export const FaceUploadAdmin: React.FC = () => {
             required
           />
           <Input
-            label="Face photo"
+            label="ID photo"
             type="file"
             accept="image/*"
             onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
@@ -264,7 +264,7 @@ export const FaceUploadAdmin: React.FC = () => {
           />
           {preview && <img src={preview} alt="Selected" className="max-h-60 rounded-lg object-contain" />}
           <Button onClick={submitSingle} loading={busy} disabled={busy || service?.online === false}>
-            <ScanFace className="h-4 w-4" /> Register face
+            <ScanFace className="h-4 w-4" /> Save ID photo
           </Button>
           {result && (
             <Alert tone={result.status === 'REGISTERED' ? 'success' : result.status === 'PHOTO_REJECTED' || result.status === 'SERVICE_ERROR' ? 'danger' : 'warning'}>
@@ -296,7 +296,7 @@ export const FaceUploadAdmin: React.FC = () => {
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Button onClick={runBulk} disabled={!rows.length || running || service?.online === false} loading={running}>
-                <Upload className="h-4 w-4" /> Register {rows.length ? `${rows.length - okCount} photos` : 'all'}
+                <Upload className="h-4 w-4" /> Save {rows.length ? `${rows.length - okCount} ID photos` : 'ID photos'}
               </Button>
               {running && (
                 <Button variant="outline" onClick={() => (stopRef.current = true)}>

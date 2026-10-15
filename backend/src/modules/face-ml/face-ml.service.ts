@@ -3,8 +3,13 @@ import { db } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { students, people } from '../../db/schema/index.js';
 import { config } from '../../config/index.js';
-import { saveFacePhoto, reconcileStudent } from '../device-sync/zkbio-provision.service.js';
-import type { FaceMlCaptureDto, FaceMlRegisterDto, FaceMlResult } from './face-ml.types.js';
+import { saveFacePhoto, reconcileStudent, hasFacePhoto } from '../device-sync/zkbio-provision.service.js';
+import type {
+  FaceMlCaptureDto,
+  FaceMlRegisterDto,
+  FaceMlResult,
+  FaceMlSelfStatus,
+} from './face-ml.types.js';
 
 const GO_TO_ADMIN = 'Please go to the admin and check the student details once.';
 
@@ -59,6 +64,78 @@ export class FaceMlService {
       logger.warn({ err, rollNumber }, 'face_ML delete failed (service offline?)');
       return 'failed';
     }
+  }
+
+  /**
+   * Student portal: can this signed-in student register their own face right now?
+   * They can when an ID photo is on file (uploaded by an admin) and no face is saved yet.
+   */
+  public async selfStatus(personId: string): Promise<FaceMlSelfStatus> {
+    const [row] = await db
+      .select({ studentId: students.id, rollNumber: students.rollNumber, source: students.source })
+      .from(students)
+      .where(eq(students.personId, personId))
+      .limit(1);
+
+    if (!row) {
+      return { state: 'not_student', canRegister: false, message: 'Face registration from the portal is for students.' };
+    }
+    const base = { rollNumber: row.rollNumber };
+    if (row.source === 'zkbio') {
+      return {
+        ...base,
+        state: 'managed',
+        canRegister: false,
+        message: 'Your face is managed in ZKBio. Please meet the admin for any change.',
+      };
+    }
+    if (await hasFacePhoto(row.studentId)) {
+      return {
+        ...base,
+        state: 'already',
+        canRegister: false,
+        message: 'Your face is already registered. To change it, please meet the admin.',
+      };
+    }
+    const photo = await this.hasPhoto(row.rollNumber);
+    if (!photo.online) {
+      return {
+        ...base,
+        state: 'service_offline',
+        canRegister: false,
+        message: 'Face registration is not available right now. Please try again later or meet the admin.',
+      };
+    }
+    if (!photo.registered) {
+      return {
+        ...base,
+        state: 'no_id_photo',
+        canRegister: false,
+        message: 'Your details are not in the admin portal yet. Please meet the admin to get them added.',
+      };
+    }
+    return { ...base, state: 'ready', canRegister: true, message: 'Take a live photo. It is checked against your ID photo.' };
+  }
+
+  /**
+   * Student portal registration: the live capture must match the ID photo on file,
+   * then it is saved (and goes to ZKBio when the rules allow it).
+   */
+  public async selfRegister(personId: string, imageBase64: string): Promise<FaceMlResult> {
+    const status = await this.selfStatus(personId);
+    const [row] = await db
+      .select({ studentId: students.id })
+      .from(students)
+      .where(eq(students.personId, personId))
+      .limit(1);
+    if (!status.canRegister || !row) {
+      return {
+        rollNumber: status.rollNumber ?? '',
+        status: status.state === 'no_id_photo' ? 'NO_PHOTO' : 'NOT_FOUND',
+        message: status.message,
+      };
+    }
+    return this.captureEnroll({ studentId: row.studentId, imageBase64 });
   }
 
   /** Has a photo been uploaded (Face Upload) for this roll number? */
@@ -132,7 +209,7 @@ export class FaceMlService {
       return {
         ...base,
         status: 'NO_PHOTO',
-        message: `No photo is uploaded for ${row.name} (${row.rollNumber}). Upload the student's photo in Face Upload first.`,
+        message: `No ID photo is on file for ${row.name} (${row.rollNumber}), so the face cannot be checked. ${GO_TO_ADMIN}`,
       };
     }
     if (!res.ok) {
@@ -260,16 +337,14 @@ export class FaceMlService {
       };
     }
 
-    // --- keep the face in the gym app; ZKBio gets it only when eligible --------
-    await saveFacePhoto(row.studentId, b64, 'upload');
-    const sync = await reconcileStudent(row.studentId);
-
+    // The uploaded photo is the REFERENCE ("ID photo on file"). The student's own live capture
+    // (student portal, or a teacher with the camera) is checked against it, and only that
+    // capture is saved and sent on to ZKBio. So nothing is saved or synced here.
     return {
       rollNumber: row.rollNumber,
       status: 'REGISTERED',
       name: row.name,
-      gateStatus: sync.onGate ? 'enrolled' : 'pending',
-      message: `Face registered for ${row.name}. ${sync.message}`,
+      message: `ID photo saved for ${row.name}. They can now register their face from the student portal, or a teacher can do it with the camera.`,
     };
   }
 }

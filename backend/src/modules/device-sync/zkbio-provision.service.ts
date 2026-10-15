@@ -2,7 +2,8 @@ import { eq, and, gt, lte, desc } from 'drizzle-orm';
 import { db, pool } from '../../shared/database/index.js';
 import { logger } from '../../shared/logging/index.js';
 import { config } from '../../config/index.js';
-import { students, people, memberships } from '../../db/schema/index.js';
+import { students, people, memberships, membershipPlans } from '../../db/schema/index.js';
+import { isSyncEnabled } from './sync-settings.service.js';
 
 /**
  * ZKBio provisioning rules (the gym app database is the source of truth):
@@ -65,7 +66,7 @@ async function getFacePhotoB64(studentId: string): Promise<string | null> {
   return r.rows[0]?.photo ? (r.rows[0].photo as Buffer).toString('base64') : null;
 }
 
-async function hasFacePhoto(studentId: string): Promise<boolean> {
+export async function hasFacePhoto(studentId: string): Promise<boolean> {
   const r = await pool.query('SELECT 1 FROM people.student_face_photos WHERE student_id = $1', [studentId]);
   return (r.rowCount ?? 0) > 0;
 }
@@ -110,15 +111,39 @@ async function activePass(studentId: string) {
   return m ?? null;
 }
 
+/**
+ * A day scholar who paid before registering a face has a pass in 'pending_activation'.
+ * Once the face is saved the pass starts now, so the student can go to ZKBio.
+ */
+async function activatePendingPass(studentId: string) {
+  const [p] = await db
+    .select({ id: memberships.id, days: membershipPlans.durationDays })
+    .from(memberships)
+    .innerJoin(membershipPlans, eq(memberships.planId, membershipPlans.id))
+    .where(and(eq(memberships.studentId, studentId), eq(memberships.status, 'pending_activation')))
+    .orderBy(desc(memberships.createdAt))
+    .limit(1);
+  if (!p) return null;
+  const now = new Date();
+  const end = new Date(now.getTime() + p.days * 24 * 60 * 60 * 1000);
+  await db
+    .update(memberships)
+    .set({ status: 'active', startDate: now, endDate: end, updatedAt: now })
+    .where(eq(memberships.id, p.id));
+  logger.info({ studentId }, 'Paid pass activated after face registration');
+  return { startDate: now, endDate: end };
+}
+
 const day = (d: Date) => new Date(d).toISOString().slice(0, 10);
 
 export async function evaluate(studentId: string) {
   const s = await loadStudent(studentId);
   if (!s) return null;
   const photo = await hasFacePhoto(studentId);
-  const pass = s.residency === 'day_scholar' ? await activePass(studentId) : null;
   // Already on the gate counts as having a face (older students have no stored photo).
   const faceOk = photo || s.zkbioSynced;
+  let pass = s.residency === 'day_scholar' ? await activePass(studentId) : null;
+  if (!pass && s.residency === 'day_scholar' && faceOk) pass = await activatePendingPass(studentId);
   const paidOk = s.residency !== 'day_scholar' || Boolean(pass);
   const reason: KeepReason | undefined = !faceOk ? 'no_face' : !paidOk ? 'awaiting_payment' : undefined;
   return { student: s, photo, pass, eligible: faceOk && paidOk, reason };
@@ -194,6 +219,16 @@ export async function reconcileStudent(studentId: string): Promise<ProvisionResu
   const ev = await evaluate(studentId);
   if (!ev) return { action: 'not_found', onGate: false, message: 'Student not found.' };
   const { student: s, eligible, pass, photo } = ev;
+
+  // Testing mode: keep everything in the gym app, never contact the Gym API / ZKBio.
+  if (!(await isSyncEnabled())) {
+    if (!s.zkbioSynced && photo) await markSynced(s.id, s.personId, false, 'pending', null);
+    return {
+      action: 'kept_local',
+      onGate: s.zkbioSynced,
+      message: 'Face saved in the gym app. ZKBio sync is switched off (testing), so nothing was sent to ZKBio.',
+    };
+  }
 
   // People that came from ZKBio are managed in ZKBio. The gym app never changes their ZKBio data.
   if (s.source === 'zkbio') {
@@ -293,6 +328,7 @@ export async function reconcileStudent(studentId: string): Promise<ProvisionResu
 
 /** Fix drift for everyone who has a stored face or is on ZKBio (daily job and the Sync button). */
 export async function reconcileAll(): Promise<{ checked: number; provisioned: number; deprovisioned: number; failed: number }> {
+  if (!(await isSyncEnabled())) return { checked: 0, provisioned: 0, deprovisioned: 0, failed: 0 };
   const r = await pool.query(
     `SELECT s.id FROM people.students s
      WHERE s.source = 'app' AND (s.zkbio_synced = true OR EXISTS (SELECT 1 FROM people.student_face_photos f WHERE f.student_id = s.id))`

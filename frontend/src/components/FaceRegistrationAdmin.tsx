@@ -22,6 +22,7 @@ import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
 import { FaceIdIcon } from './FaceIdIcon';
 import { SyncStatusBanner } from './SyncStatusBanner';
+import { useAuth } from '../context/AuthContext';
 
 /* ─────────── Types ─────────── */
 
@@ -43,6 +44,8 @@ type CaptureStep = 'idle' | 'searching' | 'selected' | 'camera' | 'preview' | 's
 
 export const FaceRegistrationAdmin: React.FC = () => {
   const toast = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   // Student search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -352,7 +355,7 @@ export const FaceRegistrationAdmin: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <SyncStatusBanner />
+      {isAdmin && <SyncStatusBanner />}
       {/* Header Card */}
       <Card className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -557,7 +560,7 @@ export const FaceRegistrationAdmin: React.FC = () => {
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 shrink-0" />
                   <span className="text-xs">
-                    No photo uploaded for this student. Upload it in <b>Face Upload</b> first, then come back to capture.
+                    No ID photo on file for this student. Upload it in <b>Face Upload</b> first, then come back to capture.
                   </span>
                 </div>
               </Alert>

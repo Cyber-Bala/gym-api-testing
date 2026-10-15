@@ -57,6 +57,9 @@ const envSchema = z.object({
     .default('http://localhost:44444')
     .transform((v) => v.replace(/\/+$/, '')),
 
+  // false = testing mode: never talk to the Gym API / ZKBio portal. Faces are only saved in the gym app.
+  ZKBIO_SYNC_ENABLED: z.string().transform((v) => v === 'true' || v === '1').default('true'),
+
   // face_ML service (run face_ML/start_service.bat). Plain HTTP on this machine.
   FACE_ML_URL: z
     .string()

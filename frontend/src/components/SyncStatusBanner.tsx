@@ -7,7 +7,8 @@ import { useToast } from '../context/ToastContext';
 
 interface BridgeHealth {
   ok: boolean;
-  gymApi: { up: boolean; message: string };
+  syncEnabled: boolean;
+  gymApi: { up: boolean | null; message: string };
   zkbio: { up: boolean | null; message: string; lastPullAt: string | null };
   faceService: { up: boolean; message: string; registered?: number };
   issues: string[];
@@ -38,6 +39,7 @@ export const SyncStatusBanner: React.FC = () => {
   const [health, setHealth] = useState<BridgeHealth | null>(null);
   const [checking, setChecking] = useState(false);
   const [diff, setDiff] = useState<Reconcile | null>(null);
+  const [keepMissing, setKeepMissing] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   const load = useCallback(async () => {
@@ -47,6 +49,7 @@ export const SyncStatusBanner: React.FC = () => {
     } catch {
       setHealth({
         ok: false,
+        syncEnabled: true,
         gymApi: { up: false, message: '' },
         zkbio: { up: null, message: '', lastPullAt: null },
         faceService: { up: false, message: '' },
@@ -66,11 +69,37 @@ export const SyncStatusBanner: React.FC = () => {
   const compare = async () => {
     setChecking(true);
     try {
+      setKeepMissing(false);
       setDiff(await api.get<Reconcile>('/api/v1/device-sync/reconcile'));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Compare failed', 'Sync check');
     } finally {
       setChecking(false);
+    }
+  };
+
+  const toggleSync = async () => {
+    if (!health) return;
+    const turnOn = !health.syncEnabled;
+    if (
+      !turnOn &&
+      !window.confirm(
+        'Turn ZKBio sync OFF for testing?\n\nFaces are still saved in the gym app, but nothing is sent to ZKBio until you turn it back on.'
+      )
+    )
+      return;
+    setSyncing(true);
+    try {
+      await api.put('/api/v1/device-sync/settings', { syncEnabled: turnOn });
+      toast.success(
+        turnOn ? 'ZKBio sync is ON. Waiting students are being added to ZKBio now.' : 'ZKBio sync is OFF (testing).',
+        'ZKBio sync'
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not change the setting', 'ZKBio sync');
+    } finally {
+      setSyncing(false);
+      void load();
     }
   };
 
@@ -89,6 +118,7 @@ export const SyncStatusBanner: React.FC = () => {
     } finally {
       setSyncing(false);
       void load();
+      if (diff) void compare();
     }
   };
 
@@ -140,10 +170,27 @@ export const SyncStatusBanner: React.FC = () => {
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-text">Connected apps</span>
         <Dot up={true} label="Gym app" />
-        <Dot up={health.gymApi.up} label="Gym API" />
-        <Dot up={health.zkbio.up} label="ZKBio" />
+        {health.syncEnabled ? (
+          <>
+            <Dot up={health.gymApi.up} label="Gym API" />
+            <Dot up={health.zkbio.up} label="ZKBio" />
+          </>
+        ) : (
+          <Badge tone="warning">ZKBio sync off (testing)</Badge>
+        )}
         <Dot up={health.faceService.up} label="Face service" />
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Button
+            variant={health.syncEnabled ? 'outline' : 'primary'}
+            size="sm"
+            onClick={toggleSync}
+            loading={syncing}
+            disabled={syncing}
+          >
+            {health.syncEnabled ? 'Turn sync OFF (testing)' : 'Turn sync ON'}
+          </Button>
+          {health.syncEnabled && (
+            <>
           <Button variant="outline" size="sm" onClick={importNow} disabled={syncing || !health.gymApi.up}>
             Import from ZKBio
           </Button>
@@ -153,6 +200,8 @@ export const SyncStatusBanner: React.FC = () => {
           <Button variant="outline" size="sm" onClick={compare} disabled={checking || !health.gymApi.up}>
             Compare data
           </Button>
+            </>
+          )}
           <Button variant="ghost" size="sm" onClick={() => void load()} disabled={checking} aria-label="Refresh status">
             {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
@@ -178,22 +227,33 @@ export const SyncStatusBanner: React.FC = () => {
             <Alert tone="success">Everything matches.</Alert>
           ) : (
             <>
-              {diff.missingInApi.length > 0 && (
+              {diff.missingInApi.length > 0 && !keepMissing && (
                 <Alert tone="warning">
                   <p>
                     <b>{diff.missingInApi.length}</b> in this app but not in the Gym API / ZKBio:{' '}
                     <span className="font-mono">{diff.missingInApi.slice(0, 10).join(', ')}</span>
                     {diff.missingInApi.length > 10 && ' …'}
                   </p>
-                  <Button size="sm" variant="danger" className="mt-2" onClick={applyDeletions} loading={syncing}>
-                    Remove these here too
-                  </Button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button size="sm" variant="primary" onClick={() => setKeepMissing(true)}>
+                      Keep them in this app
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={applyDeletions} loading={syncing}>
+                      Remove these here too
+                    </Button>
+                  </div>
                 </Alert>
               )}
               {diff.missingLocally.length > 0 && (
                 <Alert tone="info">
-                  <b>{diff.missingLocally.length}</b> in the Gym API / ZKBio but not in this app. Add them with the
-                  Students Excel import (a name, email and department are needed).
+                  <p>
+                    <b>{diff.missingLocally.length}</b> in the Gym API / ZKBio but not in this app:{' '}
+                    <span className="font-mono">{diff.missingLocally.slice(0, 10).join(', ')}</span>
+                  </p>
+                  <Button size="sm" variant="primary" className="mt-2" onClick={importNow} loading={syncing}>
+                    Add to this app
+                  </Button>
+                  <p className="mt-1 text-xs text-muted">ZKBio is not changed. The app only copies their details.</p>
                 </Alert>
               )}
             </>

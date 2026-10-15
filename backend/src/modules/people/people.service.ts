@@ -11,6 +11,7 @@ import { NotFoundError, ValidationError, ConflictError, ServiceUnavailableError 
 import { assertSyncReady, GYM_API_OFFLINE_MSG } from '../device-sync/device-sync.service.js';
 import { faceMlService } from '../face-ml/face-ml.service.js';
 import { reconcileStudent } from '../device-sync/zkbio-provision.service.js';
+import { isSyncEnabled } from '../device-sync/sync-settings.service.js';
 import {
   people,
   students,
@@ -1091,37 +1092,42 @@ const items = await db
       throw new ConflictError(`A student with roll number '${data.rollNumber}' already exists.`);
     }
 
-    // Check if email already exists
+    // Email already used? A person who signed in but has no student record yet is reused.
     const [existingPerson] = await db
       .select({ id: people.id })
       .from(people)
       .where(eq(people.email, data.email))
       .limit(1);
 
+    let newPerson: typeof people.$inferSelect;
     if (existingPerson) {
-      throw new ConflictError(`Email '${data.email}' is already registered with another user.`);
+      const [hasStudent] = await db.select({ id: students.id }).from(students).where(eq(students.personId, existingPerson.id)).limit(1);
+      const [hasStaff] = await db.select({ id: staff.id }).from(staff).where(eq(staff.personId, existingPerson.id)).limit(1);
+      if (hasStudent || hasStaff) {
+        throw new ConflictError(`Email '${data.email}' is already registered with another user.`);
+      }
+      [newPerson] = await db
+        .update(people)
+        .set({ name: data.name, personType: 'student', status: 'active', updatedAt: new Date() })
+        .where(eq(people.id, existingPerson.id))
+        .returning();
+    } else {
+      // Provision Account and Person records
+      const [newAccount] = await db
+        .insert(accounts)
+        .values({ email: data.email, role: 'student', isActive: true })
+        .returning();
+      [newPerson] = await db
+        .insert(people)
+        .values({
+          accountId: newAccount.id,
+          name: data.name,
+          email: data.email,
+          personType: 'student',
+          status: 'active',
+        })
+        .returning();
     }
-
-    // Provision Account, Person, and Student records
-    const [newAccount] = await db
-      .insert(accounts)
-      .values({
-        email: data.email,
-        role: 'student',
-        isActive: true,
-      })
-      .returning();
-
-    const [newPerson] = await db
-      .insert(people)
-      .values({
-        accountId: newAccount.id,
-        name: data.name,
-        email: data.email,
-        personType: 'student',
-        status: 'active',
-      })
-      .returning();
 
     const [newStudent] = await db
       .insert(students)
@@ -1315,7 +1321,8 @@ const items = await db
 
     // People that came from ZKBio are never changed in ZKBio from here: this only removes
     // them from the gym app (and their face data in the face service).
-    const fromZkbio = stu.source === 'zkbio';
+    // Testing mode (ZKBIO_SYNC_ENABLED=false) also leaves ZKBio alone.
+    const fromZkbio = stu.source === 'zkbio' || !(await isSyncEnabled());
 
     // 2. Every connected app must be on, otherwise they drift apart. (force = admin override)
     if (!force) {

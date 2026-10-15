@@ -1,3 +1,4 @@
+import { isSyncEnabled } from '../device-sync/sync-settings.service.js';
 import { assertSyncReady } from '../device-sync/device-sync.service.js';
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
@@ -369,7 +370,9 @@ export const deleteStudent = async (req: Request, res: Response, next: NextFunct
 
     res.status(200).json({
       success: true,
-      message: `Student ${result.deletedRollNumber} has been permanently deleted from the system, api_app database, and ZKBio device.`,
+      message: (await isSyncEnabled())
+        ? `Student ${result.deletedRollNumber} has been deleted from the gym app and the connected apps.`
+        : `Student ${result.deletedRollNumber} has been deleted from the gym app (ZKBio sync is off, so ZKBio was not changed).`,
       data: result,
     });
   } catch (err) {

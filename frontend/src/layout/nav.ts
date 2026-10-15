@@ -141,7 +141,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Face Registration',
     shortLabel: 'Face Reg',
     icon: ScanFace,
-    roles: ['admin', 'super_admin'],
+    roles: ['trainer', 'admin', 'super_admin'],
   },
   {
     id: 'face_upload',

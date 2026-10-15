@@ -114,6 +114,14 @@ export const runMigrations = async (): Promise<void> => {
     UPDATE people.students SET category = category
       WHERE source = 'app' AND category = 'day_scholar_boys' AND (residency <> 'day_scholar' OR gender <> 'male');
 
+    -- Admin switches (e.g. ZKBio sync on/off for testing)
+    CREATE TABLE IF NOT EXISTS admin.app_settings (
+      key VARCHAR(100) PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_by VARCHAR(255),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     -- Students enrolled before provisioning existed are already on ZKBio.
     UPDATE people.students SET zkbio_synced = true
       WHERE face_enrollment_status = 'enrolled' AND zkbio_synced = false AND zkbio_synced_at IS NULL;

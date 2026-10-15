@@ -5,6 +5,7 @@ import { config } from '../../config/index.js';
 import { students } from '../../db/schema/index.js';
 import { ServiceUnavailableError } from '../../shared/errors/index.js';
 import { faceMlService } from '../face-ml/face-ml.service.js';
+import { isSyncEnabled } from './sync-settings.service.js';
 
 /**
  * Bridge helper: gym-app (Postgres, app truth for payment) → api_app
@@ -221,7 +222,9 @@ export const ZKBIO_OFFLINE_MSG =
 
 export interface BridgeHealth {
   ok: boolean;
-  gymApi: { up: boolean; message: string };
+  /** false = testing mode, ZKBio sync is switched off. */
+  syncEnabled: boolean;
+  gymApi: { up: boolean | null; message: string };
   zkbio: { up: boolean | null; message: string; lastPullAt: string | null };
   faceService: { up: boolean; message: string; registered?: number };
   issues: string[];
@@ -249,6 +252,21 @@ async function probeGymApi(): Promise<{
 }
 
 export async function getBridgeHealth(): Promise<BridgeHealth> {
+  if (!(await isSyncEnabled())) {
+    const face = await faceMlService.health();
+    const faceService = face.online
+      ? { up: true, message: 'Face service is running.', registered: face.registered }
+      : { up: false, message: FACE_SERVICE_OFFLINE_MSG };
+    const off = 'ZKBio sync is switched off (testing mode).';
+    return {
+      ok: faceService.up,
+      syncEnabled: false,
+      gymApi: { up: null, message: off },
+      zkbio: { up: null, message: off, lastPullAt: null },
+      faceService,
+      issues: faceService.up ? [] : [FACE_SERVICE_OFFLINE_MSG],
+    };
+  }
   const [api, face] = await Promise.all([probeGymApi(), faceMlService.health()]);
   const issues: string[] = [];
 
@@ -275,7 +293,7 @@ export async function getBridgeHealth(): Promise<BridgeHealth> {
     : { up: false, message: FACE_SERVICE_OFFLINE_MSG };
   if (!faceService.up) issues.push(FACE_SERVICE_OFFLINE_MSG);
 
-  return { ok: issues.length === 0, gymApi, zkbio, faceService, issues };
+  return { ok: issues.length === 0, syncEnabled: true, gymApi, zkbio, faceService, issues };
 }
 
 /**
@@ -285,7 +303,7 @@ export async function getBridgeHealth(): Promise<BridgeHealth> {
 export async function assertSyncReady(opts: { needFaceService?: boolean; skipGymApi?: boolean } = {}): Promise<void> {
   if (config.NODE_ENV === 'test' && !process.env.FORCE_SYNC_CHECK) return; // unit tests run without the connected apps
   const [api, face] = await Promise.all([
-    opts.skipGymApi ? Promise.resolve({ up: true }) : probeGymApi(),
+    opts.skipGymApi || !(await isSyncEnabled()) ? Promise.resolve({ up: true }) : probeGymApi(),
     opts.needFaceService ? faceMlService.health() : Promise.resolve({ online: true }),
   ]);
   if (!api.up) throw new ServiceUnavailableError(GYM_API_OFFLINE_MSG, { service: 'gym_api' });

@@ -121,7 +121,7 @@ const DEPARTMENTS = [
 export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport }) => {
   const toast = useToast();
   const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'super_admin';
+  const isSuperAdmin = user?.role === 'super_admin' || user?.role === 'admin';
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -617,15 +617,15 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                         <Calendar className="w-3 h-3" /> Bookings
                       </Button>
                       {isSuperAdmin && (
-                        <IconButton
-                          label={`Delete ${stu.name}`}
-                          size="sm"
-                          className="text-danger hover:bg-danger/10 border-danger/30"
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          className="flex items-center gap-1 text-[11px] text-danger border-danger/30 hover:bg-danger/10"
                           onClick={() => setDeleteConfirmStudent(stu)}
                           disabled={deletingId === stu.id}
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </IconButton>
+                          <Trash2 className="w-3 h-3" /> Delete
+                        </Button>
                       )}
                     </div>
                   </td>

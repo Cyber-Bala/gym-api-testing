@@ -6,6 +6,8 @@ import {
   getBridgeHealthStatus,
   postProvisionAll,
   postImportFromZkbio,
+  getSyncSettings,
+  putSyncSettings,
 } from './device-sync.controller.js';
 import { requireAuth, requireRole } from '../auth/auth.middleware.js';
 
@@ -18,3 +20,5 @@ deviceSyncRouter.get('/reconcile', requireAuth, requireRole(['admin', 'super_adm
 deviceSyncRouter.post('/pull', requireAuth, requireRole(['admin', 'super_admin']), postDeviceSyncPull);
 deviceSyncRouter.post('/provision', requireAuth, requireRole(['admin', 'super_admin']), postProvisionAll);
 deviceSyncRouter.post('/import-zkbio', requireAuth, requireRole(['admin', 'super_admin']), postImportFromZkbio);
+deviceSyncRouter.get('/settings', requireAuth, requireRole(['admin', 'super_admin']), getSyncSettings);
+deviceSyncRouter.put('/settings', requireAuth, requireRole(['admin', 'super_admin']), putSyncSettings);

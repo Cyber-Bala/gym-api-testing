@@ -3,6 +3,7 @@ import { config } from '../../config/index.js';
 import { reconcileFromApiApp, getBridgeHealth, assertSyncReady } from './device-sync.service.js';
 import { reconcileAll } from './zkbio-provision.service.js';
 import { importFromZkbio } from './zkbio-import.service.js';
+import { isSyncEnabled, setSyncEnabled } from './sync-settings.service.js';
 
 const headers = {
   'Content-Type': 'application/json',
@@ -110,6 +111,36 @@ export const postImportFromZkbio = async (_req: Request, res: Response, next: Ne
   try {
     await assertSyncReady();
     res.status(200).json({ success: true, data: await importFromZkbio() });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** GET /device-sync/settings: is ZKBio sync switched on? */
+export const getSyncSettings = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    res.status(200).json({ success: true, data: { syncEnabled: await isSyncEnabled() } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PUT /device-sync/settings { syncEnabled }: the admin "turn sync off for testing" button.
+ * Turning it back on applies the ZKBio rules to everyone in the background.
+ */
+export const putSyncSettings = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (typeof req.body?.syncEnabled !== 'boolean') {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'syncEnabled (true/false) is required' } });
+      return;
+    }
+    const enabled = req.body.syncEnabled as boolean;
+    await setSyncEnabled(enabled, req.user?.email || 'admin');
+    if (enabled) {
+      void reconcileAll().catch(() => undefined);
+    }
+    res.status(200).json({ success: true, data: { syncEnabled: enabled } });
   } catch (err) {
     next(err);
   }

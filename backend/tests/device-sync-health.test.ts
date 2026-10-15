@@ -2,7 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../src/shared/database/index.js', () => ({ db: {}, pool: {} }));
 
+import { config } from '../src/config/index.js';
 import { getBridgeHealth, assertSyncReady, GYM_API_OFFLINE_MSG, FACE_SERVICE_OFFLINE_MSG, ZKBIO_OFFLINE_MSG } from '../src/modules/device-sync/device-sync.service.js';
+
+// The real .env may switch sync off for local testing; tests choose explicitly.
+beforeEach(() => {
+  config.ZKBIO_SYNC_ENABLED = true;
+});
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -90,5 +96,37 @@ describe('assertSyncReady (guards create / import / delete)', () => {
   it('does not need the face service for create / import', async () => {
     mockApps({ gymApi: 'up', face: 'down' });
     await expect(assertSyncReady()).resolves.toBeUndefined();
+  });
+});
+
+describe('testing mode (ZKBIO_SYNC_ENABLED=false)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    process.env.FORCE_SYNC_CHECK = '1';
+    config.ZKBIO_SYNC_ENABLED = false;
+  });
+  afterEach(() => {
+    config.ZKBIO_SYNC_ENABLED = true;
+    delete process.env.FORCE_SYNC_CHECK;
+  });
+
+  it('never calls the Gym API and reports no ZKBio issues', async () => {
+    const f = mockApps({ gymApi: 'down', face: 'up' });
+    const h = await getBridgeHealth();
+    expect(h.syncEnabled).toBe(false);
+    expect(h.issues).toEqual([]);
+    expect(h.gymApi.up).toBeNull();
+    expect(f.mock.calls.every(([u]) => String(u).includes(':8001'))).toBe(true);
+  });
+
+  it('create / import / delete are not blocked by an offline Gym API', async () => {
+    mockApps({ gymApi: 'down', face: 'up' });
+    await expect(assertSyncReady({ needFaceService: true })).resolves.toBeUndefined();
+  });
+
+  it('still tells you when the face service is off', async () => {
+    mockApps({ gymApi: 'down', face: 'down' });
+    const h = await getBridgeHealth();
+    expect(h.issues).toContain(FACE_SERVICE_OFFLINE_MSG);
   });
 });
