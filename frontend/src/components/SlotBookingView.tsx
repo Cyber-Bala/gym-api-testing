@@ -24,6 +24,7 @@ import { useAuth } from '../context/AuthContext';
 import { Badge, ProgressBar, Modal, Alert } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
 import { Input, Textarea } from '../ui/Input';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { api } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { cn } from '../lib/cn';
@@ -59,6 +60,7 @@ interface SlotItem {
   isActive: boolean;
   isPast: boolean;
   isBookedByCurrentUser: boolean;
+  userBookingId?: string;
   isPassCovered?: boolean;
 }
 
@@ -108,6 +110,8 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [reservingSlotId, setReservingSlotId] = useState<string | null>(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
+  const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [bookingSuccessMsg, setBookingSuccessMsg] = useState<string | null>(null);
 
   // Admin slot editing state
@@ -226,6 +230,27 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
       setError(msg);
     } finally {
       setReservingSlotId(null);
+    }
+  };
+
+  const handleCancelSlot = async (bookingId: string) => {
+    setCancelConfirmId(null);
+    setCancellingBookingId(bookingId);
+    setError(null);
+    setBookingSuccessMsg(null);
+
+    try {
+      await api.post(`/api/v1/booking/cancel/${bookingId}`, {
+        reason: 'Student cancelled from the slot calendar',
+      });
+      setBookingSuccessMsg('Gym slot reservation cancelled. Your booking quota has been updated.');
+      if (onBookingSuccess) onBookingSuccess();
+      await fetchSlots();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+    } finally {
+      setCancellingBookingId(null);
     }
   };
 
@@ -406,9 +431,11 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                       ? 'warning'
                       : slot.isFull
                         ? 'danger'
-                        : slot.occupancyPercentage >= 75
+                        : isDayLimitReached || isWindowLimitReached
                           ? 'warning'
-                          : 'primary'
+                          : slot.occupancyPercentage >= 75
+                            ? 'warning'
+                            : 'primary'
             }
           >
             {isStudent && slot.isBookedByCurrentUser
@@ -421,9 +448,11 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                     ? 'Expired'
                     : slot.isFull
                       ? 'Full'
-                      : !isStudent
-                        ? `${slot.availableSpots}`
-                        : 'Open'}
+                      : isDayLimitReached || isWindowLimitReached
+                        ? 'Quota reached'
+                        : !isStudent
+                          ? `${slot.availableSpots}`
+                          : 'Open'}
           </Badge>
         </div>
 
@@ -444,9 +473,22 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
 
         <div className="flex flex-col gap-1 shrink-0 overflow-hidden">
           {isStudent && slot.isBookedByCurrentUser ? (
-            <span className="text-[10px] sm:text-xs font-medium text-success flex items-center justify-center gap-1 truncate">
-              <BookmarkCheck className="w-3.5 h-3.5 shrink-0" /> Reserved
-            </span>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] sm:text-xs font-medium text-success flex items-center justify-center gap-1 truncate">
+                <BookmarkCheck className="w-3.5 h-3.5 shrink-0" /> Reserved
+              </span>
+              {slot.userBookingId && (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  className="w-full h-7 text-[10px] sm:text-xs shrink-0"
+                  loading={cancellingBookingId === slot.userBookingId}
+                  onClick={() => setCancelConfirmId(slot.userBookingId!)}
+                >
+                  Cancel
+                </Button>
+              )}
+            </div>
           ) : canBook ? (
             <Button
               variant="primary"
@@ -510,10 +552,10 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
             {isStudent
               ? 'Reserve your daily workout slots up to 3 days in advance'
               : isTrainer
-              ? 'Gym batch operational hours, slot capacities, and real-time occupancy'
-              : isStaff
-              ? 'Daily facility operating schedule and student batch capacities'
-              : 'Gym operating schedule and slot capacities'}
+                ? 'Gym batch operational hours, slot capacities, and real-time occupancy'
+                : isStaff
+                  ? 'Daily facility operating schedule and student batch capacities'
+                  : 'Gym operating schedule and slot capacities'}
           </p>
         </div>
 
@@ -685,6 +727,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
           <div className="grid grid-cols-3 gap-1.5 sm:gap-3 items-start min-w-0">
             {data.days.map((day) => {
               const daySlots = filterSlots(day.slots);
+
               return (
                 <div
                   key={day.date}
@@ -709,7 +752,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                         day.isLocked ? 'text-danger' : 'text-primary'
                       )}
                     >
-                      {day.isToday ? 'Today' : day.dayLabel || day.dayOfWeek}
+                      {day.dayLabel || day.dayOfWeek}
                     </p>
                     <p
                       className={cn(
@@ -724,7 +767,7 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
                     </p>
                     {day.isLocked ? (
                       <Badge tone="danger" className="mt-1.5 text-[9px] sm:text-[10px]">
-                        <Lock className="w-3 h-3" /> Closed
+                        <Lock className="w-3 h-3" /> {day.lockReason || 'Closed'}
                       </Badge>
                     ) : isStudent && (day.userBookedCountOnDate || 0) > 0 ? (
                       <Badge
@@ -1118,6 +1161,16 @@ export const SlotBookingView: React.FC<SlotBookingViewProps> = ({ onBookingSucce
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={cancelConfirmId !== null}
+        title="Cancel this reservation?"
+        tone="danger"
+        confirmLabel="Yes, cancel slot"
+        cancelLabel="Keep slot"
+        onCancel={() => setCancelConfirmId(null)}
+        onConfirm={() => cancelConfirmId && handleCancelSlot(cancelConfirmId)}
+        message="Your slot will be released. Cancelling less than 2 hours before the slot starts counts as a late cancellation and adds a violation strike."
+      />
     </div>
   );
 };

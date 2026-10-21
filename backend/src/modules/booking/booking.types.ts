@@ -63,6 +63,8 @@ export interface SlotDto {
   isActive: boolean;
   isPast: boolean;
   isBookedByCurrentUser: boolean;
+  /** Present only for the current student's cancellable, active reservation. */
+  userBookingId?: string;
   isPassCovered?: boolean;
 }
 

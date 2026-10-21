@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Card, Badge, Alert, EmptyState } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { MembershipPlanManager } from './MembershipPlanManager';
 import { cn } from '../lib/cn';
 import { RecLogo } from './RecLogo';
@@ -67,6 +68,7 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
   const [history, setHistory] = useState<PaymentRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [purchasingPlanId, setPurchasingPlanId] = useState<string | null>(null);
+  const [planToConfirm, setPlanToConfirm] = useState<MembershipPlan | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const isDayScholar = user?.studentDetails?.residency === 'day_scholar';
@@ -144,6 +146,7 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
   }
 
   const handlePurchase = async (plan: MembershipPlan) => {
+    setPlanToConfirm(null);
     if (!user) {
       toast.warning('Please sign in with your student account first.');
       return;
@@ -262,7 +265,7 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
                       size="md"
                       className="w-full shadow-sm"
                       loading={purchasingPlanId === p.id}
-                      onClick={() => handlePurchase(p)}
+                      onClick={() => setPlanToConfirm(p)}
                     >
                       {purchasingPlanId === p.id ? 'Processing...' : 'Pay & Activate'}
                     </Button>
@@ -394,7 +397,7 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
                     size="md"
                     className="w-full"
                     loading={purchasingPlanId === p.id}
-                    onClick={() => handlePurchase(p)}
+                    onClick={() => setPlanToConfirm(p)}
                   >
                     {purchasingPlanId === p.id ? 'Processing...' : 'Activate Pass'}
                   </Button>
@@ -474,6 +477,23 @@ export const MembershipStore: React.FC<MembershipStoreProps> = ({ mandatoryMode 
           )}
         </Card>
       )}
+      <ConfirmDialog
+        open={planToConfirm !== null}
+        title="Confirm payment"
+        confirmLabel={planToConfirm ? `Pay ₹${planToConfirm.price}` : 'Pay'}
+        onCancel={() => setPlanToConfirm(null)}
+        onConfirm={() => planToConfirm && handlePurchase(planToConfirm)}
+        message={
+          planToConfirm && (
+            <>
+              You are about to pay{' '}
+              <span className="font-bold text-text">₹{planToConfirm.price}</span> for the{' '}
+              <span className="font-bold text-text">{planToConfirm.name}</span> gym pass. You will be taken to
+              the secure payment page. Continue?
+            </>
+          )
+        }
+      />
     </div>
   );
 };

@@ -498,6 +498,7 @@ export class BookingService {
 
     // Check all active bookings and membership coverage the student has on this date
     const userBookedSlotIds: string[] = [];
+    const userBookingIdBySlotId = new Map<string, string>();
     let isPassValidOnDate = true;
     let passExpiryDate: string | undefined = undefined;
 
@@ -513,7 +514,7 @@ export class BookingService {
       if (dbSlots.length > 0) {
         const slotIds = dbSlots.map((s) => s.id);
         const userBookings = await db
-          .select({ slotId: bookings.slotId })
+          .select({ id: bookings.id, slotId: bookings.slotId })
           .from(bookings)
           .where(
             and(
@@ -524,6 +525,7 @@ export class BookingService {
           );
 
         userBookedSlotIds.push(...userBookings.map((b) => b.slotId));
+        for (const b of userBookings) userBookingIdBySlotId.set(b.slotId, b.id);
       }
 
       // Day Scholar: currently ACTIVE membership must cover the slot date (no queued passes)
@@ -583,6 +585,7 @@ export class BookingService {
         isActive: !isLocked && slot.status === 'open',
         isPast,
         isBookedByCurrentUser: userBookedSet.has(slot.id),
+        userBookingId: userBookingIdBySlotId.get(slot.id),
         isPassCovered: isPassValidOnDate,
       };
     });

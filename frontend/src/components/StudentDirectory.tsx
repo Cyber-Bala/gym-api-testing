@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Card, Badge, Alert, Modal } from '../ui/primitives';
 import { Button, IconButton } from '../ui/Button';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { SearchInput, Select, Input } from '../ui/Input';
 import { ExcelImportModal } from './ExcelImportModal';
 import { AdminStudentBookingsModal } from './AdminStudentBookingsModal';
@@ -126,6 +127,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   const [loading, setLoading] = useState<boolean>(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [togglingResidencyId, setTogglingResidencyId] = useState<string | null>(null);
+  const [residencyConfirm, setResidencyConfirm] = useState<StudentItem | null>(null);
   const [togglingGenderId, setTogglingGenderId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmStudent, setDeleteConfirmStudent] = useState<StudentItem | null>(null);
@@ -226,6 +228,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
   };
 
   const handleToggleResidency = async (stu: StudentItem) => {
+    setResidencyConfirm(null);
     setTogglingResidencyId(stu.id);
     try {
       const newResidency = stu.residency === 'hosteller' ? 'day_scholar' : 'hosteller';
@@ -535,7 +538,7 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
                     ) : (
                     <button
                       type="button"
-                      onClick={() => handleToggleResidency(stu)}
+                      onClick={() => setResidencyConfirm(stu)}
                       disabled={togglingResidencyId === stu.id}
                       className={cn(
                         'transition-all cursor-pointer disabled:opacity-50 disabled:cursor-wait',
@@ -879,6 +882,30 @@ export const StudentDirectory: React.FC<StudentDirectoryProps> = ({ onOpenImport
           </div>
         </Modal>
       )}
+      <ConfirmDialog
+        open={residencyConfirm !== null}
+        title="Change residency?"
+        tone="danger"
+        confirmLabel="Yes, change"
+        loading={residencyConfirm !== null && togglingResidencyId === residencyConfirm.id}
+        onCancel={() => setResidencyConfirm(null)}
+        onConfirm={() => residencyConfirm && handleToggleResidency(residencyConfirm)}
+        message={
+          residencyConfirm && (
+            <>
+              Change <span className="font-bold text-text">{residencyConfirm.name}</span> from{' '}
+              <span className="font-bold text-text">
+                {residencyConfirm.residency === 'hosteller' ? 'Hosteller' : 'Day Scholar'}
+              </span>{' '}
+              to{' '}
+              <span className="font-bold text-text">
+                {residencyConfirm.residency === 'hosteller' ? 'Day Scholar' : 'Hosteller'}
+              </span>
+              ? Their gym pass rules and listing category will change.
+            </>
+          )
+        }
+      />
     </Card>
 
   );
