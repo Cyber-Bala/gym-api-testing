@@ -43,6 +43,7 @@ college-gym/
 ├── backend/          # Node.js + Express + Drizzle ORM API
 ├── frontend/         # React + Vite + TypeScript SPA
 ├── api_app/          # Python FastAPI ZKBio integration bridge
+│   (face_ML/ lives next to this repo, not inside it: see Getting Started step 5)
 ├── worker/           # Background job workers (cron-based)
 ├── nginx/            # Reverse proxy configuration
 ├── postgres/         # DB init scripts
@@ -159,6 +160,92 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
+### 5. Start the Face ML Service (face verification)
+
+The gym app does not match faces itself. It calls a separate Python service, `face_ML`
+(YuNet face detection + AdaFace IR-101 embeddings, served by FastAPI), for face registration
+and live verification. The backend talks to it over plain HTTP on the same machine.
+
+> `face_ML/` is **not part of this repository**. Keep it as a sibling folder next to `gym-app/`
+> (`REC_Gym/face_ML` and `REC_Gym/gym-app`). Ask the project owner for the folder if you do not have it.
+
+**First run (once)**
+
+```bat
+cd face_ML
+start.bat
+```
+
+`start.bat` creates the virtual environment, installs `requirements.txt`, downloads the models
+(YuNet and AdaFace, about 260 MB) into `face_ML/models/`, then starts the service. It also serves
+the phone verification page at `https://<your-LAN-IP>:8443` (self-signed certificate: accept the browser warning).
+
+**Every run after that**
+
+```bat
+cd face_ML
+start_service.bat
+```
+
+This starts the service only, on `http://127.0.0.1:8001` (reachable from this machine only). Keep the window open.
+
+**Connect it to the gym app**
+
+1. On first start the service creates an admin token in `face_ML/data/admin.token`
+   (or set the `ADMIN_TOKEN` environment variable before starting it).
+2. Put the token in the gym app `.env`:
+
+   ```env
+   FACE_ML_URL=http://127.0.0.1:8001
+   FACE_ML_TOKEN=<contents of face_ML/data/admin.token>
+   ```
+
+3. Restart the backend (`npm run dev:backend`).
+4. Check the link: sign in as admin and open the Face Upload page, or call `GET /api/v1/face-ml/health`
+   with an admin session. It should report the service as reachable.
+
+**Start order:** infrastructure (`docker compose up -d postgres redis minio`) -> `face_ML/start_service.bat`
+-> backend -> frontend.
+
+**How it is used**
+
+| Where in the app | What it does |
+|------------------|--------------|
+| Admin: Face Upload | Upload a student ID photo (one per request). The service stores the face embedding. |
+| Admin / trainer: Face Registration | Capture a face with the webcam and match it against the stored ID photo. |
+| Student: self registration | Student registers their own face; it is checked against the ID photo on file. |
+
+**Match settings** (`face_ML/app/verify.py`, override in `face_ML/data/config.json`)
+
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `t_accept` | `0.50` | Minimum cosine score to accept. Higher = stricter. Calibrated on about 3,500 ID photos: a wrong person is accepted about 2 times in 100,000 attempts. Do not go below 0.45. |
+| `min_good_frames` | `2` | Live frames that must pass the quality gate. Every usable frame must reach `t_accept`. |
+| `min_blur`, `min_face_width`, `min_brightness`, `max_brightness`, `min_contrast`, `min_det_score`, `max_abs_roll`, `max_abs_yaw` | see file | Photo quality gate. Blurry, shaky, dark, tiny or tilted photos are rejected before matching. |
+| `max_attempts` | `3` | Failed matches before the student is sent to the admin. |
+
+Re-tune `t_accept` from real scores in `face_ML/data/scores.csv` after some weeks of use.
+Useful tools, run from `face_ML/`:
+
+```bat
+REM bulk-register ID photos (file name = student ID)
+venv\Scripts\python.exe -m tools.bulk_register photos
+
+REM pick t_accept from one photo per student
+venv\Scripts\python.exe -m tools.calibrate_single photos
+```
+
+**Troubleshooting**
+
+| Symptom | Fix |
+|---------|-----|
+| Face pages say the face service is unreachable | Start `face_ML/start_service.bat` and check `FACE_ML_URL`. |
+| "Face service rejected the token" | `FACE_ML_TOKEN` must equal `face_ML/data/admin.token`. Restart the backend after changing `.env`. |
+| "No face found", "blurry", "too dark" | The photo failed the quality gate. Retake it in good light, facing the camera. |
+| Setup fails while downloading models | Check the internet connection and re-run `start.bat`. |
+
+---
+
 ---
 
 ## ⚙️ Environment Variables
@@ -175,6 +262,8 @@ See [`.env.example`](.env.example) for the full list. Key variables:
 | `PAYU_MERCHANT_KEY` / `PAYU_MERCHANT_SALT` | PayU gateway credentials |
 | `SESSION_SECRET` | Express session signing secret |
 | `ALLOW_DEV_LOGIN` | Set `true` to enable dev bypass login |
+| `FACE_ML_URL` | Face ML service URL (default `http://127.0.0.1:8001`) |
+| `FACE_ML_TOKEN` | Must equal `face_ML/data/admin.token` |
 
 ---
 
