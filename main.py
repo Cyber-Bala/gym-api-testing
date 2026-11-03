@@ -623,16 +623,29 @@ def set_gate(roll_no: str, payload: GateUpdate, db: Session = Depends(get_db)):
         raise HTTPException(409, "Student has no valid pass, door permission not granted")
 
     level = _level_for(student.category)
+    level_used = level or zkbio_client.ZKBIO_LEVEL_IDS
     if payload.open:
         result = zkbio_client.add_level_person(pin=roll_no, level_ids=level)
     else:
         result = zkbio_client.delete_level(pin=roll_no, level_ids=level)
-    zkbio_client.sync_person(pin=roll_no, level_ids=level)
+    synced = zkbio_client.sync_person(pin=roll_no, level_ids=level)
 
     if zkbio_client.ZKBIO_ENABLED and result is None:
         raise HTTPException(502, "ZKBio did not answer, door permission not changed")
-    logger.info(f"[ZKBio] Door permission {'ON' if payload.open else 'OFF'} for {roll_no}")
-    return {"roll_no": roll_no, "open": payload.open, "device_ok": result is not None}
+    logger.info(
+        f"[ZKBio] Door permission {'ON' if payload.open else 'OFF'} for {roll_no} "
+        f"(category={student.category!r}, level_ids={level_used!r}) -> {result} / sync {synced}"
+    )
+    # level_ids and the raw ZKBio answers are returned so a wrong level id or a refused call is visible
+    return {
+        "roll_no": roll_no,
+        "open": payload.open,
+        "device_ok": result is not None,
+        "category": student.category,
+        "level_ids": level_used,
+        "zkbio_level_response": result,
+        "zkbio_sync_response": synced,
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════
