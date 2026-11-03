@@ -636,8 +636,19 @@ def set_gate(roll_no: str, payload: GateUpdate, db: Session = Depends(get_db)):
         f"[ZKBio] Door permission {'ON' if payload.open else 'OFF'} for {roll_no} "
         f"(category={student.category!r}, level_ids={level_used!r}) -> {result} / sync {synced}"
     )
+    # What ZKBio now holds for this person: shows whether the level really changed, and which other
+    # levels / department the person has (a department-bound level keeps the door open by itself)
+    person = zkbio_client.get_person(pin=roll_no)
+    person_data = (person or {}).get("data") if isinstance(person, dict) else None
+    person_levels = None
+    person_dept = None
+    if isinstance(person_data, dict):
+        person_levels = person_data.get("accLevelIds") or person_data.get("accLevelNames")
+        person_dept = person_data.get("deptCode") or person_data.get("deptName")
     # level_ids and the raw ZKBio answers are returned so a wrong level id or a refused call is visible
     return {
+        "person_levels_in_zkbio": person_levels,
+        "person_dept_in_zkbio": person_dept,
         "roll_no": roll_no,
         "open": payload.open,
         "device_ok": result is not None,
