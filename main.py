@@ -624,36 +624,43 @@ def set_gate(roll_no: str, payload: GateUpdate, db: Session = Depends(get_db)):
 
     level = _level_for(student.category)
     level_used = level or zkbio_client.ZKBIO_LEVEL_IDS
+
+    def levels_now():
+        person = zkbio_client.get_person(pin=roll_no)
+        data = (person or {}).get("data") if isinstance(person, dict) else None
+        if not isinstance(data, dict):
+            return None, None
+        return (data.get("accLevelIds") or data.get("accLevelNames")), (data.get("deptCode") or data.get("deptName"))
+
+    levels_before, dept = levels_now()
     if payload.open:
         result = zkbio_client.add_level_person(pin=roll_no, level_ids=level)
     else:
         result = zkbio_client.delete_level(pin=roll_no, level_ids=level)
+    levels_after_change, _ = levels_now()
     synced = zkbio_client.sync_person(pin=roll_no, level_ids=level)
+    levels_after_sync, _ = levels_now()
 
     if zkbio_client.ZKBIO_ENABLED and result is None:
         raise HTTPException(502, "ZKBio did not answer, door permission not changed")
     logger.info(
         f"[ZKBio] Door permission {'ON' if payload.open else 'OFF'} for {roll_no} "
-        f"(category={student.category!r}, level_ids={level_used!r}) -> {result} / sync {synced}"
+        f"(category={student.category!r}, dept={dept!r}, level_ids={level_used!r}) "
+        f"levels before={levels_before!r} after change={levels_after_change!r} after sync={levels_after_sync!r} "
+        f"-> {result} / sync {synced}"
     )
-    # What ZKBio now holds for this person: shows whether the level really changed, and which other
-    # levels / department the person has (a department-bound level keeps the door open by itself)
-    person = zkbio_client.get_person(pin=roll_no)
-    person_data = (person or {}).get("data") if isinstance(person, dict) else None
-    person_levels = None
-    person_dept = None
-    if isinstance(person_data, dict):
-        person_levels = person_data.get("accLevelIds") or person_data.get("accLevelNames")
-        person_dept = person_data.get("deptCode") or person_data.get("deptName")
-    # level_ids and the raw ZKBio answers are returned so a wrong level id or a refused call is visible
+    # The person's levels in ZKBio at each step show whether the change worked, whether the sync undid it,
+    # or whether the level comes from somewhere else (for example the department)
     return {
-        "person_levels_in_zkbio": person_levels,
-        "person_dept_in_zkbio": person_dept,
         "roll_no": roll_no,
         "open": payload.open,
         "device_ok": result is not None,
         "category": student.category,
-        "level_ids": level_used,
+        "dept": dept,
+        "level_ids_used": level_used,
+        "levels_before": levels_before,
+        "levels_after_change": levels_after_change,
+        "levels_after_sync": levels_after_sync,
         "zkbio_level_response": result,
         "zkbio_sync_response": synced,
     }
