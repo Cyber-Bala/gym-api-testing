@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import logging
 import os
 from datetime import date as dt_date, datetime, timedelta
@@ -9,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
 
@@ -32,7 +33,42 @@ import zkbio_client
 logger = logging.getLogger("gym_access")
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="Gym Access Control", version="1.0.0")
+# ── API key ──────────────────────────────────────────────────────────
+# This service is reachable from the internet (tunnel) and switches the door permission, so every /api call
+# must carry the shared key in the X-API-Key header (the gym app sends it). Set the same value as API_APP_KEY
+# in the gym app. With no key set the API stays open (old behaviour) and a warning is logged.
+GYM_API_KEY = os.getenv("GYM_API_KEY", "").strip()
+_PROTECTED_PREFIXES = ("/api/", "/docs", "/redoc", "/openapi.json")
+
+
+def _key_ok(sent: str) -> bool:
+    return bool(GYM_API_KEY) and hmac.compare_digest(sent.encode(), GYM_API_KEY.encode())
+
+
+# API docs list every endpoint: keep them off unless a key protects them
+app = FastAPI(
+    title="Gym Access Control",
+    version="1.0.0",
+    docs_url="/docs" if GYM_API_KEY or os.getenv("GYM_API_DOCS") == "true" else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if GYM_API_KEY or os.getenv("GYM_API_DOCS") == "true" else None,
+)
+
+if not GYM_API_KEY:
+    logger.warning("GYM_API_KEY is not set: the API accepts anonymous calls. Set it (and API_APP_KEY in the gym app).")
+
+
+@app.middleware("http")
+async def require_api_key(request, call_next):
+    if GYM_API_KEY and request.method != "OPTIONS" and request.url.path.startswith(_PROTECTED_PREFIXES):
+        if not _key_ok(request.headers.get("x-api-key", "")):
+            return JSONResponse({"detail": "Invalid or missing API key"}, status_code=401)
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Cache-Control", "no-store")
+    return response
+
 
 # ── Static files ─────────────────────────────────────────────────────
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -916,6 +952,10 @@ def get_stats(db: Session = Depends(get_db)):
 
 @app.websocket("/api/access/live")
 async def websocket_live(ws: WebSocket):
+    # Browsers cannot set headers on a WebSocket, so the key may also come as ?key=
+    if GYM_API_KEY and not _key_ok(ws.headers.get("x-api-key", "") or ws.query_params.get("key", "")):
+        await ws.close(code=1008)
+        return
     await manager.connect(ws)
     try:
         while True:

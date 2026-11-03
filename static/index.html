@@ -426,11 +426,18 @@ document.querySelectorAll('.modal-overlay').forEach(ov => {
 });
 
 // ── API helpers ──────────────────────────────────────────────────
+// The API needs its key (GYM_API_KEY). Ask once, keep it for this browser tab only.
+function apiKey() { return sessionStorage.getItem('gymApiKey') || ''; }
 async function api(path, opts={}) {
-  const res = await fetch(API + path, {
-    headers: {'Content-Type':'application/json'},
+  const send = () => fetch(API + path, {
     ...opts,
+    headers: {'Content-Type':'application/json', 'X-API-Key': apiKey(), ...(opts.headers||{})},
   });
+  let res = await send();
+  if (res.status === 401) {
+    const k = prompt('Enter the API key to use this dashboard');
+    if (k) { sessionStorage.setItem('gymApiKey', k.trim()); res = await send(); }
+  }
   if (res.status === 204) return null;
   if (!res.ok) {
     const err = await res.json().catch(()=>({}));
@@ -703,7 +710,7 @@ async function loadActive() {
 // ══════════════════════════════════════════════════════════════════
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/api/access/live`);
+  const ws = new WebSocket(`${proto}://${location.host}/api/access/live?key=${encodeURIComponent(apiKey())}`);
   ws.onmessage = (ev) => {
     const data = JSON.parse(ev.data);
     // Prepend to logs table if visible
