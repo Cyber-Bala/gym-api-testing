@@ -603,7 +603,8 @@ def update_payment(roll_no: str, payload: PaymentUpdate, db: Session = Depends(g
         logger.info(f"[ZKBio] Access ENABLED for {roll_no} on device")
     else:
         zkbio_client.delete_level(pin=roll_no, level_ids=level)
-        zkbio_client.sync_person(pin=roll_no, level_ids=level)
+        # sync_person would put the person back into the level; push the level's member list instead
+        zkbio_client.sync_level(level_ids=level)
         logger.info(f"[ZKBio] Access DISABLED for {roll_no} on device")
 
     return student
@@ -635,18 +636,19 @@ def set_gate(roll_no: str, payload: GateUpdate, db: Session = Depends(get_db)):
     levels_before, dept = levels_now()
     if payload.open:
         result = zkbio_client.add_level_person(pin=roll_no, level_ids=level)
+        synced = zkbio_client.sync_person(pin=roll_no, level_ids=level)
     else:
         result = zkbio_client.delete_level(pin=roll_no, level_ids=level)
-    levels_after_change, _ = levels_now()
-    synced = zkbio_client.sync_person(pin=roll_no, level_ids=level)
-    levels_after_sync, _ = levels_now()
+        # NOT sync_person: it puts the person back into the level. Push the level's member list instead.
+        synced = zkbio_client.sync_level(level_ids=level)
+    levels_after = levels_now()[0]
 
     if zkbio_client.ZKBIO_ENABLED and result is None:
         raise HTTPException(502, "ZKBio did not answer, door permission not changed")
     logger.info(
         f"[ZKBio] Door permission {'ON' if payload.open else 'OFF'} for {roll_no} "
         f"(category={student.category!r}, dept={dept!r}, level_ids={level_used!r}) "
-        f"levels before={levels_before!r} after change={levels_after_change!r} after sync={levels_after_sync!r} "
+        f"levels before={levels_before!r} after={levels_after!r} "
         f"-> {result} / sync {synced}"
     )
     # The person's levels in ZKBio at each step show whether the change worked, whether the sync undid it,
@@ -659,8 +661,7 @@ def set_gate(roll_no: str, payload: GateUpdate, db: Session = Depends(get_db)):
         "dept": dept,
         "level_ids_used": level_used,
         "levels_before": levels_before,
-        "levels_after_change": levels_after_change,
-        "levels_after_sync": levels_after_sync,
+        "levels_after": levels_after,
         "zkbio_level_response": result,
         "zkbio_sync_response": synced,
     }
@@ -808,7 +809,10 @@ def register_student_face(roll_no: str, payload: FaceRegistrationRequest, db: Se
         db.refresh(student)
 
     zkbio_client.upload_person_photo(pin=roll_no, photo_base64=payload.photo_base64)
-    zkbio_client.sync_person(pin=roll_no, level_ids=_level_for(student.category))
+    if payload.grant_device:
+        zkbio_client.sync_person(pin=roll_no, level_ids=_level_for(student.category))
+    else:
+        logger.info(f"[ZKBio] Face saved for {roll_no}; door permission left to booked slots")
 
     return FaceRegistrationResponse(
         success=True,

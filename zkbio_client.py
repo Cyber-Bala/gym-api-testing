@@ -232,6 +232,32 @@ def sync_person(pin: str, level_ids: str | None = None) -> dict[str, Any] | None
         return None
 
 
+def sync_level(level_ids: str | None = None) -> dict[str, Any] | None:
+    """Push the level's CURRENT member list (as held by the server) to the devices.
+
+    Use this after removing a person from a level. Do NOT use sync_person for that: syncPerson puts the
+    person back into the level (checked on the real server: delete_level removes it, sync_person re-adds it).
+    """
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return None
+    ids = level_ids or ZKBIO_LEVEL_IDS
+    out = None
+    for level_id in [x.strip() for x in ids.split(",") if x.strip()]:
+        try:
+            resp = httpx.post(
+                _url("/api/accLevel/syncLevel"),
+                params=_params(levelId=level_id),
+                timeout=TIMEOUT,
+            )
+            out = resp.json()
+            logger.info(f"sync_level({level_id}): {out}")
+        except Exception as e:
+            logger.error(f"sync_level({level_id}) failed: {e}")
+            out = None
+    return out
+
+
 # ══════════════════════════════════════════════════════════════════
 #  Transactions (Entry/Exit events from device)
 # ══════════════════════════════════════════════════════════════════

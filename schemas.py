@@ -88,6 +88,8 @@ class StatsResponse(BaseModel):
 
 class FaceRegistrationRequest(BaseModel):
     photo_base64: str = Field(..., min_length=1)
+    # False = slot-based gate: do not touch the door permission (syncPerson puts the person back into the level)
+    grant_device: bool = True
 
 
 class FaceRegistrationResponse(BaseModel):
