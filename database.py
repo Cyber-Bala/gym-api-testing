@@ -3,7 +3,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from collections.abc import Generator
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gym_access.db")
+# GYM_DB_PATH lets the tests use a throw-away database instead of the real one
+DB_PATH = os.getenv("GYM_DB_PATH") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "gym_access.db")
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(
