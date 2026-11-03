@@ -611,7 +611,7 @@ def update_payment(roll_no: str, payload: PaymentUpdate, db: Session = Depends(g
 
 
 @app.put("/api/students/{roll_no}/gate", tags=["Students"])
-def set_gate(roll_no: str, payload: GateUpdate, db: Session = Depends(get_db)):
+def set_gate(roll_no: str, payload: GateUpdate, debug: bool = False, db: Session = Depends(get_db)):
     """Switch a student's door permission (ZKBio access level) on or off.
 
     Used by the gym app's slot-based gate. The face stays on the device; only the level changes.
@@ -633,7 +633,8 @@ def set_gate(roll_no: str, payload: GateUpdate, db: Session = Depends(get_db)):
             return None, None
         return (data.get("accLevelIds") or data.get("accLevelNames")), (data.get("deptCode") or data.get("deptName"))
 
-    levels_before, dept = levels_now()
+    # Reading the person back costs two extra ZKBio calls, so only do it when asked (?debug=true)
+    levels_before, dept = levels_now() if debug else (None, None)
     if payload.open:
         result = zkbio_client.add_level_person(pin=roll_no, level_ids=level)
         synced = zkbio_client.sync_person(pin=roll_no, level_ids=level)
@@ -641,7 +642,7 @@ def set_gate(roll_no: str, payload: GateUpdate, db: Session = Depends(get_db)):
         result = zkbio_client.delete_level(pin=roll_no, level_ids=level)
         # NOT sync_person: it puts the person back into the level. Push the level's member list instead.
         synced = zkbio_client.sync_level(level_ids=level)
-    levels_after = levels_now()[0]
+    levels_after = levels_now()[0] if debug else None
 
     if zkbio_client.ZKBIO_ENABLED and result is None:
         raise HTTPException(502, "ZKBio did not answer, door permission not changed")
