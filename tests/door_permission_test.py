@@ -2,6 +2,7 @@
 import os, sys, tempfile
 # Throw-away database: these tests must never touch the real gym_access.db
 os.environ["GYM_DB_PATH"] = os.path.join(tempfile.mkdtemp(), "test.db")
+os.environ.setdefault("GYM_API_KEY", "")  # door tests run with the key off; api_key_test.py covers the key
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import os, sys, json
 os.environ.setdefault("ZKBIO_ENABLED", "true")
