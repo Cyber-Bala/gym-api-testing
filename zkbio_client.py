@@ -339,6 +339,29 @@ def get_doors(page_no: int = 1, page_size: int = 50) -> list[dict[str, Any]]:
         return []
 
 
+def get_levels(page_no: int = 1, page_size: int = 200) -> list[dict[str, Any]]:
+    """List access levels (id and name) known to ZKBio."""
+    if not ZKBIO_ENABLED:
+        _log_disabled()
+        return []
+    try:
+        resp = httpx.get(
+            _url("/api/accLevel/list"),
+            params=_params(pageNo=page_no, pageSize=page_size),
+            timeout=TIMEOUT,
+        )
+        data = resp.json()
+        if data.get("code") == 0:
+            payload = data.get("data", [])
+            if isinstance(payload, dict):
+                payload = payload.get("data", payload.get("list", []))
+            return payload if isinstance(payload, list) else []
+        return []
+    except Exception as e:
+        logger.error(f"get_levels failed: {e}")
+        return []
+
+
 def get_door_state(door_id: str) -> dict[str, Any] | None:
     """Get current state of a specific door."""
     if not ZKBIO_ENABLED:

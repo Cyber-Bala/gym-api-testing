@@ -610,6 +610,47 @@ def update_payment(roll_no: str, payload: PaymentUpdate, db: Session = Depends(g
     return student
 
 
+def _all_gym_levels() -> set[str]:
+    """Every ZKBio level id that gives gym entry (the four category levels and the default)."""
+    ids = {v for v in _LEVEL_BY_CATEGORY.values() if v}
+    ids.update(x.strip() for x in (zkbio_client.ZKBIO_LEVEL_IDS or "").split(",") if x.strip())
+    return ids
+
+
+@app.get("/api/zkbio/diagnose", tags=["Stats"])
+def zkbio_diagnose(roll_no: str | None = None, minutes: int = 180):
+    """Read-only: levels, doors and (for one student) their ZKBio record and recent door events.
+
+    Shows which door or machine let a person in or refused them, and which levels exist.
+    """
+    from datetime import timedelta
+    out: dict = {
+        "gym_levels_configured": {k: v for k, v in _LEVEL_BY_CATEGORY.items()},
+        "default_level_ids": zkbio_client.ZKBIO_LEVEL_IDS,
+        "levels_in_zkbio": zkbio_client.get_levels(),
+        "doors": zkbio_client.get_doors(),
+    }
+    if roll_no:
+        person = zkbio_client.get_person(pin=roll_no)
+        data = (person or {}).get("data") if isinstance(person, dict) else None
+        out["person"] = {
+            k: (data or {}).get(k) for k in ("pin", "name", "deptCode", "deptName", "accLevelIds", "isDisabled")
+        }
+        now = datetime.now()
+        events = zkbio_client.get_transactions(
+            (now - timedelta(minutes=max(1, min(minutes, 1440)))).strftime("%Y-%m-%d %H:%M:%S"),
+            now.strftime("%Y-%m-%d %H:%M:%S"),
+            1,
+            200,
+        )
+        out["recent_events"] = [
+            {k: e.get(k) for k in ("eventTime", "event_time", "eventName", "devName", "doorName", "eventPointName", "readerName")}
+            for e in events
+            if str(e.get("pin", "")) == roll_no
+        ]
+    return out
+
+
 @app.put("/api/students/{roll_no}/gate", tags=["Students"])
 def set_gate(roll_no: str, payload: GateUpdate, debug: bool = False, db: Session = Depends(get_db)):
     """Switch a student's door permission (ZKBio access level) on or off.
@@ -634,15 +675,20 @@ def set_gate(roll_no: str, payload: GateUpdate, debug: bool = False, db: Session
         return (data.get("accLevelIds") or data.get("accLevelNames")), (data.get("deptCode") or data.get("deptName"))
 
     # Reading the person back costs two extra ZKBio calls, so only do it when asked (?debug=true)
-    levels_before, dept = levels_now() if debug else (None, None)
+    levels_before, dept = levels_now()
     if payload.open:
         result = zkbio_client.add_level_person(pin=roll_no, level_ids=level)
         synced = zkbio_client.sync_person(pin=roll_no, level_ids=level)
     else:
-        result = zkbio_client.delete_level(pin=roll_no, level_ids=level)
+        # Remove EVERY gym level the person holds, not only their category's level: a person can hold a
+        # different gym level (for example a hosteller holding the day scholar level) and would stay inside.
+        held = {x.strip() for x in (levels_before or "").split(",") if x.strip()}
+        to_remove = (held & _all_gym_levels()) | {x.strip() for x in level_used.split(",") if x.strip()}
+        level_used = ",".join(sorted(to_remove))
+        result = zkbio_client.delete_level(pin=roll_no, level_ids=level_used)
         # NOT sync_person: it puts the person back into the level. Push the level's member list instead.
-        synced = zkbio_client.sync_level(level_ids=level)
-    levels_after = levels_now()[0] if debug else None
+        synced = zkbio_client.sync_level(level_ids=level_used)
+    levels_after = levels_now()[0]
 
     if zkbio_client.ZKBIO_ENABLED and result is None:
         raise HTTPException(502, "ZKBio did not answer, door permission not changed")
