@@ -14,6 +14,8 @@ class StudentCreate(BaseModel):
     room_no: str = Field(..., min_length=1, max_length=20)
     phone: Optional[str] = Field(None, max_length=15)
     dept_code: Optional[str] = Field(None, max_length=10)
+    # False = create the person without a door permission (slot-based gate)
+    grant_device: bool = True
 
 
 class StudentUpdate(BaseModel):
@@ -26,6 +28,13 @@ class PaymentUpdate(BaseModel):
     payment_status: PaymentStatus
     payment_valid_from: Optional[dt_date] = None
     payment_valid_until: Optional[dt_date] = None
+    # False = record the payment but do not touch the door permission (slot-based gate:
+    # the gym app switches the permission on and off around booked slots).
+    grant_device: bool = True
+
+
+class GateUpdate(BaseModel):
+    open: bool
 
 
 class StudentResponse(BaseModel):

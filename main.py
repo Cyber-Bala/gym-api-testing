@@ -17,6 +17,7 @@ from database import get_db, init_db, SessionLocal
 from models import AccessLog, AccessStatus, EventType, PaymentStatus, Student
 from schemas import (
     AccessLogResponse,
+    GateUpdate,
     LogEntryExitRequest,
     PaymentUpdate,
     StatsResponse,
@@ -484,7 +485,7 @@ def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
         pin=student.roll_no,
         name=student.name,
         dept_code=payload.dept_code,
-        level_ids=(level or "") if student.access_enabled else "",
+        level_ids=(level or "") if (student.access_enabled and payload.grant_device) else "",
     )
 
     return student
@@ -594,7 +595,9 @@ def update_payment(roll_no: str, payload: PaymentUpdate, db: Session = Depends(g
 
     # ── Sync access level on ZKBio device ──
     level = _level_for(student.category)
-    if student.access_enabled:
+    if student.access_enabled and not payload.grant_device:
+        logger.info(f"[ZKBio] {roll_no} is eligible; door permission is controlled by booked slots")
+    elif student.access_enabled:
         zkbio_client.add_level_person(pin=roll_no, level_ids=level)
         zkbio_client.sync_person(pin=roll_no, level_ids=level)
         logger.info(f"[ZKBio] Access ENABLED for {roll_no} on device")
@@ -604,6 +607,32 @@ def update_payment(roll_no: str, payload: PaymentUpdate, db: Session = Depends(g
         logger.info(f"[ZKBio] Access DISABLED for {roll_no} on device")
 
     return student
+
+
+@app.put("/api/students/{roll_no}/gate", tags=["Students"])
+def set_gate(roll_no: str, payload: GateUpdate, db: Session = Depends(get_db)):
+    """Switch a student's door permission (ZKBio access level) on or off.
+
+    Used by the gym app's slot-based gate. The face stays on the device; only the level changes.
+    Safe to repeat: setting the same state twice does no harm.
+    """
+    student = db.query(Student).filter(Student.roll_no == roll_no).first()
+    if not student:
+        raise HTTPException(404, "Student not found")
+    if payload.open and not student.access_enabled:
+        raise HTTPException(409, "Student has no valid pass, door permission not granted")
+
+    level = _level_for(student.category)
+    if payload.open:
+        result = zkbio_client.add_level_person(pin=roll_no, level_ids=level)
+    else:
+        result = zkbio_client.delete_level(pin=roll_no, level_ids=level)
+    zkbio_client.sync_person(pin=roll_no, level_ids=level)
+
+    if zkbio_client.ZKBIO_ENABLED and result is None:
+        raise HTTPException(502, "ZKBio did not answer, door permission not changed")
+    logger.info(f"[ZKBio] Door permission {'ON' if payload.open else 'OFF'} for {roll_no}")
+    return {"roll_no": roll_no, "open": payload.open, "device_ok": result is not None}
 
 
 # ══════════════════════════════════════════════════════════════════════
